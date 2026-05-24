@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 import math
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Optional, Sequence
+
+_logger = logging.getLogger(__name__)
 
 from PySide6.QtCore import QObject, QPointF, QRectF, QSize, QThread, QTimer, Signal
 from PySide6.QtGui import QPixmap
@@ -313,7 +316,8 @@ class MarkerController(QObject):
     def set_assets(self, assets: Iterable[GeotaggedAsset], library_root: Path) -> None:
         """Replace the asset catalogue shown on the map."""
 
-        normalized_assets = [asset for asset in assets if isinstance(asset, GeotaggedAsset)]
+        raw_list = list(assets)
+        normalized_assets = [asset for asset in raw_list if isinstance(asset, GeotaggedAsset)]
         same_root = self._library_root == library_root
         same_assets = (
             same_root
@@ -607,15 +611,20 @@ class MarkerController(QObject):
 
         grid: Dict[tuple[int, int], list[_MarkerCluster]] = {}
         clusters: list[_MarkerCluster] = []
+        skipped_null = 0
+        skipped_outside = 0
 
         for asset in self._assets:
             point = self._map_widget.project_lonlat(asset.longitude, asset.latitude)
             if point is None:
+                skipped_null += 1
                 continue
 
             if point.x() < -margin or point.y() < -margin:
+                skipped_outside += 1
                 continue
             if point.x() > width + margin or point.y() > height + margin:
+                skipped_outside += 1
                 continue
 
             cell_x = int(point.x() // cell_size)
@@ -657,6 +666,8 @@ class MarkerController(QObject):
                 clusters.append(cluster)
                 grid.setdefault((cell_x, cell_y), []).append(cluster)
 
+        if skipped_null > 0:
+            _logger.warning("%d assets returned None from project_lonlat", skipped_null)
         return clusters
 
     def _cluster_label(
