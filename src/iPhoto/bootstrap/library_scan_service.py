@@ -551,7 +551,16 @@ class LibraryScanService:
             (str, bytes),
         ):
             resolved_exclude = DEFAULT_EXCLUDE
-        return list(resolved_include), list(resolved_exclude)
+
+        result_include = list(resolved_include)
+        result_exclude = list(resolved_exclude)
+        LOGGER.info(
+            "scan_filters for %s: manifest=%s, include patterns=%d, exclude patterns=%d",
+            root, manifest.get("title", "default"), len(result_include), len(result_exclude),
+        )
+        if result_include != list(DEFAULT_INCLUDE):
+            LOGGER.info("Using custom include patterns: %s", result_include[:5])
+        return result_include, result_exclude
 
     def _repository(self) -> AssetRepositoryPort:
         return self._repository_factory(self.library_root)

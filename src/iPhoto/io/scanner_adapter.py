@@ -56,6 +56,9 @@ class FileDiscoveryThread(threading.Thread):
                 *[name.casefold() for name in ALL_WORK_DIR_NAMES],
                 EXPORT_DIR_NAME.casefold(),
             }
+            total_walked = 0
+            excluded_count = 0
+            excluded_samples: list[str] = []
             for dirpath, dirnames, filenames in os.walk(self._root):
                 if self._stop_event.is_set():
                     break
@@ -65,6 +68,7 @@ class FileDiscoveryThread(threading.Thread):
                 for name in filenames:
                     if self._stop_event.is_set():
                         break
+                    total_walked += 1
                     candidate = Path(dirpath) / name
                     if should_include(
                         candidate,
@@ -74,6 +78,16 @@ class FileDiscoveryThread(threading.Thread):
                     ):
                         self._queue.put(candidate)
                         self.total_found += 1
+                    else:
+                        excluded_count += 1
+                        if len(excluded_samples) < 10:
+                            excluded_samples.append(candidate.name)
+            LOGGER.info(
+                "Discovery complete for %s: walked=%d, included=%d, excluded=%d",
+                self._root, total_walked, self.total_found, excluded_count,
+            )
+            if excluded_samples:
+                LOGGER.info("Sample excluded files: %s", excluded_samples)
         finally:
             self._queue.put(None)
 
