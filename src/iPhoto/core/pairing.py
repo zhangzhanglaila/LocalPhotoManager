@@ -127,6 +127,21 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
             used_videos.add(chosen["rel"])
             matched[photo["rel"]] = _build_group(photo, chosen, confidence=0.7)
 
+    # 2b) same-stem match without time delta — iPhone Live Photos always
+    #     share the same filename stem (e.g. IMG_1234.HEIC + IMG_1234.MOV).
+    for photo in photos.values():
+        if photo["rel"] in matched:
+            continue
+        stem = Path(photo["rel"]).stem.casefold()
+        candidates = [
+            v for v in videos.values()
+            if Path(v["rel"]).stem.casefold() == stem and v["rel"] not in used_videos
+        ]
+        if len(candidates) == 1:
+            chosen = candidates[0]
+            used_videos.add(chosen["rel"])
+            matched[photo["rel"]] = _build_group(photo, chosen, confidence=0.6)
+
     # 3) weak match by directory proximity
     for photo in photos.values():
         if photo["rel"] in matched:

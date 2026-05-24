@@ -345,9 +345,14 @@ class PhotoMapView(QWidget):
         if self._map_widget_built:
             return
         logger.info("_ensure_map_widget: building map widget now")
-        self._map_widget_built = True
-        self._placeholder_label.hide()
-        self._build_map_widget()
+        self._placeholder_label.setText("正在加载地图…")
+        try:
+            self._build_map_widget()
+            self._map_widget_built = True
+            self._placeholder_label.hide()
+        except Exception:
+            logger.exception("_ensure_map_widget: failed to build map widget")
+            self._placeholder_label.setText("地图加载失败，请重启应用重试")
 
     def activate_map(self) -> None:
         """Called by the view router when the user navigates to the map view."""
@@ -424,6 +429,8 @@ class PhotoMapView(QWidget):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
+        if not self._map_widget_built:
+            return
         if self._overlay_attachment.uses_post_render:
             self._overlay.update()
         else:
@@ -450,6 +457,8 @@ class PhotoMapView(QWidget):
         super().focusOutEvent(event)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # type: ignore[override]
+        if not self._map_widget_built:
+            return super().eventFilter(watched, event)
         if watched is self._map_event_target:
             if event.type() == QEvent.Type.MouseMove:
                 mouse_event = cast(QMouseEvent, event)

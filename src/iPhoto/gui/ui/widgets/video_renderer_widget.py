@@ -197,10 +197,13 @@ def _resolve_frame_rotation_cw(
                 ):
                     pre_rotated = True
         elif container_rotation_cw == 180:
-            if (
-                abs(qt_rotation) % 360 == 180
-                and _should_assume_linux_180_prerotated(linux_180_hint)
-            ):
+            # For 180° rotation the pixel dimensions do not change, so the
+            # transposition heuristic used for 90°/270° cannot apply.  On
+            # Windows the Qt6 FFmpeg backend delivers already-upright frames
+            # (``QVideoFrameFormat.rotation()`` reports 180), so we must not
+            # rotate again.  Trust the Qt rotation metadata: when it matches
+            # the container rotation the backend has already applied it.
+            if abs(qt_rotation) % 360 == 180:
                 pre_rotated = True
 
         return 0 if pre_rotated else container_rotation_cw
@@ -952,6 +955,14 @@ class VideoRendererWidget(QRhiWidget):
         fmt_w = fmt.frameWidth()
         fmt_h = fmt.frameHeight()
         if fmt_w > 0 and fmt_h > 0 and w == fmt_h and h == fmt_w:
+            self._rotate90_steps = 0
+            self._mirror = 0
+        elif (
+            fmt_w > 0 and fmt_h > 0 and w == fmt_w and h == fmt_h
+            and self._container_rotation_cw == 180
+            and abs(_rotation_value_to_degrees(frame.surfaceFormat().rotation())) % 360 == 180
+        ):
+            # 180° pre-rotation: dimensions are unchanged but Qt reports 180°.
             self._rotate90_steps = 0
             self._mirror = 0
             # Update the display native size to match the (now pre-rotated)

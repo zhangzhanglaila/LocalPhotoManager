@@ -29,7 +29,7 @@ DEFAULT_EXCLUDE: Final[list[str]] = [
     "**/._*",
     f"**/{RECENTLY_DELETED_DIR_NAME}/**",
 ]
-PAIR_TIME_DELTA_SEC: Final[float] = 3.0
+PAIR_TIME_DELTA_SEC: Final[float] = 5.0
 LIVE_DURATION_PREFERRED: Final[tuple[float, float]] = (1.0, 3.5)
 LOCK_EXPIRE_SEC: Final[int] = 30
 THUMB_SIZES: Final[list[tuple[int, int]]] = [(256, 256), (512, 512)]
