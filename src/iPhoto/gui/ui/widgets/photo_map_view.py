@@ -345,11 +345,16 @@ class PhotoMapView(QWidget):
         if self._map_widget_built:
             return
         logger.info("_ensure_map_widget: building map widget now")
+        logger.info("_ensure_map_widget: PhotoMapView geometry=%s", self.geometry())
         self._placeholder_label.setText("正在加载地图…")
         try:
             self._build_map_widget()
             self._map_widget_built = True
             self._placeholder_label.hide()
+            logger.info(
+                "_ensure_map_widget: done, map_widget geometry=%s visible=%s",
+                self._map_widget.geometry(), self._map_widget.isVisible(),
+            )
         except Exception:
             logger.exception("_ensure_map_widget: failed to build map widget")
             self._placeholder_label.setText("地图加载失败，请重启应用重试")
@@ -565,6 +570,7 @@ class PhotoMapView(QWidget):
         if self._map_runtime_capabilities is not None:
             logger.info("Photo map runtime capability: %s", self._map_runtime_capabilities.status_message)
         self._layout.addWidget(self._map_widget)
+        logger.info("_build_map_widget: after addWidget, map_widget size=%s, PhotoMapView size=%s", self._map_widget.size(), self.size())
 
         if self._overlay_attachment.supports_post_render(self._map_widget):
             self._overlay = _GLMarkerLayer(self._map_widget)
