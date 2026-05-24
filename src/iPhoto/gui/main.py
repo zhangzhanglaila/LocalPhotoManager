@@ -239,10 +239,17 @@ def main(argv: list[str] | None = None) -> int:
     _configure_qt_opengl_defaults()
     app = QApplication(arguments)
 
-    # Allow Ctrl+C to work on Windows.  Qt's event loop blocks the Python
-    # signal handler; a periodic no-op timer lets the interpreter process
-    # pending signals between event-loop iterations.
-    if sys.platform == "win32" and signal.getsignal(signal.SIGINT) == signal.SIG_DFL:
+    # Allow Ctrl+C to terminate the app on Windows.  Qt's event loop blocks
+    # the default Python signal handler.  We install a custom handler that
+    # forcibly exits the process, and a periodic timer that gives Python a
+    # chance to dispatch the signal between event-loop iterations.
+    if sys.platform == "win32":
+
+        def _sigint_handler(*_: object) -> None:
+            _logger.info("SIGINT received, exiting")
+            os._exit(130)
+
+        signal.signal(signal.SIGINT, _sigint_handler)
         _signal_timer = QTimer()
         _signal_timer.timeout.connect(lambda: None)
         _signal_timer.start(500)
