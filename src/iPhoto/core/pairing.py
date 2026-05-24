@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,8 @@ from dateutil import parser
 
 from ..config import LIVE_DURATION_PREFERRED, PAIR_TIME_DELTA_SEC
 from ..domain.models.core import LiveGroup
+
+_logger = logging.getLogger(__name__)
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -83,11 +86,22 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
 
     photos: Dict[str, Dict[str, object]] = {}
     videos: Dict[str, Dict[str, object]] = {}
+    unclassified = 0
     for row in index_rows:
         if _is_photo(row):
             photos[row["rel"]] = row
         elif _is_video(row):
             videos[row["rel"]] = row
+        else:
+            unclassified += 1
+
+    photos_with_cid = sum(1 for r in photos.values() if _normalise_content_id(r.get("content_id")))
+    videos_with_cid = sum(1 for r in videos.values() if _normalise_content_id(r.get("content_id")))
+    _logger.info(
+        "pair_live: %d rows → %d photos (%d with cid), %d videos (%d with cid), %d unclassified",
+        len(index_rows), len(photos), photos_with_cid,
+        len(videos), videos_with_cid, unclassified,
+    )
 
     matched: Dict[str, LiveGroup] = {}
     used_videos: set[str] = set()
@@ -153,6 +167,7 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
             used_videos.add(chosen["rel"])
             matched[photo["rel"]] = _build_group(photo, chosen, confidence=0.5)
 
+    _logger.info("pair_live: matched %d Live Photo pairs", len(matched))
     return list(matched.values())
 
 
