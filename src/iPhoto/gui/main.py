@@ -1,0 +1,359 @@
+"""GUI entry point for the iPhoto desktop application."""
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QColor, QPalette, QSurfaceFormat
+from PySide6.QtWidgets import QApplication
+
+from iPhoto.bootstrap.qt_shader_cache import configure_shader_cache_environment
+from iPhoto.gui.render_backend import should_configure_global_desktop_opengl
+
+_logger = logging.getLogger(__name__)
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+_MACOS_EXTERNAL_TOOL_PATHS = (
+    Path("/opt/homebrew/bin"),
+    Path("/opt/homebrew/sbin"),
+    Path("/usr/local/bin"),
+    Path("/usr/local/sbin"),
+    Path("/opt/local/bin"),
+    Path("/opt/local/sbin"),
+)
+
+
+def _bootstrap_macos_external_tool_path() -> None:
+    """Expose common Homebrew/MacPorts tool paths to GUI-launched app bundles."""
+
+    if sys.platform != "darwin":
+        return
+
+    # Use the target platform's PATH separator rather than the host process
+    # separator so darwin-specific normalization also behaves correctly in
+    # cross-platform tests that monkeypatch ``sys.platform``.
+    path_separator = ":"
+
+    existing_tool_paths: list[str] = []
+    for candidate in _MACOS_EXTERNAL_TOOL_PATHS:
+        try:
+            if candidate.is_dir():
+                existing_tool_paths.append(candidate.as_posix())
+        except OSError:
+            continue
+
+    current_paths = [
+        entry
+        for entry in os.environ.get("PATH", "").split(path_separator)
+        if entry
+    ]
+    merged_paths: list[str] = []
+    seen: set[str] = set()
+    for entry in [*existing_tool_paths, *current_paths]:
+        if entry in seen:
+            continue
+        seen.add(entry)
+        merged_paths.append(entry)
+    if merged_paths:
+        os.environ["PATH"] = path_separator.join(merged_paths)
+
+
+def _configure_qt_shader_disk_cache() -> None:
+    """Route shader/program caches into a managed ``.iPhoto`` work directory."""
+    configure_shader_cache_environment()
+
+
+def _opengl_explicitly_disabled() -> bool:
+    """Return whether all OpenGL-backed UI surfaces should be disabled."""
+
+    return os.environ.get("IPHOTO_DISABLE_OPENGL", "").strip().lower() in _TRUE_ENV_VALUES
+
+
+def _map_gl_surface_format(platform: str | None = None) -> QSurfaceFormat:
+    """Return the conservative OpenGL surface format used by map widgets."""
+
+    platform = sys.platform if platform is None else platform
+    surface_format = QSurfaceFormat()
+    surface_format.setRenderableType(QSurfaceFormat.RenderableType.OpenGL)
+    surface_format.setDepthBufferSize(24)
+    surface_format.setStencilBufferSize(8)
+    surface_format.setAlphaBufferSize(8 if platform == "darwin" else 0)
+    surface_format.setSamples(0)
+    return surface_format
+
+
+def _is_packaged_runtime() -> bool:
+    """Return ``True`` when the app is running from a compiled/frozen bundle."""
+
+    return "__compiled__" in globals() or getattr(sys, "frozen", False)
+
+
+def _allow_packaged_linux_wayland() -> bool:
+    """Return whether packaged Linux builds may keep Qt's default platform selection."""
+
+    raw_value = os.environ.get("IPHOTO_ALLOW_PACKAGED_LINUX_WAYLAND", "").strip().lower()
+    return raw_value in _TRUE_ENV_VALUES
+
+
+def _prefer_local_source_tree() -> None:
+    """Ensure direct script runs import the workspace package first.
+
+    When ``main.py`` is launched directly from an IDE, Python may resolve the
+    editable ``iPhoto`` install from another checkout before this repo's
+    ``src`` tree. Prepending the local ``src`` path keeps the GUI aligned with
+    the code being edited.
+    """
+
+    src_root = Path(__file__).resolve().parents[2]
+    src_root_str = str(src_root)
+    if sys.path and sys.path[0] == src_root_str:
+        return
+    try:
+        sys.path.remove(src_root_str)
+    except ValueError:
+        pass
+    sys.path.insert(0, src_root_str)
+
+
+def _prepare_qt_runtime_for_maps() -> None:
+    """Apply Linux Qt platform flags required by the native OsmAnd widget.
+
+    ``PhotoMapView`` prefers the native OsmAnd widget when its runtime is
+    available. That widget expects Qt to use the XCB/GLX desktop OpenGL path on
+    Linux; without these flags the application can start successfully and only
+    fail later when the map view is opened with GLEW reporting missing GLX
+    support.
+    """
+
+    if sys.platform != "linux":
+        return
+
+    if _opengl_explicitly_disabled():
+        return
+
+    if _is_packaged_runtime():
+        if _allow_packaged_linux_wayland():
+            return
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
+    else:
+        try:
+            from maps.map_sources import has_usable_osmand_native_widget, prefer_osmand_native_widget
+        except Exception:
+            return
+
+        maps_package_root = Path(__file__).resolve().parents[2] / "maps"
+        if not prefer_osmand_native_widget() or not has_usable_osmand_native_widget(maps_package_root):
+            return
+
+    if not os.environ.get("QT_QPA_PLATFORM"):
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
+    if os.environ.get("QT_QPA_PLATFORM") == "xcb":
+        os.environ.setdefault("QT_OPENGL", "desktop")
+        os.environ.setdefault("QT_XCB_GL_INTEGRATION", "xcb_glx")
+
+
+def _configure_qt_opengl_defaults() -> None:
+    """Apply OpenGL context defaults required by the map widgets."""
+
+    _configure_qt_shader_disk_cache()
+
+    if _opengl_explicitly_disabled():
+        return
+
+    try:
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)
+    except Exception:
+        pass
+
+    if should_configure_global_desktop_opengl():
+        try:
+            QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL, True)
+        except Exception:
+            pass
+
+    try:
+        QSurfaceFormat.setDefaultFormat(_map_gl_surface_format())
+    except Exception:
+        return
+
+
+def _install_global_exception_hook() -> None:
+    """Log unhandled exceptions that would otherwise crash silently."""
+
+    import traceback
+
+    _hook_logger = logging.getLogger("iPhoto.crash")
+
+    def _excepthook(exc_type, exc_value, exc_tb):
+        _hook_logger.critical(
+            "Unhandled exception:\n%s",
+            "".join(traceback.format_exception(exc_type, exc_value, exc_tb)),
+        )
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _excepthook
+
+    # Qt swallows exceptions in slots/signals — install a handler via
+    # QThreadPool's exception handling or threading.
+    import threading
+    orig_thread_excepthook = threading.excepthook
+
+    def _thread_excepthook(args):
+        _hook_logger.critical(
+            "Unhandled exception in thread %s:\n%s",
+            args.thread,
+            "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_tb)),
+        )
+        orig_thread_excepthook(args)
+
+    threading.excepthook = _thread_excepthook
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Launch the Qt application and return the exit code."""
+
+    _install_global_exception_hook()
+    _prefer_local_source_tree()
+    _bootstrap_macos_external_tool_path()
+    maps_package_root = Path(__file__).resolve().parents[2] / "maps"
+    try:
+        from maps.map_sources import apply_pending_osmand_extension_install
+
+        apply_pending_osmand_extension_install(maps_package_root)
+    except Exception:
+        _logger.warning("Failed to apply pending map extension install", exc_info=True)
+
+    # Ensure the ``iPhoto`` root logger is configured before any component
+    # creates a child logger.  ``get_logger()`` lazily attaches a StreamHandler
+    # to the ``iPhoto`` logger so all ``iPhoto.*`` loggers propagate output to
+    # stderr at INFO level by default.
+    from iPhoto.utils.logging import get_logger as _init_logging
+    _init_logging()
+
+    arguments = list(sys.argv if argv is None else argv)
+    _prepare_qt_runtime_for_maps()
+    _configure_qt_opengl_defaults()
+    app = QApplication(arguments)
+
+    # ``QToolTip`` instances inherit ``WA_TranslucentBackground`` from the frameless
+    # main window, which means they expect the application to provide an opaque fill
+    # colour.  Some Qt styles ignore stylesheet rules for tooltips, so we proactively
+    # update the palette that drives those popups to guarantee readable text.
+    tooltip_palette = QPalette(app.palette())
+
+    def _resolved_colour(source: QColor, fallback: QColor) -> QColor:
+        """Return a copy of *source* with a fully opaque alpha channel.
+
+        Qt reports transparent colours for certain palette roles when
+        ``WA_TranslucentBackground`` is active.  Failing to normalise the alpha value
+        causes the compositor to blend the tooltip against the desktop wallpaper,
+        producing the solid black rectangle described in the regression report.
+        Falling back to a well-tested default keeps the tooltip legible even on
+        themes that omit one of the roles we query.
+        """
+
+        if not source.isValid():
+            return QColor(fallback)
+
+        resolved = QColor(source)
+        resolved.setAlpha(255)
+        return resolved
+
+    base_colour = _resolved_colour(
+        tooltip_palette.color(QPalette.ColorRole.Window), QColor("#eef3f6")
+    )
+    text_colour = _resolved_colour(
+        tooltip_palette.color(QPalette.ColorRole.WindowText), QColor(Qt.GlobalColor.black)
+    )
+
+    # Ensure the text remains readable by checking the lightness contrast.  When the
+    # palette provides nearly identical shades we fall back to a simple dark-on-light
+    # scheme that mirrors Qt's built-in defaults.
+    if abs(base_colour.lightness() - text_colour.lightness()) < 40:
+        base_colour = QColor("#eef3f6")
+        text_colour = QColor(Qt.GlobalColor.black)
+
+    tooltip_palette.setColor(QPalette.ColorRole.ToolTipBase, base_colour)
+    tooltip_palette.setColor(QPalette.ColorRole.ToolTipText, text_colour)
+    app.setPalette(tooltip_palette, "QToolTip")
+
+    from iPhoto.bootstrap.runtime_context import RuntimeContext
+    from iPhoto.gui.coordinators.main_coordinator import MainCoordinator
+    from iPhoto.gui.ui.main_window import MainWindow
+
+    # Defer heavy library binding + initial scan until the event loop is running.
+    context = RuntimeContext.create(defer_startup=True)
+    # --- Phase 4: Coordinator Wiring ---
+    window = MainWindow(context)
+
+    # Startup overlay — shown immediately so the user sees progress feedback.
+    from iPhoto.gui.ui.widgets.startup_overlay import StartupOverlay
+    overlay = StartupOverlay(window.ui.window_shell)
+
+    # Coordinator needs Window, Context, and Container
+    overlay.show_overlay()
+    window.show()
+
+    # Break the heavy startup into multiple event-loop steps so the overlay
+    # can repaint between each step (prevents "未响应" appearance).
+    coordinator_ref: list = []
+
+    def _step1_create_coordinator() -> None:
+        try:
+            overlay.set_message("正在初始化…")
+            _logger.info("startup step 1: creating MainCoordinator")
+            coordinator = MainCoordinator(window, context)
+            window.set_coordinator(coordinator)
+            coordinator_ref.append(coordinator)
+            QTimer.singleShot(0, _step2_start_coordinator)
+        except Exception:
+            _logger.exception("startup step 1: unhandled error")
+            raise
+
+    def _step2_start_coordinator() -> None:
+        try:
+            overlay.set_message("正在启动服务…")
+            _logger.info("startup step 2: starting coordinator")
+            coordinator_ref[0].start()
+            QTimer.singleShot(0, _step3_resume_tasks)
+        except Exception:
+            _logger.exception("startup step 2: unhandled error")
+            raise
+
+    def _step3_resume_tasks() -> None:
+        try:
+            overlay.set_message("正在加载图库…")
+            _logger.info("startup step 3: resuming startup tasks")
+            context.resume_startup_tasks()
+            QTimer.singleShot(0, _step4_select_photos)
+        except Exception:
+            _logger.exception("startup step 3: unhandled error")
+            raise
+
+    def _step4_select_photos() -> None:
+        try:
+            overlay.set_message("正在加载照片…")
+            coordinator = coordinator_ref[0]
+            if len(arguments) > 1:
+                _logger.info("startup step 4: opening album from CLI argument %s", arguments[1])
+                coordinator.open_album_from_path(Path(arguments[1]))
+            else:
+                _logger.info("startup step 4: selecting All Photos in sidebar")
+                window.ui.sidebar.select_all_photos(emit_signal=True)
+            coordinator.finish_startup()
+            overlay.dismiss()
+            _logger.info("startup complete")
+        except Exception:
+            _logger.exception("startup step 4: unhandled error")
+            raise
+
+    QTimer.singleShot(0, _step1_create_coordinator)
+
+    return app.exec()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual launch
+    raise SystemExit(main())

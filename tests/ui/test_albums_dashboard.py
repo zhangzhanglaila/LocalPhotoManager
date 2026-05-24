@@ -1,0 +1,262 @@
+"""Tests for AlbumsDashboard and AlbumCard widgets."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+pytest.importorskip(
+    "PySide6",
+    reason="PySide6 is required for UI tests",
+    exc_type=ImportError,
+)
+
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QApplication
+
+from iPhoto.errors import AlbumOperationError
+from iPhoto.gui.services.pinned_items_service import PinnedItemsService
+from iPhoto.settings.manager import SettingsManager
+from iPhoto.library.runtime_controller import LibraryRuntimeController
+from iPhoto.gui.ui.widgets.albums_dashboard import (
+    AlbumCard,
+    AlbumsDashboard,
+)
+
+@pytest.fixture
+def qapp():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
+
+@pytest.fixture
+def mock_library():
+    lib = MagicMock()
+    lib.list_albums.return_value = []
+    # Mock treeUpdated signal
+    lib.treeUpdated = MagicMock()
+    lib.treeUpdated.connect = MagicMock()
+    return lib
+
+def test_album_card_initialization(qapp):
+    """Test that AlbumCard initializes correctly with path."""
+    path = Path("/tmp/test_album")
+    card = AlbumCard(path, "My Album", 10)
+
+    assert card.path == path
+    assert card.title_label.text() == "My Album"
+    assert card.count_label.text() == "10"
+    # Verify cursor
+    assert card.cursor().shape() == Qt.CursorShape.PointingHandCursor
+    # Verify mouse tracking
+    assert card.hasMouseTracking()
+
+def test_album_card_clicked_signal(qtbot):
+    """Test that AlbumCard emits clicked signal with path."""
+    path = Path("/tmp/test_album")
+    card = AlbumCard(path, "My Album", 10)
+    qtbot.addWidget(card)
+
+    with qtbot.waitSignal(card.clicked) as blocker:
+        qtbot.mouseClick(card, Qt.MouseButton.LeftButton)
+
+    assert blocker.args == [path]
+
+def test_album_card_hover_effect(qtbot):
+    """Test that AlbumCard handles mouse events for hover effect."""
+    path = Path("/tmp/test_album")
+    card = AlbumCard(path, "My Album", 10)
+    qtbot.addWidget(card)
+    card.show()
+
+    # We can't easily verify the painting output without a screenshot test,
+    # but we can verify the state changes in mouseMoveEvent.
+    # We'll rely on the fact that paintEvent is called without error.
+
+    # Move mouse over card
+    qtbot.mouseMove(card, card.rect().center())
+
+    # Just ensure no crash in paintEvent
+    card.repaint()
+
+def test_albums_dashboard_populates_cards(qtbot, mock_library):
+    """Test that dashboard creates cards from library albums."""
+    album1 = MagicMock()
+    album1.title = "Album 1"
+    album1.path = Path("/path/to/album1")
+
+    album2 = MagicMock()
+    album2.title = "Album 2"
+    album2.path = Path("/path/to/album2")
+
+    mock_library.list_albums.return_value = [album1, album2]
+
+    # Prevent thread pool from running workers
+    with patch("PySide6.QtCore.QThreadPool.globalInstance") as mock_pool:
+        dashboard = AlbumsDashboard(mock_library)
+        qtbot.addWidget(dashboard)
+
+        assert len(dashboard._cards) == 2
+        assert album1.path in dashboard._cards
+        assert album2.path in dashboard._cards
+
+        # Verify card 1 has correct path
+        assert dashboard._cards[album1.path].path == album1.path
+
+def test_albums_dashboard_relays_signal(qtbot, mock_library):
+    """Test that dashboard relays the clicked signal from card."""
+    album = MagicMock()
+    album.title = "Test Album"
+    album.path = Path("/path/to/album")
+    mock_library.list_albums.return_value = [album]
+
+    with patch("PySide6.QtCore.QThreadPool.globalInstance"):
+        dashboard = AlbumsDashboard(mock_library)
+        qtbot.addWidget(dashboard)
+        card = dashboard._cards[album.path]
+
+        with qtbot.waitSignal(dashboard.albumSelected) as blocker:
+            # Simulate click on the card
+            # We can emit the card's signal directly to test relay
+            card.clicked.emit(album.path)
+
+        assert blocker.args == [album.path]
+
+
+def test_albums_dashboard_menu_uses_styled_pin_action(qapp, mock_library, tmp_path):
+    album = MagicMock()
+    album.title = "Pinned Album"
+    album.path = tmp_path / "album"
+    mock_library.list_albums.return_value = [album]
+    mock_library.root.return_value = tmp_path
+
+    settings = SettingsManager(path=tmp_path / "settings.json")
+    settings.load()
+    pinned_service = PinnedItemsService(settings)
+
+    with patch("PySide6.QtCore.QThreadPool.globalInstance"):
+        dashboard = AlbumsDashboard(mock_library)
+        dashboard.set_pinned_service(pinned_service)
+        qapp.processEvents()
+        card = dashboard._cards[album.path]
+
+        menu = dashboard._build_card_menu(card)
+        action_labels = [action.text() for action in menu.actions() if not action.isSeparator()]
+
+        assert menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        assert action_labels == ["Rename…", "Pin Album"]
+
+        pinned_service.pin_album(album.path, album.title, library_root=tmp_path)
+        menu = dashboard._build_card_menu(card)
+        action_labels = [action.text() for action in menu.actions() if not action.isSeparator()]
+        assert action_labels == ["Rename…", "Unpin Album"]
+
+
+def test_albums_dashboard_rename_album_calls_library(qapp, mock_library, tmp_path):
+    album = MagicMock()
+    album.title = "Trips"
+    album.path = tmp_path / "Trips"
+    album.path.mkdir()
+    mock_library.list_albums.return_value = [album]
+
+    with patch("PySide6.QtCore.QThreadPool.globalInstance"):
+        dashboard = AlbumsDashboard(mock_library)
+        qapp.processEvents()
+        card = dashboard._cards[album.path]
+
+        with patch(
+            "iPhoto.gui.ui.widgets.albums_dashboard._create_styled_input_dialog",
+            return_value=("Renamed Trips", True),
+        ):
+            dashboard._prompt_rename_album(card)
+
+    mock_library.rename_album.assert_called_once_with(album, "Renamed Trips")
+
+
+def test_albums_dashboard_successful_rename_refreshes_card_paths(qapp, tmp_path):
+    root = tmp_path / "Library"
+    root.mkdir()
+    manager = LibraryRuntimeController()
+    manager.bind_path(root)
+    album = manager.create_album("Trips")
+
+    with patch("PySide6.QtCore.QThreadPool.globalInstance"):
+        dashboard = AlbumsDashboard(manager)
+        qapp.processEvents()
+        card = dashboard._cards[album.path]
+
+        with patch(
+            "iPhoto.gui.ui.widgets.albums_dashboard._create_styled_input_dialog",
+            return_value=("Renamed Trips", True),
+        ):
+            dashboard._prompt_rename_album(card)
+            qapp.processEvents()
+
+    old_path = root / "Trips"
+    new_path = root / "Renamed Trips"
+    assert not old_path.exists()
+    assert new_path.exists()
+    assert old_path not in dashboard._cards
+    assert new_path in dashboard._cards
+    assert dashboard._cards[new_path].title_label.text() == "Renamed Trips"
+
+
+def test_albums_dashboard_reserved_rename_shows_warning(qapp, mock_library, tmp_path):
+    album = MagicMock()
+    album.title = "Trips"
+    album.path = tmp_path / "Trips"
+    album.path.mkdir()
+    mock_library.list_albums.return_value = [album]
+    mock_library.rename_album.side_effect = AlbumOperationError(
+        "Album name '.Trash' is reserved for internal use."
+    )
+
+    with patch("PySide6.QtCore.QThreadPool.globalInstance"):
+        dashboard = AlbumsDashboard(mock_library)
+        qapp.processEvents()
+        card = dashboard._cards[album.path]
+
+        with (
+            patch(
+                "iPhoto.gui.ui.widgets.albums_dashboard._create_styled_input_dialog",
+                return_value=(".Trash", True),
+            ),
+            patch("iPhoto.gui.ui.widgets.albums_dashboard.dialogs.show_warning") as show_warning,
+        ):
+            dashboard._prompt_rename_album(card)
+
+    mock_library.rename_album.assert_called_once_with(album, ".Trash")
+    show_warning.assert_called_once_with(
+        dashboard, "Album name '.Trash' is reserved for internal use."
+    )
+    assert album.path in dashboard._cards
+
+
+def test_albums_dashboard_updates_cover_preview_immediately(qapp, mock_library, tmp_path):
+    album = MagicMock()
+    album.title = "Trips"
+    album.path = tmp_path / "Trips"
+    album.path.mkdir()
+    mock_library.list_albums.return_value = [album]
+    cover_path = album.path / "cover.png"
+    pixmap = QPixmap(8, 8)
+    pixmap.fill()
+    assert pixmap.save(str(cover_path))
+
+    with patch("PySide6.QtCore.QThreadPool.globalInstance"):
+        dashboard = AlbumsDashboard(mock_library)
+        qapp.processEvents()
+        card = dashboard._cards[album.path]
+
+        with patch.object(dashboard._thumb_loader, "request_with_absolute_key") as request_thumb:
+            dashboard.update_album_cover(album.path, cover_path)
+
+        assert card.image_view._pixmap is not None
+        request_thumb.assert_called_once_with(album.path, cover_path, QSize(512, 512))

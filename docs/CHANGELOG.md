@@ -1,0 +1,412 @@
+# 📋 Changelog
+
+All notable changes to **iPhotron** are documented in this file.
+
+---
+
+## 🚧 Unreleased — macOS Rendering, Map Runtime & Location Resilience
+
+🖥️ *A platform-compatibility pass focused on macOS Metal/QRhi previews,
+transparent-window map rendering, safer location assignment, and packaged
+runtime coverage.*
+
+### Key Updates
+
+#### 🍎 macOS Media Rendering
+- Added platform QRhi backend selection via `IPHOTO_RHI_BACKEND`; macOS now
+  prefers Metal when Qt exposes it, while Windows and Linux keep the OpenGL path.
+- Added a QRhi-backed image/video adjustment renderer with QSB shader assets for
+  image preview, crop overlay, LUTs, and adjusted-video frames.
+- Routed macOS long-press video previews through the RHI popup path so adjusted,
+  rotate-only, and plain previews share the stable GPU surface.
+- Improved high-DPI crop and pan math by converting logical viewport
+  coordinates through the actual QRhi render-target scale.
+
+#### 🗺️ Maps Runtime & macOS GL Stability
+- Added macOS OsmAnd runtime discovery for `dist-macosx` helper/widget builds
+  and a `scripts/sync_macos_map_extension.py` workflow that copies resources,
+  search data, `.dylib` binaries, dependencies, rpaths, and ad-hoc signatures.
+- Switched the macOS legacy GL map to `QOpenGLWindow + createWindowContainer()`
+  to avoid transparent `QOpenGLWidget` FBO composition in the frameless main
+  window.
+- Hardened map surfaces with opaque backing colors, full-update repaint
+  behavior, optional `IPHOTO_MAP_GL_DEBUG` diagnostics, and GL marker rendering
+  inside supported map passes.
+- Extended standalone map preview backend selection with explicit
+  `auto/native/python/legacy` modes and runtime diagnostics.
+
+#### 📍 Assign Location Resilience
+- Assign Location now persists the selected place to `global_index.db` even when
+  ExifTool is missing or the original file metadata write fails.
+- Added user-facing warnings for missing ExifTool or failed GPS write-back while
+  keeping the local database assignment intact.
+- Sanitized metadata updates before JSON storage so non-serializable third-party
+  values cannot corrupt asset rows.
+
+#### 📦 Packaging & Tests
+- Updated the Windows Nuitka script to bundle QRhi image/overlay/video shader
+  assets and the `maps` package alongside the maps extension.
+- Added regression coverage for render backend selection, macOS map GL surface
+  formats, native map widget event targets, RHI overlay rendering, map runtime
+  sources, macOS extension sync, location assignment fallback, preview windows,
+  and worker-side image scaling.
+
+---
+
+## 🚀 v6.0.0 — People, Face Clusters, Groups & Linux Maps Runtime
+
+👥 *A major People release with automatic face clustering, persistent People
+state, multi-person groups, richer location metadata, and broader Windows/Linux
+runtime packaging.*
+
+### Key Updates
+
+#### 👥 People Face Clusters
+- Added the optional **People face-scanning pipeline** powered by InsightFace
+  and ONNXRuntime through the `ai-demo` extra.
+- Detects faces in image assets, writes cropped face thumbnails, builds face
+  embeddings, and clusters them into persistent People cards.
+- Added background face-scan scheduling alongside the normal asset scan, with
+  `pending`, `done`, `skipped`, `retry`, and `failed` status tracking in the
+  global asset index.
+- Rebuilt the People persistence model around a rebuildable runtime snapshot
+  plus stable People state so names, covers, ordering, hidden flags, and group
+  decisions survive rescans and reclustering.
+
+#### 👨‍👩‍👧 People Groups & Dashboard Workflow
+- Added **People groups** for collecting photos where multiple selected people
+  appear together.
+- Group cards support shared-photo queries, cover selection, drag ordering,
+  pinned state, and safe disbanding without deleting the underlying people or
+  photos.
+- Added People card actions for naming, merging, hiding/unhiding, cover
+  management, and dashboard filtering for hidden people.
+- Hardened merge safety so hidden and visible people cannot be merged by
+  accident.
+- Split the People dashboard into focused board, card, dialog, shared, and
+  widget modules for easier testing and future iteration.
+
+#### 🗺️ Location & Info Panel Improvements
+- Added an embedded location map to the floating info panel so geotagged assets
+  can show map context directly in metadata view.
+- Added location assignment plumbing and background tasks for updating selected
+  asset coordinates.
+- Improved map source handling, OsmAnd search support, and map widget runtime
+  behavior.
+- Extended Linux maps support with helper-backed OBF rendering and the native
+  OsmAnd widget runtime when the required shared libraries are present.
+
+#### 🧩 Albums, Menus & Pinned Items
+- Added persistent pinned-item services for albums, people, and groups.
+- Expanded sidebar and gallery context-menu plumbing with shared menu styling
+  and consistent action handling.
+- Improved album dashboard/sidebar behavior, cover actions, rename/delete
+  workflows, and album tree model coverage.
+- Added project popup guardrails so routine warnings and confirmations use the
+  app-themed popup system instead of native `QMessageBox` surfaces.
+
+#### ⚙️ Scanning, Indexing & Packaging
+- Improved the scan pipeline with chunked persistence, scan-merge behavior, and
+  global repository tests for move/delete and status preservation scenarios.
+- Added People cover caching and thumbnail cache services for faster dashboard
+  rendering.
+- Updated Nuitka and Debian packaging guidance for bundled `insightface`,
+  `onnxruntime`, `extension/models`, Linux maps runtime files, and People-page
+  release smoke tests.
+- Added troubleshooting guidance for packaged face-scan failures, runtime typing
+  compatibility issues, model-cache problems, and Linux XCB/GLX map startup.
+
+#### 🧪 Tests & Reliability
+- Added focused coverage for People pipeline clustering, People repositories,
+  People service behavior, People dashboard widgets, group workflows, hidden
+  state, merge guards, and cover persistence.
+- Added tests for info panel maps, map extension download tasks, gallery and
+  playback coordinators, album sidebar/model behavior, scan/index sync, and
+  Linux map source handling.
+- Improved packaged-runtime diagnostics so asset-level face failures are logged
+  and retried without deadlocking the full People scan.
+
+---
+
+## 🚀 v5.0.0 — Video Editing, Trim System & Platform Stability
+
+🎬 *Full non-destructive video editing, a visual trim timeline, centralized keyboard shortcuts, and a sweeping round of Linux/GL stability fixes.*
+
+### Key Updates
+
+#### ✂️ Video Editing Workflow
+- Introduced a **complete non-destructive video editing suite** powered by a smooth OpenGL-accelerated preview pipeline.
+- Added a **visual trim timeline** with thumbnail strip, draggable in/out handles, and real-time playhead clamping inside the trim range.
+- Trim in/out points are saved to the sidecar file and **persist across app restarts**; the gallery duration badge now reflects the trimmed length.
+- **Playback progress bar** is remapped to the active trim range so the scrubber always tracks the visible portion of the clip.
+- Fixed stale progress bar after returning from edit mode — duration is force-synced when the video is reloaded.
+- Added **video transport keyboard shortcuts** (seek, play/pause, frame-step) inside the video edit panel.
+- Simplified the video edit sidebar section layout for a cleaner editing experience.
+
+#### ⌨️ Centralized Keyboard Shortcuts
+- Introduced **`AppShortcutManager`** — a single class that owns all application-level keyboard bindings, eliminating duplicated shortcut setup across components.
+- **Space bar** play/pause now works reliably in both gallery view and detail view.
+- Added full **gallery-mode video shortcuts**: volume up/down, mute toggle (M key), and playback controls.
+- Fixed M-key mute shortcut registration; renamed shortcut volume constant for clarity.
+
+#### 🔍 Zoom Handle in Gallery / Detail View
+- Added a **resize/zoom handle** in the video header bar so users can adjust the preview size directly from the gallery and detail view without entering edit mode.
+- Zoom state is emitted via `zoomChanged` and properly synced when switching renderer surfaces or clearing a frame.
+
+#### 🐧 Linux GL Playback Stability
+- Fixed a **critical black-screen bug** in adjusted (edited) video playback on Linux caused by Qt's QRhi context not owning the OpenGL state needed by the custom GL renderer.
+- Aligned the Linux QRhi GL viewer with the Qt GL context; used Qt GL functions for VAO creation with an automatic fallback when QRhi rejects VAO binds.
+- Hardened GL matrix uniform uploads and stabilized video frame dispatch on the GUI thread to eliminate flicker and rotation artifacts on Linux.
+- Snapshots non-packed video frames before uploading to prevent intermittent corruption.
+- Fixed Linux edit-preview viewport sizing and queuing of frames to avoid dropped frames during playback.
+
+#### 🖼️ Crop Overlay & Edit Transition Fixes
+- Fixed **crop overlay disappearing** when the overlay VAO was unavailable — the renderer now falls back to default vertex-array state so the orange crop frame always renders.
+- Cleared stale pre-existing GL errors before binding the overlay VAO; those errors were silently disabling the overlay on Linux.
+- Restored correct **crop-frame fade behavior**: the orange border always remains visible; only handles and guides are suppressed in faded state.
+- Deferred restoration of the detail chrome and filmstrip until the edit-exit animation fully completes, preventing layout jumps.
+- Respected the user's filmstrip visibility preference when leaving edit mode.
+- Fixed video canvas proportions after exiting edit mode by using `crop_center_zoom_strength=1.0` in detail/non-edit mode.
+
+#### 🎞️ Video Metadata & Info Panel
+- Implemented **multi-level cross-brand lens extraction** for both video and image assets — the info panel now resolves lens model, focal length, and aperture from multiple ExifTool fields across all major camera brands.
+- ExifTool is invoked during video playback enrichment to populate lens/focal-length fields that are absent from the media container.
+- Fixed normalization of raw `LensInfo` tuples (e.g. `"23 23 2 2"`) into human-readable strings (`"23mm f/2"`).
+- Eliminated duplicated focal-length/aperture suffixes when the lens string already contains mm notation.
+- Fixed the `ƒ` aperture format in the info panel display.
+
+#### 🐛 Fixes of major bugs
+- Fixed video rotation not refreshing immediately when changed in playback mode.
+- Fixed `ExternalToolError` not being caught explicitly during playback metadata enrichment, preventing silent failures.
+- Fixed `_restore_detail_video_preview` to correctly use `video_requires_adjusted_preview` and pass raw adjustments on the native render path.
+- Fixed out-point reset when re-entering edit mode — `PlaybackCoordinator` now guards trim remapping in edit mode.
+- Fixed SHA-1 usage in temp file naming replaced with **SHA-256** for stronger stability guarantees.
+- Fixed GL `glBindTexture` redundancy before `glGenerateMipmap` calls.
+- Used `ctypes c_uint` GL id buffers to avoid numpy dtype warnings on Windows.
+- Fixed `QShortcut` parent widget to use the top-level window instead of a nested widget, preventing shortcuts from silently failing.
+- Fixed several other minor bugs and improved overall stability.
+
+---
+
+## 🚀 v4.6.0 — Windows Maps Extension & Offline OsmAnd Runtime
+
+🗺️ *A new Windows-only maps extension brings the offline OsmAnd/OBF runtime into iPhotron, with clearer packaging, installer integration, and a documented upstream build workflow.*
+
+### Key Updates
+
+#### 🗺️ Windows Maps Extension
+- Added a self-contained **maps extension** rooted at `src/maps/tiles/extension/` for the offline OBF map runtime.
+- The bundled extension now carries `World_basemap_2.obf`, OsmAnd resources, and native runtime binaries in one predictable layout.
+- Windows builds can use the native OsmAnd widget runtime for a fuller offline map experience while keeping the repository self-contained.
+
+#### ⚙️ Runtime Selection & Fallback Behavior
+- Improved map backend startup so iPhotron can prefer the native Windows widget when the runtime is healthy.
+- Preserved the Python/helper-backed OBF renderer as a practical fallback path.
+- Linux and macOS continue using the existing Python / legacy map path while the native maps extension remains Windows only.
+
+#### 📦 Packaging & Installer Integration
+- Aligned local development, Nuitka packaging, and the Windows installer around the same extension directory contract.
+- Documented how the extension is synchronized into packaged builds and optional installer assets.
+- Made Windows release work more reproducible by standardizing which runtime artifacts ship with the application.
+
+#### 🧰 Upstream Build Workflow
+- Split the OsmAnd runtime build pipeline into the dedicated
+  [PySide6-OsmAnd-SDK](https://github.com/OliverZhaohaibin/PySide6-OsmAnd-SDK) side project.
+- Added clearer developer documentation for building, syncing, and validating the maps extension from the upstream workspace.
+- Improved the handoff between runtime experimentation in the side project and release packaging in the main iPhotron repository.
+
+---
+
+## 🚀 v4.5.0 — Color Grading Expansion & Video Compatibility Improvements
+
+🎨 *A richer color grading workflow, new creative tools, stronger video compatibility, and more native desktop window behavior.*
+
+### Key Updates
+
+#### 🎨 Expanded Color Grading Workflow
+- Further refined the color grading experience for smoother, more precise adjustment workflows.
+- Added new editing tools including **Definition**, **Noise Reduction**, **Sharpen**, and **Vignette**.
+- **Sharpen** includes dedicated `Intensity`, `Edges`, and `Falloff` controls, while **Vignette** adds `Strength`, `Radius`, and `Softness` adjustments.
+- Improved the overall editing flow to make advanced adjustments feel more consistent and intuitive.
+
+#### 🎬 Video Preview & Playback Fixes
+- **Fixed preview black borders:** Videos now render correctly in preview mode without unwanted letterboxing artifacts.
+- **Fixed HEVC and HDR display issues:** Improved compatibility for modern video formats to ensure more reliable playback and preview rendering.
+- Better overall media presentation consistency across different codecs and dynamic-range formats.
+
+#### 🐧 Linux Video Thumbnail Reliability
+- **Fixed incorrect thumbnail orientation on Linux:** Resolved an intermittent issue that could generate video thumbnails with the wrong rotation.
+- Improved thumbnail generation stability for rotated and metadata-sensitive video sources on Linux systems.
+
+#### 🪟 Native Window Snapping
+- Added support for native window snapping behavior to better match each platform's built-in desktop experience.
+- Window management now feels more natural and integrated across supported operating systems.
+
+---
+
+## 🚀 v4.3.0 — Linux Alpha, RAW Support & Crop Refinements
+
+📸 *Linux enters Alpha testing, RAW workflows arrive, and cropping becomes more precise and familiar.*
+
+### Key Updates
+
+#### 🐧 Linux Version Enters Alpha Testing
+- The **Linux version is now officially in Alpha testing**, bringing the iPhotron experience to a whole new platform.
+- Early Linux builds extend photo management workflows beyond Windows and macOS while broader compatibility work continues.
+
+#### 📷 Native RAW Image Support
+- Added support for **RAW format images**.
+- You can now seamlessly import, view, and manage uncompressed, high-quality RAW photos directly inside your library.
+
+#### ✂️ Aspect Ratio Constraints for Cropping
+- Added aspect ratio constraint options to the crop tool.
+- The cropping workflow now feels closer to the native macOS Photos experience, making edits more intuitive, precise, and familiar.
+
+#### 🐛 Fullscreen and General Bug Fixes
+- Fixed a bug affecting fullscreen mode to ensure a more seamless and reliable viewing experience.
+- Resolved a range of smaller issues under the hood to improve overall stability.
+
+---
+
+## 🚀 v4.1.0 — MVVM Refinement & Major Scrolling Performance Boost
+
+📸 *A more complete MVVM foundation with dramatically smoother scrolling and more stable large-library browsing.*
+
+### Key Updates
+
+#### 🏗️ MVVM Architecture — More Complete, More Stable State-Driven UI
+- **Stronger MVVM boundaries:** Clearer responsibilities across View / ViewModel / Model reduce cross-layer coupling and implicit dependencies.
+- **Upgraded state management:** Standardized UI State (`Loading / Content / Empty / Error`) helps prevent edge-case rendering divergence.
+- **More consistent unidirectional data flow:** The View only subscribes to ViewModel outputs, while all mutations enter through the ViewModel.
+- **Better testability:** Critical logic moved into ViewModel plus UseCase/Service layers for finer unit testing and safer regression coverage.
+- **Lifecycle & resource governance:** Subscriptions and async tasks are properly scoped and disposed with lifecycle events to reduce leaks and background overhead.
+
+#### ⚡ Scrolling Performance Boost — Dramatically Smoother Browsing
+- **Lighter rendering pipeline:** Reduced unnecessary re-renders and layout recalculations for steadier high FPS while scrolling.
+- **Enhanced virtualization for lists and grids:** Improved visible-range computation and reuse strategy to lower UI workload on large datasets.
+- **Smarter thumbnail loading:** Prefetching and prioritization now focus on on-screen items, with progressive loading and better decode scheduling.
+- **Cache improvements:** Multi-level caching (`memory + disk`) with smarter eviction stabilizes hit rate and reduces redundant decoding.
+- **Async task coordination:** Better debouncing and coalescing for rapid scroll events helps avoid main-thread contention and request storms.
+- **Lower memory churn:** Fewer transient allocations during fast scrolling reduce GC/ARC pressure and micro-stutters.
+
+---
+
+## 🚀 v4.00 — MVVM Architecture & Advanced Editing
+
+📸 *MVVM architecture for smooth performance, color curves support, and cluster-based map browsing.*
+
+### Key Updates
+
+#### 🏗️ MVVM Architecture — Dramatically Improved Performance
+- Complete architectural refactoring to **Model-View-ViewModel (MVVM)** design pattern.
+- Clear separation between UI presentation, business logic, and data management layers.
+- Reactive UI updates — ViewModel efficiently manages state changes and automatically updates the View.
+- Significantly lower UI freezing and lag during photo browsing, editing, and library management.
+- Improved memory usage and CPU efficiency through proper data binding and lifecycle management.
+
+#### 🎨 Advanced Color Grading Tools
+
+- **White Balance:** Dedicated panel with Neutral Gray / Skin Tone / Temp & Tint modes; eyedropper sampler for automatic reference white point estimation; Warmth slider with gradient track.
+- **Color Curves:** RGB Master curve + individual R/G/B channel curves; interactive editor with draggable control points; Bezier interpolation; histogram overlay.
+- **Selective Color:** Six hue-range targets (Red/Yellow/Green/Cyan/Blue/Magenta); independent Hue/Saturation/Luminance controls; feathered hue-distance masking.
+- **Levels:** 5-handle input-output tone mapping; per-channel control (RGB/R/G/B); histogram backdrop; smooth interpolation.
+
+#### 🗺️ Cluster-Based Map Browsing
+- Smart clustering: automatically groups nearby photos based on GPS coordinates.
+- Dynamic cluster sizing adapts to zoom level and photo density.
+- Efficient rendering of thousands of GPS-tagged photos.
+
+---
+
+## 🚀 v3.00 — Performance Overhaul
+
+⚡ *Migration to SQLite with global database architecture, optimized for TB-level libraries.*
+
+### Key Updates
+
+#### ⚡ Backend Migration to SQLite with Global Database Architecture
+- Complete backend rewrite from JSON-based indexing to **SQLite-powered global database**.
+- Single database design — all metadata in one high-performance SQLite database at library root.
+- Massive scalability for TB-level photo libraries with hundreds of thousands of files.
+- Smart indexing on `parent_album_path`, `ts`, `media_type`, and `is_favorite`.
+
+#### 🏗️ Modular Architecture Refactoring
+- 1100+ line monolithic index store split into 5 focused modules: `engine.py`, `migrations.py`, `recovery.py`, `queries.py`, `repository.py`.
+- 100% backward compatible.
+
+#### 🛡️ Enhanced Robustness & Efficiency
+- Reduced RAM and CPU footprint.
+- Automatic recovery with graded repair strategies (REINDEX → Salvage → Reset).
+- WAL mode for better concurrency and crash recovery.
+
+#### 💾 Unified Global Cache System
+- Single global database replaces scattered `.iPhoto/index.jsonl` files.
+- Centralized management for easier backup and sync.
+
+---
+
+## 🌓 v2.3.0 — Dark Mode
+
+📸 *Seamlessly switch between Light and Dark themes.*
+
+### Key Updates
+
+#### 🌓 Comprehensive Dark Mode Support
+- Three theme options: System Default, Light Mode, Dark Mode.
+- Intelligent theme application across the entire UI.
+- Edit mode automatically switches to dark theme for optimal color grading.
+- Instant theme switching — no restart required.
+- Theme-aware components: sidebar, asset grid, detail viewer, info panel, edit panels, context menus.
+
+#### Additional Improvements
+- Enhanced edit mode experience with consistent dark theme.
+- Refined color palette with improved accessibility contrast ratios.
+- Performance optimizations for faster theme switching.
+- Native detection of macOS and Windows system theme preferences.
+
+---
+
+## 🐛 v2.1.1 — Bug Fixes and UI Improvements
+
+### Key Updates
+
+#### 🐛 Bug Fixes
+- **Fixed thumbnail synchronization:** After editing photos, thumbnails in aggregated albums now sync properly.
+- **Fixed gallery grid auto-sizing:** Grid view dynamically responds to window resizing.
+
+#### 🎨 UI Improvements
+- Refined album interface to more closely replicate the macOS Photos experience.
+- Improved visual consistency, layout spacing, transitions, and animations.
+
+---
+
+## 🚀 v2.00 — Non-Destructive Photo Editing
+
+📸 *Comprehensive non-destructive editing suite with Adjust and Crop modes.*
+
+### Key Updates
+
+#### 🎨 Non-Destructive Photo Editing
+- **Adjust Mode:** Light adjustments (Brilliance, Exposure, Highlights, Shadows, Brightness, Contrast, Black Point), Color adjustments (Saturation, Vibrance, Cast), Black & White mode (Intensity, Neutrals, Tone, Grain).
+- **Crop Mode:** Perspective correction, Straighten tool (±45°), horizontal flip, interactive crop box with edge snapping.
+- All edits stored in `.ipo` sidecar files — originals remain untouched.
+- GPU-accelerated preview with real-time OpenGL 3.3 rendering.
+
+#### 💾 Export System
+- Export selected photos or all edited photos.
+- Configurable export destination (Basic Library or Ask Every Time).
+
+---
+
+## 🚀 v1.00 — First Stable Release
+
+📸 *A modern, folder-native photo manager for Windows and macOS.*
+
+### Key Features
+- **🎥 Live Photo Support:** Auto-pairs HEIC/JPG + MOV files by content-ID or timestamp.
+- **🗺 Interactive Map View:** GPS metadata visualization on an interactive map.
+- **🗂 Folder = Album:** Each folder becomes an album via `.iphoto.album.json`.
+- **🧠 Smart Albums:** Library, All Photos, Videos, Favorites, Recently Deleted.
+- **🖼 Immersive Detail Viewer:** Filmstrip navigation and floating playback controls.
+- **ℹ️ Floating Metadata Panel:** EXIF, camera/lens info, exposure, aperture, file size.
+- **⚙️ Rich Interactions:** Drag-and-drop, context menus, incremental scanning, async thumbnail loading.
