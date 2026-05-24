@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
+
+_logger = logging.getLogger(__name__)
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -110,9 +113,11 @@ class LocationTrashNavigationService(QObject):
 
         library = self._library_manager()
         if library is None:
+            _logger.warning("request_location_assets: library is None")
             return None
         root = library.root()
         if root is None:
+            _logger.warning("request_location_assets: library root is None")
             return None
 
         self._location_request_serial += 1
@@ -137,10 +142,12 @@ class LocationTrashNavigationService(QObject):
         root: Path,
         assets: list,
     ) -> None:
+        _logger.info("_handle_location_assets_finished: serial=%d assets=%d", serial, len(assets))
         signals = self._location_signals.pop(int(serial), None)
         if signals is not None:
             signals.deleteLater()
         if int(serial) != self._location_request_serial:
+            _logger.warning("_handle_location_assets_finished: serial mismatch (got %d, expected %d)", serial, self._location_request_serial)
             return
         self.locationAssetsLoaded.emit(int(serial), Path(root), list(assets))
 
@@ -150,6 +157,7 @@ class LocationTrashNavigationService(QObject):
         _root: Path,
         message: str,
     ) -> None:
+        _logger.error("_handle_location_assets_error: serial=%d message=%s", serial, message)
         signals = self._location_signals.pop(int(serial), None)
         if signals is not None:
             signals.deleteLater()
@@ -204,7 +212,10 @@ class LocationTrashNavigationService(QObject):
             None,
         )
         if callable(list_geotagged_assets):
-            return list(list_geotagged_assets())
+            assets = list(list_geotagged_assets())
+            _logger.info("_load_location_assets: loaded %d geotagged assets", len(assets))
+            return assets
+        _logger.warning("_load_location_assets: location_service not available")
         raise RuntimeError(
             "Active library session is unavailable; location queries require "
             "a bound LibrarySession."
