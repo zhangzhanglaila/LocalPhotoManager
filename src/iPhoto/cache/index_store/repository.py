@@ -461,7 +461,14 @@ class AssetRepository:
             cursor = conn.cursor()
             cursor.execute(query)
             for row in cursor:
-                yield self._db_row_to_dict(row)
+                d = self._db_row_to_dict(row)
+                gps_raw = d.get("gps")
+                if isinstance(gps_raw, str):
+                    try:
+                        d["gps"] = json.loads(gps_raw)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                yield d
         finally:
             if should_close:
                 conn.close()

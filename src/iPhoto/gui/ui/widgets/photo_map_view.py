@@ -414,6 +414,7 @@ class PhotoMapView(QWidget):
 
         self._assets = list(assets)
         self._assets_library_root = library_root
+        logger.info("set_assets: %d assets, map_widget_built=%s", len(self._assets), self._map_widget_built)
         if self._map_widget_built:
             self._marker_controller.set_assets(self._assets, library_root)
 

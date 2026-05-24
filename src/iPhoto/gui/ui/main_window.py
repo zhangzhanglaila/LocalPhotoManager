@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QCloseEvent, QResizeEvent
+from PySide6.QtGui import QCloseEvent, QKeyEvent, QResizeEvent
 from PySide6.QtWidgets import QMainWindow, QMenuBar
 
 from ...application.contracts.runtime_entry_contract import RuntimeEntryContract
@@ -75,6 +75,12 @@ class MainWindow(QMainWindow):
         super().changeEvent(event)
         if self.window_manager is not None:
             self.window_manager.handle_change_event(event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore[override]
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+            return
+        super().keyPressEvent(event)
 
     # ------------------------------------------------------------------
     # Window chrome accessors used by child widgets

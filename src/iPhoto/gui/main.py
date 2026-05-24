@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -237,6 +238,14 @@ def main(argv: list[str] | None = None) -> int:
     _prepare_qt_runtime_for_maps()
     _configure_qt_opengl_defaults()
     app = QApplication(arguments)
+
+    # Allow Ctrl+C to work on Windows.  Qt's event loop blocks the Python
+    # signal handler; a periodic no-op timer lets the interpreter process
+    # pending signals between event-loop iterations.
+    if sys.platform == "win32" and signal.getsignal(signal.SIGINT) == signal.SIG_DFL:
+        _signal_timer = QTimer()
+        _signal_timer.timeout.connect(lambda: None)
+        _signal_timer.start(500)
 
     # ``QToolTip`` instances inherit ``WA_TranslucentBackground`` from the frameless
     # main window, which means they expect the application to provide an opaque fill
