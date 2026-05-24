@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 import signal
 import sys
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt
@@ -239,20 +241,33 @@ def main(argv: list[str] | None = None) -> int:
     _configure_qt_opengl_defaults()
     app = QApplication(arguments)
 
-    # Allow Ctrl+C to terminate the app on Windows.  Qt's event loop blocks
-    # the default Python signal handler.  We install a custom handler that
-    # forcibly exits the process, and a periodic timer that gives Python a
-    # chance to dispatch the signal between event-loop iterations.
+    # Allow Ctrl+C to terminate the app on Windows, even when the UI thread
+    # is completely frozen in native code.  Python's signal handler cannot run
+    # when the main thread is blocked inside Qt, so we register a Windows
+    # Console Control Handler (runs in a dedicated OS thread) that directly
+    # terminates the process via TerminateProcess.
     if sys.platform == "win32":
+        _ctrl_c_event = threading.Event()
 
-        def _sigint_handler(*_: object) -> None:
-            _logger.info("SIGINT received, exiting")
+        @ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)
+        def _console_ctrl_handler(ctrl_type: int) -> int:
+            if ctrl_type in (0, 1):  # CTRL_C_EVENT, CTRL_BREAK_EVENT
+                _logger.info("Console Ctrl+C detected, force exiting")
+                _ctrl_c_event.set()
+                return 1
+            return 0
+
+        try:
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(_console_ctrl_handler, 1)
+        except Exception:
+            pass
+
+        def _watchdog() -> None:
+            _ctrl_c_event.wait()
             os._exit(130)
 
-        signal.signal(signal.SIGINT, _sigint_handler)
-        _signal_timer = QTimer()
-        _signal_timer.timeout.connect(lambda: None)
-        _signal_timer.start(500)
+        _watchdog_thread = threading.Thread(target=_watchdog, daemon=True)
+        _watchdog_thread.start()
 
     # ``QToolTip`` instances inherit ``WA_TranslucentBackground`` from the frameless
     # main window, which means they expect the application to provide an opaque fill
