@@ -18,6 +18,11 @@ IMAGE_EXTENSIONS: frozenset[str] = frozenset({
     ".heif",
     ".heifs",
     ".heicf",
+    ".tiff",
+    ".tif",
+    ".bmp",
+    ".gif",
+    ".webp",
 })
 
 # Union of standard raster + RAW image extensions for unified lookup.
@@ -31,6 +36,12 @@ VIDEO_EXTENSIONS: frozenset[str] = frozenset({
     ".avi",
     ".wmv",
     ".mkv",
+    ".3gp",
+    ".3g2",
+    ".mts",
+    ".m2ts",
+    ".ts",
+    ".flv",
 })
 
 

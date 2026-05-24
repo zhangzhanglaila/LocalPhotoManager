@@ -22,8 +22,8 @@ _exiftool_missing_notified = False
 
 
 class ExifToolMetadataProvider(IMetadataProvider):
-    _IMAGE_EXTENSIONS = {".heic", ".heif", ".heifs", ".heicf", ".jpg", ".jpeg", ".png", ".webp"}
-    _VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".qt", ".avi", ".mkv"}
+    _IMAGE_EXTENSIONS = {".heic", ".heif", ".heifs", ".heicf", ".jpg", ".jpeg", ".png", ".webp", ".tiff", ".tif", ".bmp", ".gif"}
+    _VIDEO_EXTENSIONS = {".mov", ".mp4", ".m4v", ".qt", ".avi", ".mkv", ".3gp", ".3g2", ".mts", ".m2ts", ".ts", ".wmv", ".flv"}
 
     def get_metadata_batch(self, paths: List[Path]) -> List[Dict[str, Any]]:
         global _exiftool_missing_notified

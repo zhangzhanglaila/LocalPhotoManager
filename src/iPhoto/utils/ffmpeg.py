@@ -492,6 +492,7 @@ def _probe_video_rotation_info_uncached(source: Path) -> tuple[int, int, int, bo
             pass
 
         rotation = 0.0
+        has_display_matrix = False
 
         # Primary source: Display Matrix in side_data_list.
         side_data = stream.get("side_data_list", [])
@@ -504,7 +505,23 @@ def _probe_video_rotation_info_uncached(source: Path) -> tuple[int, int, int, bo
                         rotation = float(sd.get("rotation", 0))
                     except (TypeError, ValueError):
                         rotation = 0.0
+                    has_display_matrix = True
                     break
+
+        # Fallback: ``rotate`` stream tag (used by some Android devices and
+        # older muxers that do not embed a Display Matrix).
+        # The tag stores clockwise degrees, but the conversion below expects
+        # counter-clockwise (``av_display_rotation_get`` convention), so we
+        # negate the value.
+        if not has_display_matrix:
+            stream_tags = stream.get("tags", {})
+            if isinstance(stream_tags, dict):
+                rotate_tag = stream_tags.get("rotate", stream_tags.get("ROTATE", ""))
+                if rotate_tag:
+                    try:
+                        rotation = -float(rotate_tag)
+                    except (TypeError, ValueError):
+                        pass
 
         # Convert the raw angle (which follows ``av_display_rotation_get``
         # sign convention — *counter-clockwise*) to *clockwise* degrees

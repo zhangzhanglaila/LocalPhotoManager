@@ -17,7 +17,10 @@ ALL_WORK_DIR_NAMES: Final[tuple[str, ...]] = (WORK_DIR_NAME, *LEGACY_WORK_DIR_NA
 DEFAULT_INCLUDE: Final[list[str]] = [
     (
         "**/*.{HEIC,heic,HEIF,heif,HEIFS,heifs,HEICF,heicf,"
-        "JPG,jpg,JPEG,jpeg,PNG,png,MOV,mov,MP4,mp4,M4V,m4v,QT,qt,"
+        "JPG,jpg,JPEG,jpeg,PNG,png,TIFF,tiff,TIF,tif,BMP,bmp,"
+        "GIF,gif,WEBP,webp,"
+        "MOV,mov,MP4,mp4,M4V,m4v,QT,qt,AVI,avi,MKV,mkv,"
+        "3GP,3gp,3G2,3g2,MTS,mts,M2TS,m2ts,TS,ts,WMV,wmv,FLV,flv,"
         "CR2,cr2,CR3,cr3,NEF,nef,NRW,nrw,ARW,arw,SRF,srf,SR2,sr2,"
         "ORF,orf,RW2,rw2,RAF,raf,PEF,pef,DNG,dng,RAW,raw,3FR,3fr,"
         "IIQ,iiq,RWL,rwl,SRW,srw,X3F,x3f,KDC,kdc,DCR,dcr,ERF,erf}"
