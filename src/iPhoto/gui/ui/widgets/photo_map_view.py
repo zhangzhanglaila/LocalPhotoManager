@@ -77,7 +77,7 @@ class _MarkerLayer(QWidget):
     MARKER_SIZE = 72
     THUMBNAIL_NATIVE_SIZE = 192
     THUMBNAIL_DISPLAY_SIZE = 56
-    BADGE_DIAMETER = 26
+    BADGE_DIAMETER = 32
     POINTER_HEIGHT = 10
     POINTER_WIDTH = 18
     CORNER_RADIUS = 12
@@ -92,6 +92,7 @@ class _MarkerLayer(QWidget):
         self._placeholder = self._create_placeholder()
         self._badge_font = QFont()
         self._badge_font.setBold(True)
+        self._badge_font.setPointSize(9)
         self._badge_pen = QPen(QColor("white"))
         self._badge_pen.setWidth(1)
         self._badge_brush = QColor("#d64541")
