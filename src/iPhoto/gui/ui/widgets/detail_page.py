@@ -337,11 +337,8 @@ class DetailPageWidget(QWidget):
             "  border: none;"
             "}"
         )
-        separator_shadow = QGraphicsDropShadowEffect(header_separator)
-        separator_shadow.setBlurRadius(14)
-        separator_shadow.setColor(QColor(0, 0, 0, 45))
-        separator_shadow.setOffset(0, 1)
-        header_separator.setGraphicsEffect(separator_shadow)
+        # Note: QGraphicsDropShadowEffect removed — it causes QPainter
+        # "Painter not active" warnings when the widget is repainted.
         detail_chrome_layout.addWidget(header_separator)
         self.detail_header_separator = header_separator
 
