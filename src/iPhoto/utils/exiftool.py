@@ -23,6 +23,67 @@ _MACOS_EXIFTOOL_CANDIDATES = (
     Path("/opt/local/bin/exiftool"),
 )
 
+# Common Windows locations where ExifTool may be installed (via Chocolatey,
+# Scoop, or manually).  Also include the miniconda/perl wrapper path that
+# many users rely on.
+_WINDOWS_EXIFTOOL_CANDIDATES: list[Path] = []
+
+
+def _build_windows_candidates() -> list[Path]:
+    """Lazily build the list of Windows ExifTool candidate paths."""
+    if _WINDOWS_EXIFTOOL_CANDIDATES:
+        return _WINDOWS_EXIFTOOL_CANDIDATES
+
+    candidates: list[Path] = []
+
+    # Project-local wrapper (exiftool.bat in repo root)
+    project_root = Path(__file__).resolve().parents[3]  # src/iPhoto/utils → repo root
+    project_bat = project_root / "exiftool.bat"
+    if project_bat.is_file():
+        candidates.append(project_bat)
+
+    # Miniconda / Anaconda installations
+    for base_dir in (
+        Path.home() / "miniconda3",
+        Path.home() / "anaconda3",
+        Path("D:/programs/miniconda3"),
+        Path("D:/programs/anaconda3"),
+        Path("C:/ProgramData/miniconda3"),
+        Path("C:/ProgramData/anaconda3"),
+    ):
+        candidate = base_dir / "bin" / "exiftool"
+        if candidate.is_file():
+            candidates.append(candidate)
+        # Also check the Scripts directory
+        candidate = base_dir / "Scripts" / "exiftool.exe"
+        if candidate.is_file():
+            candidates.append(candidate)
+
+    # Chocolatey
+    choco_base = Path("C:/ProgramData/chocolatey/bin")
+    candidate = choco_base / "exiftool.exe"
+    if candidate.is_file():
+        candidates.append(candidate)
+
+    # Scoop
+    scoop_base = Path.home() / "scoop" / "shims"
+    candidate = scoop_base / "exiftool.exe"
+    if candidate.is_file():
+        candidates.append(candidate)
+
+    # Common manual install locations
+    for program_dir in (
+        Path("C:/Program Files/exiftool"),
+        Path("C:/Program Files (x86)/exiftool"),
+        Path.home() / "exiftool",
+    ):
+        candidate = program_dir / "exiftool.exe"
+        if candidate.is_file():
+            candidates.append(candidate)
+
+    _WINDOWS_EXIFTOOL_CANDIDATES.extend(candidates)
+    return _WINDOWS_EXIFTOOL_CANDIDATES
+
 
 def _windows_executable_suffixes() -> tuple[str, ...]:
     raw_value = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD")
@@ -67,6 +128,12 @@ def _resolve_exiftool_executable() -> str:
         for candidate in _MACOS_EXIFTOOL_CANDIDATES:
             searched.append(str(candidate))
             if _is_executable_file(candidate):
+                return str(candidate)
+    elif sys.platform == "win32":
+        for candidate in _build_windows_candidates():
+            searched.append(str(candidate))
+            if _is_executable_file(candidate):
+                LOGGER.info("Auto-detected exiftool at %s", candidate)
                 return str(candidate)
 
     raise ExternalToolError(
