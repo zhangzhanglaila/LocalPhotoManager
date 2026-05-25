@@ -140,19 +140,12 @@ class InputEventHandler:
     def handle_double_click_with_window(
         self, event: QMouseEvent, window
     ) -> bool:
-        """Handle double-click with window context for fullscreen detection.
-        
-        Returns
-        -------
-        bool
-            True if the event was handled and accepted
+        """Handle double-click with window context.
+
+        Double-click in the gallery now opens the detail view; fullscreen is
+        toggled via the header button instead.  Always return False so the
+        event propagates normally.
         """
-        if event.button() == _LEFT_BUTTON:
-            if window is not None and window.isFullScreen():
-                self._on_fullscreen_exit()
-            else:
-                self._on_fullscreen_toggle()
-            return True
         return False
     
     def handle_wheel(self, event: QWheelEvent) -> None:

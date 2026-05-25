@@ -189,6 +189,9 @@ class Ui_MainWindow(object):
         self.favorite_button = self.detail_page.favorite_button
         self.rotate_left_button = self.detail_page.rotate_left_button
         self.edit_button = self.detail_page.edit_button
+        self.fullscreen_button = self.detail_page.fullscreen_button
+        self.map_button = self.detail_page.map_button
+        self.map_panel = self.detail_page.map_panel
         self.zoom_widget = self.detail_page.zoom_widget
         self.zoom_slider = self.detail_page.zoom_slider
         self.zoom_in_button = self.detail_page.zoom_in_button

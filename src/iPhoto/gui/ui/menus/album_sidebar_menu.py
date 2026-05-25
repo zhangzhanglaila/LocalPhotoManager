@@ -106,6 +106,7 @@ class AlbumSidebarContextMenu(QMenu):
         item: AlbumTreeItem,
         set_pending_selection: Callable[[Path | None], None],
         on_bind_library: Callable[[], None],
+        on_exclude_album: Callable[[Path], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._tree = tree
@@ -114,6 +115,7 @@ class AlbumSidebarContextMenu(QMenu):
         self._item = item
         self._set_pending_selection = set_pending_selection
         self._on_bind_library = on_bind_library
+        self._on_exclude_album = on_exclude_album
         # Ensure the popup renders with rounded opaque styling by reusing the palette-aware rules
         # published by the main window whenever they are available.
         _apply_main_window_menu_style(self, parent)
@@ -138,6 +140,11 @@ class AlbumSidebarContextMenu(QMenu):
                 "Show in File Manager",
                 lambda: self._reveal_path(self._item.album),
             )
+            if self._on_exclude_album is not None and self._item.album is not None:
+                self.addAction(
+                    "从扫描中排除",
+                    lambda: self._on_exclude_album(self._item.album.path),
+                )
         if self._item.node_type == NodeType.SUBALBUM:
             self.addAction(self._album_pin_label(), self._toggle_album_pin)
             self.addSeparator()
@@ -307,6 +314,7 @@ def show_context_menu(
     library: LibraryRuntimeController,
     set_pending_selection: Callable[[Path | None], None],
     on_bind_library: Callable[[], None],
+    on_exclude_album: Callable[[Path], None] | None = None,
 ) -> None:
     """Display the context menu for the album sidebar."""
 
@@ -333,6 +341,7 @@ def show_context_menu(
         item,
         set_pending_selection,
         on_bind_library,
+        on_exclude_album=on_exclude_album,
     )
     if not menu.isEmpty():
         menu.exec(global_pos)

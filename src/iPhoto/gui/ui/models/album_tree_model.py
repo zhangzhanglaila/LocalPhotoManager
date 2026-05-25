@@ -7,7 +7,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt, QTimer
 from PySide6.QtGui import QIcon
 
 from ....library.runtime_controller import LibraryRuntimeController
@@ -114,7 +114,11 @@ class AlbumTreeModel(QAbstractItemModel):
         self._root_item = AlbumTreeItem("root", NodeType.ROOT)
         self._path_map: Dict[Path, AlbumTreeItem] = {}
         self._pinned_map: Dict[tuple[str, str], AlbumTreeItem] = {}
-        self._library.treeUpdated.connect(self.refresh)
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(150)
+        self._refresh_timer.timeout.connect(self.refresh)
+        self._library.treeUpdated.connect(self._schedule_refresh)
         self.refresh()
 
     # ------------------------------------------------------------------
@@ -181,6 +185,10 @@ class AlbumTreeModel(QAbstractItemModel):
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
+    def _schedule_refresh(self) -> None:
+        """Coalesce rapid treeUpdated signals into a single model reset."""
+        self._refresh_timer.start()
+
     def set_pinned_service(self, service: PinnedItemsService | None) -> None:
         """Attach a pinned-items service and keep the tree in sync with it."""
 
@@ -188,12 +196,12 @@ class AlbumTreeModel(QAbstractItemModel):
             return
         if self._pinned_service is not None:
             try:
-                self._pinned_service.changed.disconnect(self.refresh)
+                self._pinned_service.changed.disconnect(self._schedule_refresh)
             except (RuntimeError, TypeError):
                 pass
         self._pinned_service = service
         if service is not None:
-            service.changed.connect(self.refresh)
+            service.changed.connect(self._schedule_refresh)
         self.refresh()
 
     def refresh(self) -> None:
@@ -246,6 +254,9 @@ class AlbumTreeModel(QAbstractItemModel):
             icon_name="folder.svg",
         )
         self._root_item.add_child(albums_section)
+        # "Set Basic Library…" is the first item under Albums so users can
+        # easily change or add another library folder.
+        albums_section.add_child(AlbumTreeItem("Set Basic Library…", NodeType.ACTION))
         for album in self._library.list_albums():
             album_item = self._create_album_item(album, NodeType.ALBUM)
             albums_section.add_child(album_item)

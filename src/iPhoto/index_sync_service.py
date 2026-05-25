@@ -183,14 +183,15 @@ def sync_live_roles_to_db(
     repository: "AssetRepositoryPort",
 ) -> None:
     """Propagate live photo roles from computed groups to the repository.
-    
+
     Args:
         root: The album root directory.
         groups: List of LiveGroup objects to sync.
         library_root: If provided, use this as the database root (global database).
     """
     updates: List[Tuple[str, int, Optional[str]]] = []
-    
+    still_time_updates: List[Tuple[str, float]] = []
+
     # Compute album path for library-relative paths
     album_prefix = ""
     if library_root:
@@ -210,10 +211,18 @@ def sync_live_roles_to_db(
         # Motion component: Role 1 (Hidden), Partner = Still
         updates.append((motion_rel, 1, still_rel))
 
+        # Propagate still_image_time (extracted from the MOV) to the still row
+        # so the playback coordinator can seek to the hero frame.
+        if group.still_image_time is not None:
+            still_time_updates.append((still_rel, group.still_image_time))
+
     if album_prefix:
         repository.apply_live_role_updates_for_prefix(album_prefix, updates)
     else:
         repository.apply_live_role_updates(updates)
+
+    if still_time_updates:
+        repository.update_still_image_times(still_time_updates)
 
 
 def prune_index_scope(

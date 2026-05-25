@@ -23,6 +23,7 @@ class AssetGrid(QListView):
     # slots consuming the signal.  Nuitka requires this explicit annotation so
     # it can match the signal signature without falling back to ``object``.
     itemClicked = Signal(QModelIndex)
+    itemDoubleClicked = Signal(QModelIndex)
     requestPreview = Signal(QModelIndex)
     previewReleased = Signal()
     previewCancelled = Signal()
@@ -89,6 +90,14 @@ class AssetGrid(QListView):
             elif index.isValid():
                 self.itemClicked.emit(index)
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        viewport_pos = self._viewport_pos(event)
+        index = self.indexAt(viewport_pos)
+        if event.button() == Qt.MouseButton.LeftButton and index.isValid():
+            self._cancel_pending_long_press()
+            self.itemDoubleClicked.emit(index)
+        super().mouseDoubleClickEvent(event)
 
     def leaveEvent(self, event) -> None:  # type: ignore[override]
         if self._long_press_active:

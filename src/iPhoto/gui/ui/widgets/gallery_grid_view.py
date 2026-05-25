@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QMouseEvent, QPainter, QPaintEvent, QPalette, QColor, QGuiApplication
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QMouseEvent, QPainter, QPaintEvent, QPalette, QGuiApplication
 from PySide6.QtWidgets import QAbstractItemView, QListView, QLabel, QStyleOptionViewItem
 
 from ..styles import modern_scrollbar_style
@@ -61,9 +61,34 @@ class GalleryGridView(AssetGrid):
         self._empty_label.setStyleSheet("color: #86868b; font-size: 15px;")
         self._empty_label.hide()
 
+        self._loading_label = QLabel("正在加载…", vp)
+        self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._loading_label.setStyleSheet("color: #86868b; font-size: 15px;")
+        self._loading_label.hide()
+
+        # Suppress "No media found" until the first scan completes so it
+        # never flashes during startup.
+        self._scan_completed = False
+        # Track whether a query is actively loading so we can show the
+        # loading label instead of a blank page.
+        self._query_loading = False
+
+        # Debounce empty-state updates so rapid model changes during scanning
+        # don't cause constant show/hide repaints.
+        self._empty_state_timer = QTimer(self)
+        self._empty_state_timer.setSingleShot(True)
+        self._empty_state_timer.setInterval(100)
+        self._empty_state_timer.timeout.connect(self._do_update_empty_state)
+
+        # Safety timer: if no rows appear after a model reset within 2s,
+        # assume the query returned empty and stop showing the loading label.
+        self._loading_timeout_timer = QTimer(self)
+        self._loading_timeout_timer.setSingleShot(True)
+        self._loading_timeout_timer.timeout.connect(self._on_loading_timeout)
+
         self._updating_style = False
         self._apply_scrollbar_style()
-        self._update_empty_state()
+        self._do_update_empty_state()
 
     # ------------------------------------------------------------------
     # Painting
@@ -165,6 +190,8 @@ class GalleryGridView(AssetGrid):
 
         if self._empty_label is not None:
             self._empty_label.setGeometry(self.viewport().rect())
+        if self._loading_label is not None:
+            self._loading_label.setGeometry(self.viewport().rect())
 
 
         # Determine how many columns can fit with the minimum size constraint.
@@ -238,32 +265,69 @@ class GalleryGridView(AssetGrid):
     def setModel(self, model) -> None:  # type: ignore[override]
         previous = self.model()
         if previous is not None:
-            try:
-                previous.modelReset.disconnect(self._update_empty_state)
-            except (RuntimeError, TypeError):
-                pass
-            try:
-                previous.rowsInserted.disconnect(self._update_empty_state)
-            except (RuntimeError, TypeError):
-                pass
-            try:
-                previous.rowsRemoved.disconnect(self._update_empty_state)
-            except (RuntimeError, TypeError):
-                pass
+            for signal_name, handler in [
+                ("modelReset", self._on_model_reset),
+                ("rowsInserted", self._on_rows_inserted),
+                ("rowsRemoved", self._update_empty_state),
+            ]:
+                try:
+                    getattr(previous, signal_name).disconnect(handler)
+                except (RuntimeError, TypeError):
+                    pass
         super().setModel(model)
         if model is not None:
-            model.modelReset.connect(self._update_empty_state)
-            model.rowsInserted.connect(self._update_empty_state)
+            model.modelReset.connect(self._on_model_reset)
+            model.rowsInserted.connect(self._on_rows_inserted)
             model.rowsRemoved.connect(self._update_empty_state)
+        self._query_loading = True
         self._update_empty_state()
 
+    def _on_model_reset(self) -> None:
+        self._query_loading = True
+        self._update_empty_state()
+        # If no rows appear within 2s the query result is likely empty.
+        self._loading_timeout_timer.start(2000)
+
+    def _on_rows_inserted(self) -> None:
+        self._query_loading = False
+        self._loading_timeout_timer.stop()
+        self._update_empty_state()
+
+    def _on_loading_timeout(self) -> None:
+        self._query_loading = False
+        self._do_update_empty_state()
+
+    def set_scan_completed(self) -> None:
+        """Mark that the first scan has finished — allows 'No media found' to show."""
+        self._scan_completed = True
+        self._query_loading = False
+        self._empty_state_timer.stop()
+        self._do_update_empty_state()
+
     def _update_empty_state(self) -> None:
+        """Debounced version — coalesces rapid model changes."""
+        self._empty_state_timer.start()
+
+    def _do_update_empty_state(self) -> None:
+        """Actually update the empty state."""
         model = self.model()
         is_empty = model is None or model.rowCount() == 0
         if self._empty_label is None:
             return
         self._empty_label.setGeometry(self.viewport().rect())
-        self._empty_label.setVisible(is_empty)
+        self._loading_label.setGeometry(self.viewport().rect())
+        if is_empty and self._query_loading:
+            # Data is being loaded — show loading indicator, hide empty message.
+            self._empty_label.hide()
+            self._loading_label.show()
+        elif is_empty and not self._scan_completed:
+            # Scan hasn't finished yet — keep the page clean.
+            self._empty_label.hide()
+            self._loading_label.hide()
+        else:
+            # Data loaded (or scan completed with no data).
+            self._loading_label.hide()
+            self._empty_label.setVisible(is_empty)
 
     # ------------------------------------------------------------------
     # Selection mode toggling

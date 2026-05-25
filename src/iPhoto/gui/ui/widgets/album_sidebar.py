@@ -166,6 +166,7 @@ class AlbumSidebar(QWidget):
     allPhotosSelected = Signal()
     staticNodeSelected = Signal(str)
     bindLibraryRequested = Signal()
+    excludeAlbumRequested = Signal(Path)
     filesDropped = Signal(Path, object)
 
     ALL_PHOTOS_TITLE = _ALL_PHOTOS_TITLE
@@ -365,6 +366,18 @@ class AlbumSidebar(QWidget):
             self._current_static_selection,
             self._library.root(),
         )
+        # Reconnect selectionChanged after model reset.  ``beginResetModel``
+        # / ``endResetModel`` can invalidate Qt's internal selection-model
+        # wiring in some Qt versions, causing subsequent user clicks to be
+        # silently dropped.
+        selection_model = self._tree.selectionModel()
+        if selection_model is not None:
+            try:
+                selection_model.selectionChanged.disconnect(self._on_selection_changed)
+            except (RuntimeError, TypeError):
+                pass
+            selection_model.selectionChanged.connect(self._on_selection_changed)
+
         self._update_title()
         self._expand_defaults()
         if self._pending_selection is not None:
@@ -379,7 +392,7 @@ class AlbumSidebar(QWidget):
         elif self._current_selection is not None:
             self.select_path(self._current_selection)
         elif self._current_static_selection:
-            self.select_static_node(self._current_static_selection)
+            self.select_static_node(self._current_static_selection, emit_signal=True)
 
     def _update_title(self) -> None:
         root = self._library.root()
@@ -558,14 +571,14 @@ class AlbumSidebar(QWidget):
     def select_static_node(self, title: str, emit_signal: bool = False) -> None:
         """Select the static node matching *title* when present."""
 
+        self._current_selection = None
+        self._current_static_selection = title
+        self._current_pinned_selection = None
+
         index = self._find_static_index(title)
         if not index.isValid():
             _logger.warning("select_static_node: '%s' not found in model", title)
             return
-
-        self._current_selection = None
-        self._current_static_selection = title
-        self._current_pinned_selection = None
 
         # Check whether the target index is already selected.  When the caller
         # requests signal emission but the selection model considers the index
@@ -610,7 +623,11 @@ class AlbumSidebar(QWidget):
             library=self._library,
             set_pending_selection=self._set_pending_selection,
             on_bind_library=self.bindLibraryRequested.emit,
+            on_exclude_album=self._on_exclude_album,
         )
+
+    def _on_exclude_album(self, path: Path) -> None:
+        self.excludeAlbumRequested.emit(path)
 
     def _set_pending_selection(self, target: Path | None) -> None:
         self._pending_selection = target

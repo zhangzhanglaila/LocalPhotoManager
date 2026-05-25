@@ -58,6 +58,7 @@ class StatusBarController(QObject):
         self._progress_bar.setVisible(True)
         if self._rescan_action is not None:
             self._rescan_action.setEnabled(False)
+            self._rescan_action.setText("扫描中…")
         self.show_message("开始扫描…")
 
     # Facade callbacks ------------------------------------------------
@@ -98,6 +99,7 @@ class StatusBarController(QObject):
             self._progress_context = None
         if self._rescan_action is not None:
             self._rescan_action.setEnabled(True)
+            self._rescan_action.setText("Rescan")
         message = "扫描完成。" if success else "扫描失败。"
         self.show_message(message, 5000)
 

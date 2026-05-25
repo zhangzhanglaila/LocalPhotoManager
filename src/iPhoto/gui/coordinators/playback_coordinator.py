@@ -134,6 +134,7 @@ class PlaybackCoordinator(QObject):
         self._is_playing = False
         self._navigation: NavigationCoordinator | None = None
         self._info_panel: InfoPanel | None = None
+        self._detail_map_panel = None
         self._active_live_motion: Path | None = None
         self._active_live_still: Path | None = None
         self._resume_after_transition = False
@@ -230,6 +231,12 @@ class PlaybackCoordinator(QObject):
     def set_face_name_display_enabled(self, enabled: bool) -> None:
         self._show_face_names = bool(enabled)
         self._refresh_face_name_overlay_for_current_presentation()
+
+    def set_detail_map_panel(self, panel) -> None:
+        """Bind the detail map panel for GPS location display."""
+        self._detail_map_panel = panel
+        if panel is not None:
+            panel.set_map_runtime(self._map_runtime)
 
     def current_row(self) -> int:
         row = self._detail_vm.current_row.value
@@ -466,6 +473,7 @@ class PlaybackCoordinator(QObject):
                 self._info_panel.show()
             elif self._info_panel and self._info_panel.isVisible() and not presentation.info_panel_visible:
                 self._info_panel.close()
+            self._update_detail_map(presentation.info)
             self._clear_play_profile(presentation.row)
             return
         self._render_presentation(presentation)
@@ -590,6 +598,7 @@ class PlaybackCoordinator(QObject):
             self._info_panel.show()
         elif self._info_panel and self._info_panel.isVisible() and not presentation.info_panel_visible:
             self._info_panel.close()
+        self._update_detail_map(presentation.info)
         log_detail_profile(
             "playback",
             "render_presentation.total",
@@ -620,7 +629,7 @@ class PlaybackCoordinator(QObject):
         # Seek to the still-image frame so the video starts on the same
         # picture the user saw as the thumbnail, rather than frame 0.
         still_time = presentation.info.get("still_image_time")
-        if isinstance(still_time, (int, float)) and still_time > 0:
+        if isinstance(still_time, (int, float)):
             self._player_view.video_area.seek(int(still_time * 1000))
         self._player_view.video_area.play()
         self._player_bar.setEnabled(False)
@@ -992,6 +1001,19 @@ class PlaybackCoordinator(QObject):
                 Path(path_key),
                 is_video=bool(local_info.get("is_video")),
             )
+
+    def _update_detail_map(self, info: dict) -> None:
+        """Update the detail map panel with GPS coordinates from the current asset."""
+        if self._detail_map_panel is None:
+            return
+        gps = info.get("gps")
+        if isinstance(gps, dict):
+            lat = gps.get("lat")
+            lon = gps.get("lon")
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                self._detail_map_panel.set_location(float(lat), float(lon))
+                return
+        self._detail_map_panel.clear_location()
 
     def _refresh_location_extension_state(self) -> bool:
         enabled = False

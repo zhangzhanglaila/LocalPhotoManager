@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSlider,
+    QSplitter,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -38,6 +39,7 @@ from .main_window_metrics import (
     HEADER_BUTTON_SIZE,
     HEADER_ICON_GLYPH_SIZE,
 )
+from .detail_map_panel import DetailMapPanel
 from .video_area import VideoArea
 from .video_trim_bar import VideoTrimBar
 
@@ -136,6 +138,10 @@ class DetailPageWidget(QWidget):
         self.player_container: QWidget | None = None
         self.player_column: QWidget | None = None
 
+        # Map panel (detail side panel) -----------------------------------------
+        self.map_panel = DetailMapPanel(self)
+        self.map_panel.hide()
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
@@ -143,6 +149,16 @@ class DetailPageWidget(QWidget):
         self._build_header(main_window, layout)
         self._build_player_area()
         self._build_edit_container(main_window, layout)
+
+        # Wrap the edit container and map panel in a horizontal splitter.
+        self._detail_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self._detail_splitter.setChildrenCollapsible(False)
+        self._detail_splitter.addWidget(self.edit_container)
+        self._detail_splitter.addWidget(self.map_panel)
+        self._detail_splitter.setStretchFactor(0, 1)
+        self._detail_splitter.setStretchFactor(1, 0)
+        self.map_panel.hide()
+        layout.addWidget(self._detail_splitter, 1)
         layout.addWidget(self.filmstrip_view)
 
     def _build_header(self, main_window: QWidget, parent_layout: QVBoxLayout) -> None:
@@ -281,6 +297,14 @@ class DetailPageWidget(QWidget):
             f"QPushButton:disabled {{ color: {disabled_text}; border-color: {border_hex}; }}"
         )
         actions_layout.addWidget(self.edit_button)
+
+        self.fullscreen_button = QToolButton(self)
+        self._configure_header_button(self.fullscreen_button, "arrow.up.left.and.arrow.down.right.svg", "Fullscreen")
+        actions_layout.addWidget(self.fullscreen_button)
+
+        self.map_button = QToolButton(self)
+        self._configure_header_button(self.map_button, "map.svg", "Show on Map")
+        actions_layout.addWidget(self.map_button)
 
         self.detail_actions_layout = actions_layout
         self.detail_info_button_index = actions_layout.indexOf(self.info_button)
@@ -438,7 +462,7 @@ class DetailPageWidget(QWidget):
 
         self.edit_header_container.hide()
 
-        parent_layout.addWidget(edit_container, 1)
+        # edit_container is added to the detail splitter in __init__
 
     def _build_edit_header(self) -> QWidget:
         """Construct the toolbar shown while the edit chrome is visible."""

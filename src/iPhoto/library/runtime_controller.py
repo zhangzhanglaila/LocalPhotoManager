@@ -546,14 +546,18 @@ class LibraryRuntimeController(
         albums: list[AlbumNode] = []
         children: Dict[Path, list[AlbumNode]] = {}
         new_nodes: Dict[Path, AlbumNode] = {}
-        for album_dir in self._iter_album_dirs(self._root):
-            node = self._build_node(album_dir, level=1)
-            albums.append(node)
-            new_nodes[album_dir] = node
-            child_nodes = [self._build_node(child, level=2) for child in self._iter_album_dirs(album_dir)]
-            for child in child_nodes:
-                new_nodes[child.path] = child
-            children[album_dir] = child_nodes
+
+        # Show the library root itself as the top-level album so the user
+        # sees the full path hierarchy (e.g. APPLE) rather than only its
+        # immediate subdirectories.
+        root_node = self._build_node(self._root, level=1)
+        albums.append(root_node)
+        new_nodes[self._root] = root_node
+        child_nodes = [self._build_node(child, level=2) for child in self._iter_album_dirs(self._root)]
+        for child in child_nodes:
+            new_nodes[child.path] = child
+        children[self._root] = child_nodes
+
         refreshed_albums = sorted(albums, key=lambda item: item.title.casefold())
         refreshed_children = {
             parent: sorted(kids, key=lambda item: item.title.casefold())

@@ -270,6 +270,60 @@ class NavigationCoordinator(QObject):
     def _handle_bind_library(self) -> None:
         self.bindLibraryRequested.emit()
 
+    def _handle_exclude_album(self, path: Path) -> None:
+        """Add *path* to the root manifest's exclude list and rescan."""
+        from ...config import ALBUM_MANIFEST_NAMES, DEFAULT_EXCLUDE
+        from ...utils.jsonio import read_json, write_json
+        from ...utils.pathutils import ensure_work_dir
+
+        library_root = self._context.library.root()
+        if library_root is None:
+            return
+
+        # Find or create the root manifest.
+        manifest_path = None
+        for name in ALBUM_MANIFEST_NAMES:
+            candidate = library_root / name
+            if candidate.exists():
+                manifest_path = candidate
+                break
+        if manifest_path is None:
+            manifest_path = library_root / ALBUM_MANIFEST_NAMES[0]
+            manifest: dict = {
+                "schema": "iPhoto/album@1",
+                "title": library_root.name,
+                "filters": {},
+            }
+        else:
+            try:
+                manifest = read_json(manifest_path)
+            except Exception:
+                manifest = {"schema": "iPhoto/album@1", "title": library_root.name, "filters": {}}
+
+        # Compute the relative folder name (e.g. "202101202211").
+        try:
+            rel = path.resolve().relative_to(library_root.resolve())
+        except ValueError:
+            return
+        folder_name = rel.parts[0] if rel.parts else None
+        if not folder_name:
+            return
+
+        exclude = manifest.setdefault("filters", {}).setdefault("exclude", list(DEFAULT_EXCLUDE))
+        pattern = f"{folder_name}/**"
+        if pattern not in exclude:
+            exclude.append(pattern)
+            write_json(manifest_path, manifest, backup_dir=ensure_work_dir(library_root) / "manifest.bak")
+
+        # Remove the folder's assets from the database and refresh the tree.
+        self._context.library.scan_tree()
+        from ...config import DEFAULT_INCLUDE
+        self._facade.scan_root_async(
+            library_root,
+            include=DEFAULT_INCLUDE,
+            exclude=exclude,
+        )
+
     def _should_treat_as_refresh(self, path: Path) -> bool:
         static_selection = self._gallery_vm.static_selection.value
         if static_selection is not None:

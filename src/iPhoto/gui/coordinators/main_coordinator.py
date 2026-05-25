@@ -232,6 +232,11 @@ class MainCoordinator(QObject):
                 self._map_interaction_service()
             )
 
+        # Detail map panel
+        if hasattr(window.ui, "map_panel"):
+            self._playback.set_detail_map_panel(window.ui.map_panel)
+            window.ui.map_panel.showAllToggled.connect(self._handle_detail_map_show_all)
+
         # 4. Theme Controller
         self._theme_controller = WindowThemeController(window.ui, window, context.theme)
 
@@ -485,8 +490,8 @@ class MainCoordinator(QObject):
         updates.scanFinished.connect(self._gallery_vm.handle_location_scan_finished)
         self._gallery_vm.message_requested.connect(self._status_bar.show_message)
 
-        # Grid interactions
-        ui.grid_view.itemClicked.connect(self._on_asset_clicked)
+        # Grid interactions — double-click opens detail view, single-click selects.
+        ui.grid_view.itemDoubleClicked.connect(self._on_asset_clicked)
         ui.grid_view.visibleRowsChanged.connect(self._asset_list_vm.prioritize_rows)
 
         # Filmstrip clicks are now handled by PlaybackCoordinator
@@ -533,6 +538,14 @@ class MainCoordinator(QObject):
         if hasattr(ui, "back_button"):
             ui.back_button.clicked.connect(self._detail_vm.back_to_gallery)
 
+        # Fullscreen Button (detail page)
+        if hasattr(ui, "fullscreen_button") and hasattr(self._window, "window_manager"):
+            ui.fullscreen_button.clicked.connect(self._window.window_manager.toggle_fullscreen)
+
+        # Map Button (detail page)
+        if hasattr(ui, "map_button"):
+            ui.map_button.clicked.connect(self._toggle_detail_map)
+
         # Gallery page back button for cluster gallery mode
         if hasattr(ui, "gallery_page") and hasattr(ui.gallery_page, "backRequested"):
             ui.gallery_page.backRequested.connect(self._gallery_vm.return_from_cluster_gallery)
@@ -573,6 +586,10 @@ class MainCoordinator(QObject):
         self._facade.loadStarted.connect(self._status_bar.handle_load_started)
         self._facade.loadProgress.connect(self._status_bar.handle_load_progress)
         self._facade.loadFinished.connect(self._status_bar.handle_load_finished)
+
+        # After the first scan completes, allow "No media found" to show.
+        self._facade.scanFinished.connect(lambda *_: ui.grid_view.set_scan_completed())
+        self._context.library.scanFinished.connect(lambda *_: ui.grid_view.set_scan_completed())
 
         import_service = self._facade.import_service
         import_service.importStarted.connect(self._status_bar.handle_import_started)
@@ -697,6 +714,19 @@ class MainCoordinator(QObject):
         if session is not None:
             return getattr(session, "map_interactions", None)
         return getattr(self._context.library, "map_interaction_service", None)
+
+    def _toggle_detail_map(self) -> None:
+        """Show or hide the detail map panel."""
+        ui = self._window.ui
+        if not hasattr(ui, "map_panel"):
+            return
+        panel = ui.map_panel
+        panel.setVisible(not panel.isVisible())
+
+    def _handle_detail_map_show_all(self, show_all: bool) -> None:
+        """Handle the 'Show All Photos' toggle in the detail map panel."""
+        # TODO: Populate the map with all geotagged library assets when enabled.
+        pass
 
     @staticmethod
     def _resolve_map_package_root(map_runtime: object | None) -> Path:

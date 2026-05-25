@@ -835,6 +835,19 @@ class AssetRepository:
             params = [(role, partner, rel) for rel, role, partner in updates]
             conn.executemany(query, params)
 
+    def update_still_image_times(
+        self,
+        updates: List[Tuple[str, float]],
+    ) -> None:
+        """Write still_image_time for still-image rows identified by rel."""
+        if not updates:
+            return
+        with self.transaction() as conn:
+            conn.executemany(
+                "UPDATE assets SET still_image_time = ? WHERE rel = ?",
+                [(t, rel) for rel, t in updates],
+            )
+
     def list_albums(self) -> List[str]:
         """Return a list of distinct album paths in the index."""
         conn = self._db_manager.get_connection()

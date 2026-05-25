@@ -459,6 +459,10 @@ class GalleryCollectionStore:
         self._pending_scan_refresh = True
 
         if self._visible_range is None:
+            # Gallery was empty on first load — reload the initial window so
+            # newly scanned rows appear without requiring the user to navigate
+            # away and back.
+            self._load_initial_window()
             return
 
         visible_first, visible_last = self._visible_range
@@ -474,6 +478,9 @@ class GalleryCollectionStore:
         if self._visible_range is not None:
             first, last = self._visible_range
             self._reload_window_for_visible_range(first, last, emit_signals=True)
+        else:
+            # Gallery was empty — try loading now that scan data exists.
+            self._load_initial_window()
 
     def _flush_pending_scan_refresh(self) -> None:
         if not self._pending_scan_refresh or self._current_query is None:

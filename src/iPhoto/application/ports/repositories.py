@@ -88,6 +88,12 @@ class AssetRepositoryPort(Protocol):
     ) -> None:
         """Replace Live Photo role state only inside a library-relative prefix."""
 
+    def update_still_image_times(
+        self,
+        updates: Iterable[tuple[str, float]],
+    ) -> None:
+        """Write still_image_time for still-image rows identified by rel."""
+
 
 class AlbumRepositoryPort(Protocol):
     """Read and write album manifests without exposing legacy shims upstream."""

@@ -330,11 +330,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # Break the heavy startup into multiple event-loop steps so the overlay
     # can repaint between each step (prevents "未响应" appearance).
+    # ``processEvents()`` is called after each ``set_message`` to let the
+    # overlay repaint before the next heavy synchronous operation begins.
     coordinator_ref: list = []
 
     def _step1_create_coordinator() -> None:
         try:
-            overlay.set_message("正在初始化…")
+            overlay.set_message("正在初始化组件…")
+            app.processEvents()
             _logger.info("startup step 1: creating MainCoordinator")
             coordinator = MainCoordinator(window, context)
             window.set_coordinator(coordinator)
@@ -347,26 +350,39 @@ def main(argv: list[str] | None = None) -> int:
     def _step2_start_coordinator() -> None:
         try:
             overlay.set_message("正在启动服务…")
+            app.processEvents()
             _logger.info("startup step 2: starting coordinator")
             coordinator_ref[0].start()
-            QTimer.singleShot(0, _step3_resume_tasks)
+            QTimer.singleShot(0, _step3a_open_library)
         except Exception:
             _logger.exception("startup step 2: unhandled error")
             raise
 
-    def _step3_resume_tasks() -> None:
+    def _step3a_open_library() -> None:
         try:
-            overlay.set_message("正在加载图库…")
-            _logger.info("startup step 3: resuming startup tasks")
+            overlay.set_message("正在打开图库…")
+            app.processEvents()
+            _logger.info("startup step 3a: opening library")
             context.resume_startup_tasks()
+            QTimer.singleShot(0, _step3b_scan_check)
+        except Exception:
+            _logger.exception("startup step 3a: unhandled error")
+            raise
+
+    def _step3b_scan_check() -> None:
+        try:
+            overlay.set_message("正在检查扫描状态…")
+            app.processEvents()
+            _logger.info("startup step 3b: scan state check done")
             QTimer.singleShot(0, _step4_select_photos)
         except Exception:
-            _logger.exception("startup step 3: unhandled error")
+            _logger.exception("startup step 3b: unhandled error")
             raise
 
     def _step4_select_photos() -> None:
         try:
             overlay.set_message("正在加载照片…")
+            app.processEvents()
             coordinator = coordinator_ref[0]
             if len(arguments) > 1:
                 _logger.info("startup step 4: opening album from CLI argument %s", arguments[1])
