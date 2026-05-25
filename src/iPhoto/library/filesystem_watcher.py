@@ -64,7 +64,7 @@ class FileSystemWatcherMixin:
         self._start_watcher_scans(pending_paths)
 
     def _start_watcher_scans(self, paths: set[Path]) -> None:
-        if self._root is None or not paths:
+        if not self._roots or not paths:
             return
 
         scan_roots = self._dedupe_watch_scan_roots(paths)
@@ -93,7 +93,7 @@ class FileSystemWatcherMixin:
         self._start_next_watcher_scan()
 
     def _start_next_watcher_scan(self) -> None:
-        if self._root is None:
+        if not self._roots:
             self._watch_scan_queue.clear()
             return
         if getattr(self, "_current_scanner_worker", None) is not None:
@@ -101,7 +101,7 @@ class FileSystemWatcherMixin:
 
         scan_service = getattr(self, "scan_service", None)
         if scan_service is None:
-            scan_service = LibraryScanService(self._root)
+            scan_service = LibraryScanService(self.root())
 
         while self._watch_scan_queue:
             scan_root = self._watch_scan_queue.pop(0)
@@ -179,10 +179,10 @@ class FileSystemWatcherMixin:
     def _dedupe_watch_scan_roots(self, paths: set[Path]) -> list[Path]:
         """Return minimal existing directory scopes for watcher-triggered scans."""
 
-        if self._root is None:
+        if not self._roots:
             return []
 
-        root_resolved = self._root.resolve()
+        root_resolved = self.root().resolve()
         candidates: list[Path] = []
         for raw_path in sorted(paths, key=lambda item: item.as_posix()):
             try:
@@ -220,9 +220,9 @@ class FileSystemWatcherMixin:
     def _rebuild_watches(self) -> None:
         current = set(self._watcher.directories())
         desired: set[str] = set()
-        if self._root is not None:
-            desired.add(str(self._root))
-            desired.update(str(node.path) for node in self._albums)
+        for lib_root in self._roots:
+            desired.add(str(lib_root))
+        desired.update(str(node.path) for node in self._albums)
         remove = [path for path in current if path not in desired]
         if remove:
             self._watcher.removePaths(remove)

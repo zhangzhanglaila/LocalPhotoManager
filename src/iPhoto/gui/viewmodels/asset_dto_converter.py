@@ -247,8 +247,8 @@ def geotagged_asset_to_dto(asset: object, library_root: Path) -> Optional[AssetD
 
     metadata: dict = {
         "gps": {
-            "latitude": asset.latitude,
-            "longitude": asset.longitude,
+            "lat": asset.latitude,
+            "lon": asset.longitude,
         },
     }
     if asset.location_name:
@@ -298,8 +298,13 @@ def scan_row_to_dto(
     view_rel: str,
     row: dict,
 ) -> Optional[AssetDTO]:
-    abs_path = view_root / view_rel
-    rel_path = Path(view_rel)
+    # Non-primary root assets store absolute paths in `rel`.
+    if Path(view_rel).is_absolute():
+        abs_path = Path(view_rel)
+        rel_path = Path(view_rel)
+    else:
+        abs_path = view_root / view_rel
+        rel_path = Path(view_rel)
 
     media_type_value = row.get("media_type")
     is_video = False

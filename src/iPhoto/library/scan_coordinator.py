@@ -98,13 +98,13 @@ class ScanCoordinatorMixin:
             include,
             exclude,
             signals,
-            library_root=self._root,
+            library_root=self.root(),
             scan_service=getattr(self, "_scan_service", None),
         )
         self._current_scanner_worker = worker
         self._face_scan_status_message = None
         self.faceScanStatusChanged.emit("")
-        face_library_root = self._root if self._root is not None else root
+        face_library_root = self.root() if self.root() is not None else root
         face_worker = FaceScanWorker(
             face_library_root,
             self,
@@ -165,7 +165,7 @@ class ScanCoordinatorMixin:
         locker = QMutexLocker(self._scan_buffer_lock)
         scan_root = self._live_scan_root
         buffer_snapshot = list(self._live_scan_buffer)
-        library_root = self._root
+        library_root = self.root()
         # Release the lock before performing any potentially slow I/O.
         del locker
 
@@ -234,7 +234,7 @@ class ScanCoordinatorMixin:
         query_root: Path,
         relative_to: Optional[Path],
     ) -> List[Dict]:
-        if self._root is None:
+        if self.root() is None:
             return []
         target_root = relative_to or query_root
         rewritten: List[Dict] = []
@@ -243,7 +243,7 @@ class ScanCoordinatorMixin:
             if not isinstance(rel_value, str) or not rel_value:
                 continue
             try:
-                abs_path = (self._root / rel_value).resolve()
+                abs_path = (self.root() / rel_value).resolve()
                 rel_path = abs_path.relative_to(target_root.resolve()).as_posix()
             except (OSError, ValueError):
                 continue

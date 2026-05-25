@@ -85,7 +85,8 @@ class InputEventHandler:
             else:
                 self._on_cancel_auto_crop_lock()
                 self._transform_controller.handle_mouse_press(event)
-        
+            return True
+
         return False
     
     def handle_mouse_move(self, event: QMouseEvent) -> bool:
@@ -102,9 +103,10 @@ class InputEventHandler:
         
         if not self._live_replay_enabled:
             self._transform_controller.handle_mouse_move(event)
-        
+            return True
+
         return False
-    
+
     def handle_mouse_release(self, event: QMouseEvent) -> bool:
         """Handle mouse release events.
         
@@ -119,7 +121,8 @@ class InputEventHandler:
         
         if not self._live_replay_enabled:
             self._transform_controller.handle_mouse_release(event)
-        
+            return True
+
         return False
     
     def handle_double_click(self, event: QMouseEvent) -> bool:

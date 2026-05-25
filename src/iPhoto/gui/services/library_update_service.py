@@ -509,18 +509,31 @@ class LibraryUpdateService(QObject):
         LibraryScanService,
     ]:
         scan_root = Path(root)
-        library_root: Path | None = None
         library = self._library_manager()
-        if library is not None:
-            library_root = library.root()
-        if library_root is None or not self._path_is_descendant(scan_root, library_root):
+        if library is None:
             raise RuntimeError(
                 "Active library session is unavailable; scans require a bound "
                 "LibrarySession."
             )
+
+        # Accept scan roots that are descendants of any bound library root.
+        library_root: Path | None = None
+        for candidate_root in library.roots():
+            if self._path_is_descendant(scan_root, candidate_root):
+                library_root = candidate_root
+                break
+        if library_root is None:
+            # Fall back to the primary root for standalone scans.
+            library_root = library.root()
+        if library_root is None:
+            raise RuntimeError(
+                "Active library session is unavailable; scans require a bound "
+                "LibrarySession."
+            )
+        # The scan service is bound to the primary root; all roots share it.
         scan_service = bound_scan_service(
             library,
-            library_root=library_root,
+            library_root=library.root(),
         )
         if scan_service is None:
             raise RuntimeError(

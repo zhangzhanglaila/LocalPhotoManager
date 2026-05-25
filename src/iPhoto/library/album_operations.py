@@ -112,7 +112,7 @@ class AlbumOperationsMixin:
         # deleted via the "All Photos" aggregate view).  Those entries store
         # the root's UUID, so we need to compare against the root manifest
         # explicitly before scanning child nodes.
-        root = self._root
+        root = self.root()
         if root is not None:
             manifest_path = self._find_manifest(root)
             if manifest_path is not None:

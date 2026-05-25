@@ -17,6 +17,7 @@ from PySide6.QtCore import (
     QObject,
     Qt,
     QThreadPool,
+    QTimer,
 )
 from PySide6.QtGui import QAction
 
@@ -815,6 +816,10 @@ class MainCoordinator(QObject):
         path_key = str(path)
         if path_key in self._media_failure_cleanup_paths:
             return
+        # Broad guard: block ALL media failure handling while any dialog is open
+        # to prevent nested blocking dialogs from chained broken videos.
+        if self._media_failure_cleanup_paths:
+            return
 
         self._media_failure_cleanup_paths.add(path_key)
         try:
@@ -826,7 +831,9 @@ class MainCoordinator(QObject):
 
             refresh_root = updates.handle_media_load_failure(path)
             if refresh_root is not None:
-                self._gallery_store.reload_current_selection()
+                # Defer the reload so it runs after the dialog's event loop exits,
+                # preventing nested dialogs from chained broken video loads.
+                QTimer.singleShot(0, self._gallery_store.reload_current_selection)
         finally:
             self._media_failure_cleanup_paths.discard(path_key)
 

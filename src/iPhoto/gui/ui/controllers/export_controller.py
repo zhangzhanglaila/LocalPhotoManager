@@ -105,7 +105,8 @@ class LibraryExportWorker(QRunnable):
                 rel = row.get("rel")
                 if not rel or not isinstance(rel, str):
                     continue
-                abs_path = (root / rel).resolve()
+                rel_path = Path(rel)
+                abs_path = rel_path.resolve() if rel_path.is_absolute() else (root / rel).resolve()
                 if edit_service is not None and edit_service.sidecar_exists(abs_path):
                     to_export.append(abs_path)
         except Exception:

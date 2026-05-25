@@ -279,48 +279,102 @@ class NavigationCoordinator(QObject):
 
         library_root = self._context.library.root()
         if library_root is None:
+            self._logger.warning("_handle_exclude_album: no library root set")
             return
+
+        # Excluding a library root means removing that root from the multi-root list.
+        try:
+            resolved_path = path.resolve()
+        except OSError:
+            resolved_path = path
+
+        all_roots = self._context.library.roots()
+        matching_root = None
+        for r in all_roots:
+            try:
+                if r.resolve() == resolved_path:
+                    matching_root = r
+                    break
+            except OSError:
+                continue
+
+        if matching_root is not None:
+            self._logger.info("_handle_exclude_album: excluding library root %s", matching_root)
+            from iPhoto.gui.ui.widgets import dialogs
+            confirmed = dialogs.confirm_action(
+                self._sidebar,
+                f"确定要移除图库 {matching_root} 吗？\n移除后将不再扫描该文件夹。",
+                title="移除图库",
+                yes_label="移除",
+                no_label="取消",
+            )
+            if not confirmed:
+                return
+
+            self._context.library.remove_root(matching_root)
+            remaining = self._context.library.roots()
+            self._context.settings.set("basic_library_paths", [str(r) for r in remaining])
+            if remaining:
+                self._context.settings.set("basic_library_path", str(remaining[0]))
+            else:
+                self._context.settings.set("basic_library_path", "")
+                self._context.library.shutdown()
+            self._sidebar.refresh_tree_model()
+            return
+
+        # Find the root that contains this path.
+        owning_root = library_root
+        for r in all_roots:
+            try:
+                if path.resolve().is_relative_to(r.resolve()):
+                    owning_root = r
+                    break
+            except OSError:
+                continue
 
         # Find or create the root manifest.
         manifest_path = None
         for name in ALBUM_MANIFEST_NAMES:
-            candidate = library_root / name
+            candidate = owning_root / name
             if candidate.exists():
                 manifest_path = candidate
                 break
         if manifest_path is None:
-            manifest_path = library_root / ALBUM_MANIFEST_NAMES[0]
+            manifest_path = owning_root / ALBUM_MANIFEST_NAMES[0]
             manifest: dict = {
                 "schema": "iPhoto/album@1",
-                "title": library_root.name,
+                "title": owning_root.name,
                 "filters": {},
             }
         else:
             try:
                 manifest = read_json(manifest_path)
             except Exception:
-                manifest = {"schema": "iPhoto/album@1", "title": library_root.name, "filters": {}}
+                manifest = {"schema": "iPhoto/album@1", "title": owning_root.name, "filters": {}}
 
         # Compute the relative folder name (e.g. "202101202211").
         try:
-            rel = path.resolve().relative_to(library_root.resolve())
+            rel = path.resolve().relative_to(owning_root.resolve())
         except ValueError:
+            self._logger.warning("_handle_exclude_album: path %s is not under root %s", path, owning_root)
             return
         folder_name = rel.parts[0] if rel.parts else None
         if not folder_name:
+            self._logger.warning("_handle_exclude_album: could not determine folder name for %s", path)
             return
 
+        self._logger.info("_handle_exclude_album: excluding folder '%s'", folder_name)
         exclude = manifest.setdefault("filters", {}).setdefault("exclude", list(DEFAULT_EXCLUDE))
         pattern = f"{folder_name}/**"
         if pattern not in exclude:
             exclude.append(pattern)
-            write_json(manifest_path, manifest, backup_dir=ensure_work_dir(library_root) / "manifest.bak")
+            write_json(manifest_path, manifest, backup_dir=ensure_work_dir(owning_root) / "manifest.bak")
 
         # Remove the folder's assets from the database and refresh the tree.
         self._context.library.scan_tree()
         from ...config import DEFAULT_INCLUDE
         self._facade.scan_root_async(
-            library_root,
+            owning_root,
             include=DEFAULT_INCLUDE,
             exclude=exclude,
         )

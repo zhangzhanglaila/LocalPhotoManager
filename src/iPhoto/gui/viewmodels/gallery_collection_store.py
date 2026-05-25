@@ -657,13 +657,16 @@ class GalleryCollectionStore:
         is_direct_match = scan_root_resolved == view_root_resolved
         is_scan_parent = scan_root_resolved in view_root_resolved.parents
         is_scan_child = view_root_resolved in scan_root_resolved.parents
-        if not (is_direct_match or is_scan_parent or is_scan_child):
-            return []
+        is_non_primary_root = not (is_direct_match or is_scan_parent or is_scan_child)
 
         mapped: list[tuple[str, dict]] = []
         for row in chunk:
             raw_rel = row.get("rel")
             if not isinstance(raw_rel, str) or not raw_rel:
+                continue
+            if is_non_primary_root:
+                # Non-primary root assets store absolute paths in rel — pass through as-is.
+                mapped.append((raw_rel, row))
                 continue
             view_rel = self._resolve_view_rel(
                 raw_rel,
@@ -740,11 +743,17 @@ class GalleryCollectionStore:
             view_root_resolved = self._active_root.resolve()
         except OSError:
             return False
-        return (
+        if (
             scan_root_resolved == view_root_resolved
             or scan_root_resolved in view_root_resolved.parents
             or view_root_resolved in scan_root_resolved.parents
-        )
+        ):
+            return True
+        # In a multi-root library with no album_path filter (All Photos),
+        # any root's scan should trigger a gallery refresh.
+        if self._current_query is not None and self._current_query.album_path is None:
+            return True
+        return False
 
     def _resolve_view_rel(
         self,

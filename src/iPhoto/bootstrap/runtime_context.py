@@ -78,14 +78,25 @@ class RuntimeContext:
         repr=False,
     )
     _pending_basic_library_path: Path | None = field(init=False, default=None, repr=False)
+    _pending_extra_roots: list[Path] = field(init=False, default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
         self.theme = _create_theme_manager(self.settings)
         self.facade.bind_library(self.library)
 
+        # Migrate: if basic_library_paths is empty but basic_library_path exists,
+        # populate the list from the single path.
+        stored_paths = self.settings.get("basic_library_paths") or []
         basic_path = self.settings.get("basic_library_path")
-        if isinstance(basic_path, str) and basic_path:
-            self._pending_basic_library_path = Path(basic_path).expanduser()
+        if not stored_paths and isinstance(basic_path, str) and basic_path:
+            stored_paths = [basic_path]
+            self.settings.set("basic_library_paths", stored_paths)
+
+        if stored_paths:
+            self._pending_basic_library_path = Path(stored_paths[0]).expanduser()
+            self._pending_extra_roots = [
+                Path(p).expanduser() for p in stored_paths[1:]
+            ]
 
         stored = self.settings.get("last_open_albums", []) or []
         resolved: list[Path] = []
@@ -121,10 +132,11 @@ class RuntimeContext:
 
         from ..config import DEFAULT_EXCLUDE, DEFAULT_INCLUDE
         from ..errors import LibraryError
-        from ..utils.pathutils import resolve_work_dir
 
         candidate = self._pending_basic_library_path
+        extra_roots = list(self._pending_extra_roots)
         self._pending_basic_library_path = None
+        self._pending_extra_roots = []
         if candidate is None:
             _logger.info("resume_startup_tasks: no pending library path")
             return
@@ -134,20 +146,12 @@ class RuntimeContext:
         )
         if candidate.exists():
             try:
-                existing_work_dir = resolve_work_dir(candidate)
-                had_existing_index = (
-                    existing_work_dir is not None
-                    and (existing_work_dir / "global_index.db").exists()
-                )
                 self.open_library(candidate)
                 _logger.info(
                     "resume_startup_tasks: bind_path succeeded, root=%s",
                     self.library.root(),
                 )
-                if (
-                    not had_existing_index
-                    and not self.library.is_scanning_path(candidate)
-                ):
+                if not self.library.is_scanning_path(candidate):
                     self.facade.scan_root_async(
                         candidate,
                         include=DEFAULT_INCLUDE,
@@ -164,6 +168,26 @@ class RuntimeContext:
             self.library.errorRaised.emit(
                 f"Basic Library path is unavailable: {candidate}"
             )
+
+        # Bind additional library roots so they coexist with the primary.
+        for extra in extra_roots:
+            if not extra.exists():
+                _logger.warning(
+                    "resume_startup_tasks: extra root does not exist: %s", extra
+                )
+                continue
+            try:
+                self.library.add_root(extra)
+                _logger.info("resume_startup_tasks: added extra root %s", extra)
+                if not self.library.is_scanning_path(extra):
+                    self.facade.scan_root_async(
+                        extra,
+                        include=DEFAULT_INCLUDE,
+                        exclude=DEFAULT_EXCLUDE,
+                    )
+            except Exception as exc:
+                _logger.error("resume_startup_tasks: add_root failed for %s: %s", extra, exc)
+                self.library.errorRaised.emit(str(exc))
 
     def open_library(self, root: Path) -> "LibrarySession":
         """Bind *root* as the active library and rebuild library-scoped adapters."""

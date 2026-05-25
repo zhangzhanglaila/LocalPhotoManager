@@ -15,6 +15,10 @@ SETTINGS_SCHEMA: dict[str, Any] = {
     "properties": {
         "schema": {"const": "iPhoto/settings@1"},
         "basic_library_path": {"type": ["string", "null"]},
+        "basic_library_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
         "pinned_items_by_library": {
             "type": "object",
             "additionalProperties": {
@@ -83,6 +87,7 @@ SETTINGS_SCHEMA: dict[str, Any] = {
 DEFAULT_SETTINGS: dict[str, Any] = {
     "schema": "iPhoto/settings@1",
     "basic_library_path": None,
+    "basic_library_paths": [],
     "pinned_items_by_library": {},
     "ui": {
         "theme": "system",
@@ -134,6 +139,15 @@ def merge_with_defaults(data: dict[str, Any] | None) -> dict[str, Any]:
                     merged[key] = os.fspath(value)
                 except TypeError:
                     continue
+                continue
+            if key == "basic_library_paths" and isinstance(value, list):
+                paths: list[str] = []
+                for entry in value:
+                    try:
+                        paths.append(str(os.fspath(entry)))
+                    except TypeError:
+                        continue
+                merged[key] = paths
                 continue
             if key == "pinned_items_by_library" and isinstance(value, dict):
                 normalised: dict[str, Any] = {}

@@ -598,8 +598,17 @@ class LibraryScanService:
         album_path = self._album_path(root)
 
         def transform(row: dict[str, Any]) -> dict[str, Any]:
-            if album_path and "rel" in row:
+            if "rel" not in row:
+                return row
+            if album_path:
                 row["rel"] = f"{album_path}/{row['rel']}"
+            elif root != self.library_root:
+                # Root is outside the library (non-primary root).  Store the
+                # absolute path so the GUI can resolve it without guessing.
+                try:
+                    row["rel"] = (root / row["rel"]).resolve().as_posix()
+                except OSError:
+                    row["rel"] = (root / row["rel"]).as_posix()
             return row
 
         return transform

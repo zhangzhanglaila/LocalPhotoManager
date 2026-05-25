@@ -43,7 +43,7 @@ class TrashManagerMixin:
     def deleted_directory(self) -> Path | None:
         """Return the path to the trash directory, creating it on demand."""
 
-        if self._root is None:
+        if not self._roots:
             self._deleted_dir = None
             return None
         cached = self._deleted_dir
@@ -65,7 +65,7 @@ class TrashManagerMixin:
         Returns the number of rows removed.
         """
 
-        root = self._root
+        root = self.root()
         trash_root = self.deleted_directory()
         if root is None or trash_root is None:
             return 0
@@ -83,7 +83,7 @@ class TrashManagerMixin:
     def _initialize_deleted_dir(self) -> None:
         """Prepare the deleted-items directory while swallowing recoverable errors."""
 
-        if self._root is None:
+        if not self._roots:
             self._deleted_dir = None
             return
         try:

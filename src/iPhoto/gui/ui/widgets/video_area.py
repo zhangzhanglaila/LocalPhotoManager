@@ -1045,6 +1045,10 @@ class VideoArea(QWidget):
         source = self._current_source
         if source is None:
             return
+        # Stop the player and clear the source to prevent re-emitting errors.
+        self._current_source = None
+        self._player.stop()
+        self._player.setSource(QUrl())
         detail = message.strip() if isinstance(message, str) and message.strip() else (
             "An unknown media playback error occurred."
         )

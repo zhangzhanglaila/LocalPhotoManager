@@ -81,7 +81,7 @@ class LibraryRuntimeController(
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._root: Path | None = None
+        self._roots: list[Path] = []
         self._albums: list[AlbumNode] = []
         self._children: Dict[Path, list[AlbumNode]] = {}
         self._nodes: Dict[Path, AlbumNode] = {}
@@ -131,7 +131,40 @@ class LibraryRuntimeController(
     # Basic properties
     # ------------------------------------------------------------------
     def root(self) -> Path | None:
-        return self._root
+        return self._roots[0] if self._roots else None
+
+    def roots(self) -> list[Path]:
+        return list(self._roots)
+
+    def add_root(self, path: Path) -> None:
+        """Add a library root without replacing existing roots."""
+        normalized = path.expanduser().resolve()
+        if not normalized.exists() or not normalized.is_dir():
+            raise LibraryUnavailableError(f"Library path does not exist: {path}")
+        if normalized in self._roots:
+            return
+        self._roots.append(normalized)
+        self._refresh_tree()
+        self._rebuild_watches()
+        self.treeUpdated.emit()
+
+    def remove_root(self, path: Path) -> None:
+        """Remove a library root. If it was the primary root, promote the next one."""
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+
+        def _matches(root: Path) -> bool:
+            try:
+                return root.resolve() == resolved
+            except OSError:
+                return root == resolved
+
+        self._roots = [r for r in self._roots if not _matches(r)]
+        self._refresh_tree()
+        self._rebuild_watches()
+        self.treeUpdated.emit()
 
     def invalidate_geotagged_assets_cache(self, *, emit_tree_updated: bool = False) -> None:
         """Drop cached map assets and optionally notify the UI to refresh views."""
@@ -174,7 +207,12 @@ class LibraryRuntimeController(
         normalized = root.expanduser().resolve()
         if not normalized.exists() or not normalized.is_dir():
             raise LibraryUnavailableError(f"Library path does not exist: {root}")
-        self._root = normalized
+        if normalized not in self._roots:
+            self._roots = [normalized]
+        # Ensure the bound root is the primary root
+        if self._roots and self._roots[0] != normalized:
+            self._roots.remove(normalized)
+            self._roots.insert(0, normalized)
         if bind_session_if_needed:
             self._bind_headless_session_if_needed(normalized)
         else:
@@ -340,15 +378,16 @@ class LibraryRuntimeController(
         default_location_service = (
             active_session.locations if active_session is not None else None
         )
+        current_root = self.root()
         if (
-            self._root is not None
+            current_root is not None
             and asset_query_service is not None
             and self._location_service is default_location_service
         ):
             from ..bootstrap.library_location_service import LibraryLocationService
 
             self._location_service = LibraryLocationService(
-                self._root,
+                current_root,
                 query_service=asset_query_service,
             )
 
@@ -525,12 +564,13 @@ class LibraryRuntimeController(
     # Internal helpers (coordinator-level)
     # ------------------------------------------------------------------
     def _require_root(self) -> Path:
-        if self._root is None:
+        root = self.root()
+        if root is None:
             raise LibraryUnavailableError("Basic Library path has not been configured.")
-        return self._root
+        return root
 
     def _refresh_tree(self) -> None:
-        if self._root is None:
+        if not self._roots:
             self._albums = []
             self._children = {}
             self._nodes = {}
@@ -547,16 +587,18 @@ class LibraryRuntimeController(
         children: Dict[Path, list[AlbumNode]] = {}
         new_nodes: Dict[Path, AlbumNode] = {}
 
-        # Show the library root itself as the top-level album so the user
-        # sees the full path hierarchy (e.g. APPLE) rather than only its
-        # immediate subdirectories.
-        root_node = self._build_node(self._root, level=1)
-        albums.append(root_node)
-        new_nodes[self._root] = root_node
-        child_nodes = [self._build_node(child, level=2) for child in self._iter_album_dirs(self._root)]
-        for child in child_nodes:
-            new_nodes[child.path] = child
-        children[self._root] = child_nodes
+        # Show each library root as a top-level album so the user sees all
+        # bound libraries (e.g. APPLE, Screenshots) in the sidebar.
+        for lib_root in self._roots:
+            if not lib_root.exists():
+                continue
+            root_node = self._build_node(lib_root, level=1)
+            albums.append(root_node)
+            new_nodes[lib_root] = root_node
+            child_nodes = [self._build_node(child, level=2) for child in self._iter_album_dirs(lib_root)]
+            for child in child_nodes:
+                new_nodes[child.path] = child
+            children[lib_root] = child_nodes
 
         refreshed_albums = sorted(albums, key=lambda item: item.title.casefold())
         refreshed_children = {

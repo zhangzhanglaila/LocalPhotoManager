@@ -36,7 +36,11 @@ def geotagged_asset_from_row(
         return None
 
     library_root = Path(root)
-    abs_path = (library_root / rel).resolve()
+    rel_path = Path(rel)
+    if rel_path.is_absolute():
+        abs_path = rel_path.resolve()
+    else:
+        abs_path = (library_root / rel).resolve()
     location_raw: Any = row.get("location")
     if not isinstance(location_raw, str) or not location_raw.strip():
         metadata = row.get("metadata")
@@ -48,19 +52,23 @@ def geotagged_asset_from_row(
         else resolve_location_name(gps)
     )
 
-    parent_album_path = row.get("parent_album_path")
-    if parent_album_path:
-        album_path = library_root / str(parent_album_path)
-        prefix = str(parent_album_path) + "/"
-        if rel.startswith(prefix):
-            album_relative_str = rel[len(prefix):]
-        elif rel == parent_album_path:
-            album_relative_str = ""
-        else:
-            album_relative_str = Path(rel).name
+    if rel_path.is_absolute():
+        album_path = abs_path.parent
+        album_relative_str = abs_path.name
     else:
-        album_path = library_root
-        album_relative_str = rel
+        parent_album_path = row.get("parent_album_path")
+        if parent_album_path:
+            album_path = library_root / str(parent_album_path)
+            prefix = str(parent_album_path) + "/"
+            if rel.startswith(prefix):
+                album_relative_str = rel[len(prefix):]
+            elif rel == parent_album_path:
+                album_relative_str = ""
+            else:
+                album_relative_str = Path(rel).name
+        else:
+            album_path = library_root
+            album_relative_str = rel
 
     asset_id = str(row.get("id") or rel)
     classified_image, classified_video = classify_media(row)

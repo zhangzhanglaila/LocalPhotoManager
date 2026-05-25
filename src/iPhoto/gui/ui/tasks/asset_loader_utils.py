@@ -298,11 +298,12 @@ def build_asset_entry(
     rel = str(row.get("rel"))
     if not rel:
         return None
-
-    # Use string concatenation instead of path.resolve() to avoid extra resolution
-    # work; we still perform an existence check (with directory-level caching) to
-    # drop index rows pointing to files deleted externally.
-    abs_path_obj = root / rel
+    # Non-primary root assets store absolute paths in `rel`.
+    rel_path = Path(rel)
+    if rel_path.is_absolute():
+        abs_path_obj = rel_path
+    else:
+        abs_path_obj = root / rel
     exists_fn = path_exists or _path_exists_direct
     if not exists_fn(abs_path_obj):
         return None

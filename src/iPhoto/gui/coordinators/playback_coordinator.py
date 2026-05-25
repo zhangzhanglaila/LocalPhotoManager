@@ -462,11 +462,11 @@ class PlaybackCoordinator(QObject):
         self._sync_filmstrip_selection(row)
         same_asset = (
             previous is not None
-            and previous.row == presentation.row
             and previous.path == presentation.path
             and previous.reload_token == presentation.reload_token
         )
         if same_asset:
+            self._current_presentation = presentation
             self._update_favorite_icon(presentation.is_favorite)
             if self._info_panel and presentation.info_panel_visible:
                 self._refresh_info_panel(presentation.info)

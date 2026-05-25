@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -46,19 +47,75 @@ class DialogController:
             _logger.info("bind_library_dialog: user cancelled folder selection")
             return None
         _logger.info("bind_library_dialog: user selected folder %s", root)
+
+        current_root = self._context.library.root()
+
+        # If a library is already bound, check whether the selection is a
+        # subdirectory or an existing root before deciding what to do.
+        if current_root is not None:
+            try:
+                resolved_root = root.resolve()
+                resolved_current = current_root.resolve()
+            except OSError:
+                resolved_root = root
+                resolved_current = current_root
+
+            # Subdirectory of existing root — just trigger a rescan.
+            is_subdir = resolved_root != resolved_current and str(resolved_root).startswith(
+                str(resolved_current) + os.sep
+            )
+            if is_subdir:
+                _logger.info(
+                    "bind_library_dialog: %s is under existing root %s, triggering rescan",
+                    root,
+                    current_root,
+                )
+                self._start_scan_if_needed(current_root)
+                self._status.showMessage(f"正在扫描新文件夹 {root.name}…")
+                return current_root
+
+            # Already a bound root — nothing to do.
+            existing_roots = self._context.library.roots()
+            _logger.info(
+                "bind_library_dialog: checking %s against existing roots %s",
+                root, [str(r) for r in existing_roots],
+            )
+            for existing in existing_roots:
+                if self._path_equal(root, existing):
+                    _logger.info(
+                        "bind_library_dialog: %s matches existing root %s",
+                        root, existing,
+                    )
+                    self._status.showMessage(
+                        f"{root} 已经是图库文件夹"
+                    )
+                    return root
+
+            # Add as an additional root (coexist with existing libraries).
+            try:
+                self._context.library.add_root(root)
+                _logger.info("bind_library_dialog: added extra root %s", root)
+            except Exception as exc:
+                _logger.error("bind_library_dialog: add_root failed: %s", exc)
+                dialogs.show_error(self._parent, str(exc))
+                return None
+
+            self._persist_library_paths()
+            self._start_scan_if_needed(root)
+            self._status.showMessage(f"已添加图库文件夹 {root.name}")
+            return root
+
+        # No existing library — open as the primary root.
         try:
-            if self._context.library.root() is not None:
-                _logger.info("bind_library_dialog: cancelling active scans before rebind")
-                self._context.facade.cancel_active_scans()
             self._context.open_library(root)
-            _logger.info("bind_library_dialog: bind_path succeeded, root=%s", self._context.library.root())
+            _logger.info("bind_library_dialog: open_library succeeded, root=%s", self._context.library.root())
         except LibraryError as exc:
-            _logger.error("bind_library_dialog: bind_path failed: %s", exc)
+            _logger.error("bind_library_dialog: open_library failed: %s", exc)
             dialogs.show_error(self._parent, str(exc))
             return None
         bound_root = self._context.library.root()
         if bound_root is not None:
-            self._context.settings.set("basic_library_path", str(bound_root))
+            self._persist_library_paths()
             self._start_initial_scan_if_needed(bound_root)
             self._status.showMessage(f"Basic Library bound to {bound_root}")
             try:
@@ -73,14 +130,32 @@ class DialogController:
             else:
                 _logger.warning("bind_library_dialog: sidebar not found on parent")
         else:
-            _logger.warning("bind_library_dialog: library.root() is None after bind_path")
+            _logger.warning("bind_library_dialog: library.root() is None after open_library")
         return bound_root
+
+    @staticmethod
+    def _path_equal(a: Path, b: Path) -> bool:
+        try:
+            return a.resolve() == b.resolve()
+        except OSError:
+            return a == b
+
+    def _persist_library_paths(self) -> None:
+        """Save all bound library roots to settings."""
+        roots = self._context.library.roots()
+        self._context.settings.set("basic_library_paths", [str(r) for r in roots])
+        # Keep legacy key in sync with the primary root.
+        if roots:
+            self._context.settings.set("basic_library_path", str(roots[0]))
 
     def _start_initial_scan_if_needed(self, bound_root: Path) -> None:
         work_dir = resolve_work_dir(bound_root)
         db_path = work_dir / "global_index.db" if work_dir is not None else None
         if db_path is not None and db_path.exists():
             return
+        self._start_scan_if_needed(bound_root)
+
+    def _start_scan_if_needed(self, bound_root: Path) -> None:
         if self._context.library.is_scanning_path(bound_root):
             return
         self._context.facade.scan_root_async(

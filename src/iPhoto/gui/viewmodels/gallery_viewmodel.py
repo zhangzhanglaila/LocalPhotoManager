@@ -139,7 +139,6 @@ class GalleryViewModel(BaseViewModel):
         if root is None:
             self.bind_library_requested.emit()
             return
-        self._clear_location_context()
         self._clear_cluster_gallery_context()
         self._load_query(
             section="all_photos",
@@ -147,6 +146,17 @@ class GalleryViewModel(BaseViewModel):
             root=root,
             query=AssetQuery(),
         )
+        # Populate the map with geotagged assets so the map view stays useful.
+        self._location_session.set_mode("map")
+        if (
+            self._location_session.root == root
+            and self._location_session.has_snapshot
+            and not self._location_session.invalidated
+        ):
+            cached = self._location_session.full_assets()
+            self.map_assets_changed.emit(cached, root)
+        else:
+            self._request_location_assets(root)
 
     def open_recently_deleted(self) -> None:
         root = self._context.library.root()
@@ -650,10 +660,20 @@ class GalleryViewModel(BaseViewModel):
             root_resolved = root.resolve()
         except OSError:
             return False
-        return (
-            scan_root_resolved == root_resolved
-            or root_resolved in scan_root_resolved.parents
-        )
+        if scan_root_resolved == root_resolved or root_resolved in scan_root_resolved.parents:
+            return True
+        # In a multi-root library, a scan of any registered root should
+        # refresh the location session because geotagged assets from all
+        # roots are shown on the map.
+        library = self._context.library
+        for candidate in library.roots():
+            try:
+                if candidate.resolve() == scan_root_resolved:
+                    return True
+            except OSError:
+                if candidate == scan_root:
+                    return True
+        return False
 
     def _paths_equal(self, first: Path, second: Path) -> bool:
         if first == second:

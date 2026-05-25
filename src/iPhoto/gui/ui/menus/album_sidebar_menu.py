@@ -157,6 +157,11 @@ class AlbumSidebarContextMenu(QMenu):
                 "Show in File Manager",
                 lambda: self._reveal_path(self._item.album),
             )
+            if self._on_exclude_album is not None and self._item.album is not None:
+                self.addAction(
+                    "从扫描中排除",
+                    lambda: self._on_exclude_album(self._item.album.path),
+                )
         if self._item.node_type == NodeType.PINNED_ALBUM:
             if self._item.album is not None:
                 self.addAction(
