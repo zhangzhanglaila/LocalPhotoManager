@@ -617,6 +617,11 @@ class PlaybackCoordinator(QObject):
             trim_range_ms=None,
             adjusted_preview=False,
         )
+        # Seek to the still-image frame so the video starts on the same
+        # picture the user saw as the thumbnail, rather than frame 0.
+        still_time = presentation.info.get("still_image_time")
+        if isinstance(still_time, (int, float)) and still_time > 0:
+            self._player_view.video_area.seek(int(still_time * 1000))
         self._player_view.video_area.play()
         self._player_bar.setEnabled(False)
         self._is_playing = True
