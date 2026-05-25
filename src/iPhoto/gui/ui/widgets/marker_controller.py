@@ -546,7 +546,12 @@ class MarkerController(QObject):
                 self.clustersUpdated.emit([])
             return
 
-        threshold = max(self._marker_size * 0.6, 48.0)
+        base_threshold = max(self._marker_size * 0.6, 48.0)
+        # Scale threshold with zoom: lower zoom (zoomed out) → larger threshold
+        # to aggregate more photos into fewer clusters with higher counts.
+        # At zoom >= 6 use base threshold; below 6, scale up linearly.
+        zoom_factor = max(1.0, (7.0 - self._view_zoom) * 0.8)
+        threshold = base_threshold * min(zoom_factor, 6.0)
         cell_size = max(int(threshold), 1)
         margin = self._marker_size
 
