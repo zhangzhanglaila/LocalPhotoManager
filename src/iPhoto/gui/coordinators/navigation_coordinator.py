@@ -61,6 +61,7 @@ class NavigationCoordinator(QObject):
         self._sidebar.allPhotosSelected.connect(self.open_all_photos)
         self._sidebar.staticNodeSelected.connect(self._handle_static_node)
         self._sidebar.bindLibraryRequested.connect(self._handle_bind_library)
+        self._sidebar.excludeAlbumRequested.connect(self._handle_exclude_album)
 
         self._gallery_vm.route_requested.connect(self._handle_route_requested)
         self._gallery_vm.detail_requested.connect(self._handle_detail_requested)
