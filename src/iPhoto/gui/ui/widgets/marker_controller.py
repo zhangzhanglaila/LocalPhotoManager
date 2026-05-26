@@ -336,7 +336,7 @@ class MarkerController(QObject):
         self._city_annotations = []
         if not same_root:
             self._thumbnail_loader.reset_for_album(library_root)
-        self.thumbnailsInvalidated.emit()
+            self.thumbnailsInvalidated.emit()
         self.citiesUpdated.emit([])
         self._schedule_cluster_update()
 
