@@ -667,6 +667,7 @@ class GalleryViewModel(BaseViewModel):
         root: Path,
         query: AssetQuery,
     ) -> None:
+        self._store.cancel_pending_load()
         self.current_section.value = section
         self.static_selection.value = static_selection
         self.active_root.value = root

@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol
 
+from PySide6.QtCore import QThreadPool
+
 from iPhoto.application.dtos import AssetDTO
 from iPhoto.domain.models.query import AssetQuery
 from iPhoto.gui.viewmodels.signal import Signal
+
+from iPhoto.gui.viewmodels.gallery_load_worker import (
+    GalleryLoadSignals,
+    GalleryLoadWorker,
+)
 
 from iPhoto.gui.viewmodels.asset_dto_converter import (
     geotagged_asset_to_dto as _geotagged_asset_to_dto_fn,
@@ -86,9 +94,23 @@ class GalleryCollectionStore:
         self._pending_scan_sort_keys: set[tuple[str, str]] = set()
         self._direct_mode = False
 
+        # Async loading state
+        self._load_worker: Optional[GalleryLoadWorker] = None
+        self._load_generation: int = 0
+        self._load_signals: Optional[GalleryLoadSignals] = None
+        self._logger = logging.getLogger(__name__)
+
+    def cancel_pending_load(self) -> None:
+        """Cancel any in-flight async load."""
+        if self._load_worker is not None:
+            self._load_worker.cancel()
+            self._load_worker = None
+        self._load_generation += 1
+
     def set_library_root(self, root: Optional[Path]) -> None:
         if self._library_root == root:
             return
+        self.cancel_pending_load()
         self._library_root = root
         self._reset_window_state()
         self.data_changed.emit()
@@ -160,7 +182,6 @@ class GalleryCollectionStore:
             self._load_query(self._selection_query)
 
     def _load_query(self, query: AssetQuery) -> None:
-        old_total = self._total_count
         self._selection_query = self._clone_query(query)
         self._selection_direct_assets = None
         self._selection_library_root = self._library_root
@@ -168,7 +189,6 @@ class GalleryCollectionStore:
         self._direct_mode = False
         self._reset_window_state()
         self._load_initial_window()
-        self._emit_refresh(old_total)
 
     def _load_direct_assets(self, assets: list, library_root: Path) -> None:
         old_total = self._total_count
@@ -501,18 +521,12 @@ class GalleryCollectionStore:
     def _load_initial_window(self) -> None:
         visible_last = max(0, self.INITIAL_VISIBLE_ROWS - 1)
         self._visible_range = (0, visible_last)
-        self._reload_window_for_visible_range(0, visible_last, emit_signals=False)
+        self._reload_window_for_visible_range(0, visible_last, emit_signals=True)
 
     def _reload_window_for_visible_range(self, first: int, last: int, *, emit_signals: bool) -> None:
         if self._current_query is None:
             return
-
-        count_query = self._count_query(self._current_query)
         if self._asset_query_service is None:
-            new_total = 0
-        else:
-            new_total = self._asset_query_service.count_query_assets(count_query)
-        if new_total <= 0:
             old_total = self._total_count
             self._reset_window_state()
             if emit_signals and old_total != 0:
@@ -520,39 +534,81 @@ class GalleryCollectionStore:
                 self.data_changed.emit()
             return
 
-        first = max(0, min(first, new_total - 1))
-        last = max(first, min(last, new_total - 1))
-        window_first, window_last = self._compute_target_window(first, last, new_total)
-        fetched_rows = self._fetch_rows(window_first, window_last)
+        # Cancel any in-flight load.
+        if self._load_worker is not None:
+            self._load_worker.cancel()
+            self._load_worker = None
+
+        self._load_generation += 1
+        gen = self._load_generation
+
+        # Lazily create a single signals object reused across loads.
+        if self._load_signals is None:
+            self._load_signals = GalleryLoadSignals()
+            self._load_signals.finished.connect(self._on_load_finished)
+            self._load_signals.error.connect(self._on_load_error)
+
+        worker = GalleryLoadWorker(
+            generation=gen,
+            asset_query_service=self._asset_query_service,
+            active_root=self._active_root or self._library_root,
+            query=self._current_query,
+            first=first,
+            last=last,
+            signals=self._load_signals,
+        )
+        self._load_worker = worker
+        self._emit_signals_on_load = emit_signals
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_load_finished(self, generation: int, row_cache: dict, total: int) -> None:
+        """Handle async load completion on the main thread."""
+        if generation != self._load_generation:
+            return  # stale result, discard
+        self._load_worker = None
+
+        # Path validation on main thread (worker skips this for thread safety).
+        if self._current_query and self._should_validate_paths(self._current_query):
+            row_cache = {
+                k: v for k, v in row_cache.items()
+                if self._path_exists_cached(v.abs_path)
+            }
 
         old_total = self._total_count
-        previous_cache = self._row_cache
-        new_cache = dict(fetched_rows)
+        self._row_cache = row_cache
+        self._total_count = total
 
+        if total <= 0:
+            self._reset_window_state()
+            self._total_count = 0
+            if self._emit_signals_on_load and old_total != 0:
+                self.count_changed.emit(old_total, 0)
+                self.data_changed.emit()
+            return
+
+        # Preserve pinned row if it was in the old cache but not in new results.
         pinned_row = self._pinned_row
-        if pinned_row is not None and pinned_row not in new_cache and 0 <= pinned_row < new_total:
-            pinned_dto = previous_cache.get(pinned_row)
-            if pinned_dto is None:
-                pinned_dto = self._fetch_single_row(pinned_row)
+        if pinned_row is not None and pinned_row not in row_cache and 0 <= pinned_row < total:
+            pinned_dto = self._fetch_single_row(pinned_row)
             if pinned_dto is not None:
-                new_cache[pinned_row] = pinned_dto
+                row_cache[pinned_row] = pinned_dto
 
-        self._row_cache = new_cache
-        self._total_count = new_total
         self._generation += 1
-        self._window_range = (window_first, window_last)
-        self._visible_range = (first, last)
         self._pending_scan_refresh = False
         self._pending_scan_rels.clear()
         self._pending_scan_sort_keys.clear()
 
-        if emit_signals:
-            if old_total != new_total:
-                self.count_changed.emit(old_total, new_total)
-            self.window_changed.emit(window_first, window_last)
-            if pinned_row is not None and pinned_row not in fetched_rows and pinned_row in self._row_cache:
-                self.window_changed.emit(pinned_row, pinned_row)
+        if self._emit_signals_on_load:
+            if old_total != total:
+                self.count_changed.emit(old_total, total)
             self.data_changed.emit()
+
+    def _on_load_error(self, generation: int, error_msg: str) -> None:
+        """Handle async load error on the main thread."""
+        if generation != self._load_generation:
+            return
+        self._load_worker = None
+        self._logger.error("Gallery load failed: %s", error_msg)
 
     def _compute_target_window(self, first: int, last: int, total_count: int) -> tuple[int, int]:
         visible_count = max(1, last - first + 1)
