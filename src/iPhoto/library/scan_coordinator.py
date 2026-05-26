@@ -322,6 +322,7 @@ class ScanCoordinatorMixin:
         locker = QMutexLocker(self._scan_buffer_lock)
         worker = self._current_scanner_worker
         self._current_scanner_worker = None
+        self._live_scan_root = None
         face_scanner = self._current_face_scanner
         del locker
 
