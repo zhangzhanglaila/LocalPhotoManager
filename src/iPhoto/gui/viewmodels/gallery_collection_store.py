@@ -548,6 +548,7 @@ class GalleryCollectionStore:
             self._load_signals.finished.connect(self._on_load_finished)
             self._load_signals.error.connect(self._on_load_error)
 
+        validate = self._should_validate_paths(self._current_query)
         worker = GalleryLoadWorker(
             generation=gen,
             asset_query_service=self._asset_query_service,
@@ -556,6 +557,7 @@ class GalleryCollectionStore:
             first=first,
             last=last,
             signals=self._load_signals,
+            validate_paths=validate,
         )
         self._load_worker = worker
         self._emit_signals_on_load = emit_signals
@@ -566,13 +568,6 @@ class GalleryCollectionStore:
         if generation != self._load_generation:
             return  # stale result, discard
         self._load_worker = None
-
-        # Path validation on main thread (worker skips this for thread safety).
-        if self._current_query and self._should_validate_paths(self._current_query):
-            row_cache = {
-                k: v for k, v in row_cache.items()
-                if self._path_exists_cached(v.abs_path)
-            }
 
         old_total = self._total_count
         self._row_cache = row_cache

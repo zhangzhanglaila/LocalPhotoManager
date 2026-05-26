@@ -96,6 +96,11 @@ class _MarkerLayer(QWidget):
         self._badge_pen = QPen(QColor("white"))
         self._badge_pen.setWidth(1)
         self._badge_brush = QColor("#d64541")
+        # Double buffer: draw to offscreen pixmap, then blit to screen.
+        # Eliminates flicker when clear_pixmaps + set_clusters happen in the
+        # same event loop iteration.
+        self._back_buffer: QPixmap | None = None
+        self._buffer_dirty = True
 
     @property
     def marker_size(self) -> int:
@@ -119,6 +124,7 @@ class _MarkerLayer(QWidget):
         """Replace the rendered clusters and schedule a repaint."""
 
         self._clusters = list(items)
+        self._buffer_dirty = True
         self.update()
 
     def set_thumbnail(self, rel: str, pixmap: QPixmap) -> None:
@@ -127,12 +133,14 @@ class _MarkerLayer(QWidget):
         if pixmap.isNull():
             return
         self._pixmaps[rel] = pixmap
+        self._buffer_dirty = True
         self.update()
 
     def clear_pixmaps(self) -> None:
         """Drop cached pixmaps so outdated thumbnails are not reused."""
 
         self._pixmaps.clear()
+        self._buffer_dirty = True
         self.update()
 
     def paint_markers(self, painter: QPainter) -> None:
@@ -144,8 +152,16 @@ class _MarkerLayer(QWidget):
             self._paint_cluster(painter, cluster)
 
     def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore[override]
+        if self._buffer_dirty or self._back_buffer is None or self._back_buffer.size() != self.size():
+            buf = QPixmap(self.size())
+            buf.fill(Qt.transparent)
+            painter = QPainter(buf)
+            self.paint_markers(painter)
+            painter.end()
+            self._back_buffer = buf
+            self._buffer_dirty = False
         painter = QPainter(self)
-        self.paint_markers(painter)
+        painter.drawPixmap(0, 0, self._back_buffer)
         painter.end()
 
     def _paint_cluster(self, painter: QPainter, cluster: _MarkerCluster) -> None:

@@ -47,6 +47,31 @@ class ThumbnailGenerationTask(QRunnable):
             # Silently fail or log in generator
             pass
 
+
+class ThumbnailDiskLoadTask(QRunnable):
+    """Background task to load a cached thumbnail from disk."""
+
+    def __init__(
+        self,
+        disk_file: Path,
+        path: Path,
+        size: QSize,
+        signals: ThumbnailWorkerSignals,
+    ):
+        super().__init__()
+        self._disk_file = disk_file
+        self._path = path
+        self._size = size
+        self._signals = signals
+
+    def run(self):
+        try:
+            qimg = QImage(str(self._disk_file))
+            if not qimg.isNull():
+                self._signals.result.emit(self._path, self._size, qimg)
+        except Exception:
+            pass
+
 class ThumbnailCacheService(QObject):
     """
     Manages thumbnail caching (Memory + Disk) and asynchronous generation.
@@ -99,39 +124,30 @@ class ThumbnailCacheService(QObject):
         if key in self._memory_cache:
             return self._memory_cache[key]
 
-        # 2. Disk Check
-        disk_file = self._disk_cache_path / f"{key}.jpg"
-        if disk_file.exists():
-            pixmap = QPixmap(str(disk_file))
-            if not pixmap.isNull():
-                self._add_to_memory(key, pixmap)
-                return pixmap
-
-        # 3. Trigger Async Generation if not pending
+        # 2. Disk Check — async load to avoid blocking the main thread
         if key not in self._pending_tasks:
-            self._pending_tasks.add(key)
-            self._start_generation(path, size)
+            disk_file = self._disk_cache_path / f"{key}.jpg"
+            if disk_file.exists():
+                self._pending_tasks.add(key)
+                self._start_disk_load(disk_file, path, size)
+            else:
+                # 3. Trigger Async Generation if not pending
+                self._pending_tasks.add(key)
+                self._start_generation(path, size)
 
-        # Return placeholder or None while loading
+        # Return None while loading — delegate shows micro_thumbnail placeholder
         return None
 
     def _start_generation(self, path: Path, size: QSize):
-        # Create signals object (must be created on heap/managed by QObject tree or kept alive)
-        # Since QRunnable isn't a QObject parent, we need to ensure signals exist during run.
-        # However, typically we pass a new QObject.
-        # But wait, connecting a signal to a slot keeps it alive if the slot receiver is alive?
-        # No, the emitter (signals object) must survive until emit() is called.
-        # A common pattern is to let the worker hold the reference, but QRunnable auto-deletes.
-
-        # We instantiate signals here. The worker holds a reference to it.
         worker_signals = ThumbnailWorkerSignals()
         worker_signals.result.connect(self._handle_generation_result)
-
-        # We need to ensure worker_signals isn't garbage collected before run() finishes?
-        # QThreadPool takes ownership of QRunnable. The QRunnable holds 'signals'.
-        # Python ref counting should keep 'signals' alive as long as 'worker' is alive.
-
         worker = ThumbnailGenerationTask(self._render_thumbnail, path, size, worker_signals)
+        self._thread_pool.start(worker)
+
+    def _start_disk_load(self, disk_file: Path, path: Path, size: QSize):
+        worker_signals = ThumbnailWorkerSignals()
+        worker_signals.result.connect(self._handle_generation_result)
+        worker = ThumbnailDiskLoadTask(disk_file, path, size, worker_signals)
         self._thread_pool.start(worker)
 
     def _handle_generation_result(self, path: Path, size: QSize, image: QImage):

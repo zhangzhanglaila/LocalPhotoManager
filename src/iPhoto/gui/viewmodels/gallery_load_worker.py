@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -43,6 +44,8 @@ class GalleryLoadWorker(QRunnable):
         first: int,
         last: int,
         signals: GalleryLoadSignals,
+        *,
+        validate_paths: bool = False,
     ) -> None:
         super().__init__()
         self.setAutoDelete(True)
@@ -53,6 +56,7 @@ class GalleryLoadWorker(QRunnable):
         self._first = first
         self._last = last
         self._signals = signals
+        self._validate_paths = validate_paths
         self._is_cancelled = False
 
     def cancel(self) -> None:
@@ -98,6 +102,13 @@ class GalleryLoadWorker(QRunnable):
 
             if self._is_cancelled:
                 return
+
+            # 3. Path validation (moved from main thread)
+            if self._validate_paths and row_cache:
+                row_cache = {
+                    k: v for k, v in row_cache.items()
+                    if os.path.exists(v.abs_path)
+                }
 
             self._signals.finished.emit(self._generation, row_cache, total)
 

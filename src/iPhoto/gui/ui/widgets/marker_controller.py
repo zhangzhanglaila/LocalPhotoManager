@@ -557,7 +557,7 @@ class MarkerController(QObject):
 
         self._cluster_worker.interrupt()
         self._cluster_request_id += 1
-        if self._prefer_exact_screen_projection:
+        if self._prefer_exact_screen_projection and len(self._assets) <= 1000:
             clusters = self._build_exact_projection_clusters(
                 width=width,
                 height=height,
