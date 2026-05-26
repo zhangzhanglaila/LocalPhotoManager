@@ -106,12 +106,21 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
     matched: Dict[str, LiveGroup] = {}
     used_videos: set[str] = set()
 
-    # 1) strong match by content_id
+    # Pre-build lookup indices to avoid O(photos × videos) scans.
     video_by_cid: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    videos_by_stem: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    videos_by_stem_cf: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    videos_by_folder: Dict[str, List[Dict[str, object]]] = defaultdict(list)
     for video in videos.values():
         cid = _normalise_content_id(video.get("content_id"))
         if cid:
             video_by_cid[cid].append(video)
+        vpath = Path(video["rel"])
+        videos_by_stem[vpath.stem].append(video)
+        videos_by_stem_cf[vpath.stem.casefold()].append(video)
+        videos_by_folder[str(vpath.parent)].append(video)
+
+    # 1) strong match by content_id
     for photo in photos.values():
         cid = _normalise_content_id(photo.get("content_id"))
         if not cid or cid not in video_by_cid:
@@ -135,7 +144,7 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
         if photo["rel"] in matched:
             continue
         stem = Path(photo["rel"]).stem
-        candidates = [v for v in videos.values() if Path(v["rel"]).stem == stem]
+        candidates = videos_by_stem.get(stem, [])
         chosen = _match_by_time(photo, candidates, used_videos)
         if chosen:
             used_videos.add(chosen["rel"])
@@ -148,8 +157,8 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
             continue
         stem = Path(photo["rel"]).stem.casefold()
         candidates = [
-            v for v in videos.values()
-            if Path(v["rel"]).stem.casefold() == stem and v["rel"] not in used_videos
+            v for v in videos_by_stem_cf.get(stem, [])
+            if v["rel"] not in used_videos
         ]
         if len(candidates) == 1:
             chosen = candidates[0]
@@ -161,7 +170,7 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
         if photo["rel"] in matched:
             continue
         folder = str(Path(photo["rel"]).parent)
-        candidates = [v for v in videos.values() if str(Path(v["rel"]).parent) == folder]
+        candidates = videos_by_folder.get(folder, [])
         chosen = _match_by_time(photo, candidates, used_videos)
         if chosen:
             used_videos.add(chosen["rel"])
