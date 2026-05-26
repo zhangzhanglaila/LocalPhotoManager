@@ -15,10 +15,4 @@ def should_use_paging(query: AssetQuery) -> bool:
 
 
 def should_validate_paths(query: AssetQuery, library_root: Optional[Path]) -> bool:
-    if library_root is None:
-        return True
-    if query.album_path or query.album_id:
-        return True
-    if query.is_deleted:
-        return True
-    return False
+    return True
