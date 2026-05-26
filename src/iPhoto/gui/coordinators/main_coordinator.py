@@ -491,7 +491,8 @@ class MainCoordinator(QObject):
         updates.scanFinished.connect(self._gallery_vm.handle_location_scan_finished)
         self._gallery_vm.message_requested.connect(self._status_bar.show_message)
 
-        # Grid interactions — double-click opens detail view, single-click selects.
+        # Grid interactions — single/double-click opens detail view.
+        ui.grid_view.itemClicked.connect(self._on_asset_clicked)
         ui.grid_view.itemDoubleClicked.connect(self._on_asset_clicked)
         ui.grid_view.visibleRowsChanged.connect(self._asset_list_vm.prioritize_rows)
 
