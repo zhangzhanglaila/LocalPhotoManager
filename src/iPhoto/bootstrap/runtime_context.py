@@ -170,6 +170,9 @@ class RuntimeContext:
             )
 
         # Bind additional library roots so they coexist with the primary.
+        # Defer their scans until after the primary root scan finishes, because
+        # the scan coordinator only supports one active scan at a time —
+        # starting a new scan cancels the previous one.
         for extra in extra_roots:
             if not extra.exists():
                 _logger.warning(
@@ -179,15 +182,67 @@ class RuntimeContext:
             try:
                 self.library.add_root(extra)
                 _logger.info("resume_startup_tasks: added extra root %s", extra)
-                if not self.library.is_scanning_path(extra):
+            except Exception as exc:
+                _logger.error("resume_startup_tasks: add_root failed for %s: %s", extra, exc)
+                self.library.errorRaised.emit(str(exc))
+
+        if extra_roots:
+            self._schedule_deferred_root_scans(extra_roots)
+
+    def _schedule_deferred_root_scans(self, roots: list) -> None:
+        """Scan extra roots sequentially after the primary scan finishes.
+
+        The scan coordinator only supports one active scan at a time.  Starting
+        a new scan cancels the previous one, so we must wait for each scan to
+        complete before starting the next.
+        """
+
+        from ..config import DEFAULT_EXCLUDE, DEFAULT_INCLUDE
+
+        pending = list(roots)
+
+        def _on_primary_scan_finished(_root: Path, _success: bool) -> None:
+            # Disconnect after first trigger to avoid re-entrance.
+            try:
+                self.library.scanFinished.disconnect(_on_primary_scan_finished)
+            except (RuntimeError, TypeError):
+                pass
+            _scan_next()
+
+        def _scan_next() -> None:
+            while pending:
+                extra = pending.pop(0)
+                if not extra.exists():
+                    continue
+                if self.library.is_scanning_path(extra):
+                    continue
+                _logger.info("resume_startup_tasks: scanning extra root %s", extra)
+                try:
                     self.facade.scan_root_async(
                         extra,
                         include=DEFAULT_INCLUDE,
                         exclude=DEFAULT_EXCLUDE,
                     )
-            except Exception as exc:
-                _logger.error("resume_startup_tasks: add_root failed for %s: %s", extra, exc)
-                self.library.errorRaised.emit(str(exc))
+                except Exception as exc:
+                    _logger.error("resume_startup_tasks: scan failed for %s: %s", extra, exc)
+                    continue
+                # Wait for this scan to finish before starting the next.
+                def _on_extra_finished(finished_root: Path, _ok: bool, _extra=extra) -> None:
+                    try:
+                        self.library.scanFinished.disconnect(_on_extra_finished)
+                    except (RuntimeError, TypeError):
+                        pass
+                    _scan_next()
+
+                self.library.scanFinished.connect(_on_extra_finished)
+                return
+
+        # If the primary root is already scanning, wait for it; otherwise start immediately.
+        primary = self.library.root()
+        if primary and self.library.is_scanning_path(primary):
+            self.library.scanFinished.connect(_on_primary_scan_finished)
+        else:
+            _scan_next()
 
     def open_library(self, root: Path) -> "LibrarySession":
         """Bind *root* as the active library and rebuild library-scoped adapters."""
