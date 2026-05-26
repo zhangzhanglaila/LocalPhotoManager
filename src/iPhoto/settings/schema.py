@@ -73,6 +73,10 @@ SETTINGS_SCHEMA: dict[str, Any] = {
                     "type": "string",
                     "enum": ["navigate", "zoom"],
                 },
+                "checked_library_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
             },
             "additionalProperties": True,
         },

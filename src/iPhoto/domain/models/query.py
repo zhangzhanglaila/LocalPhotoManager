@@ -18,6 +18,7 @@ class AssetQuery:
     asset_ids: List[str] = field(default_factory=list)
     album_id: Optional[str] = None
     album_path: Optional[str] = None
+    album_paths: Optional[List[str]] = None
     include_subalbums: bool = False
     media_types: List[MediaType] = field(default_factory=list)
     is_favorite: Optional[bool] = None

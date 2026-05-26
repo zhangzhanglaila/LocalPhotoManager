@@ -499,14 +499,9 @@ class GalleryCollectionStore:
         self._reload_window_for_visible_range(first, last, emit_signals=True)
 
     def _load_initial_window(self) -> None:
-        import time, logging
-        _log = logging.getLogger(__name__)
-        _log.info("_load_initial_window: start")
-        t0 = time.monotonic()
         visible_last = max(0, self.INITIAL_VISIBLE_ROWS - 1)
         self._visible_range = (0, visible_last)
         self._reload_window_for_visible_range(0, visible_last, emit_signals=False)
-        _log.info("_load_initial_window: done (%.2fs)", time.monotonic() - t0)
 
     def _reload_window_for_visible_range(self, first: int, last: int, *, emit_signals: bool) -> None:
         if self._current_query is None:

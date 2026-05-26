@@ -44,6 +44,7 @@ from ..menus.album_sidebar_menu import show_context_menu
 from ..styles import modern_scrollbar_style
 from ..palette import (
     SIDEBAR_BACKGROUND_COLOR,
+    SIDEBAR_BRANCH_CONTENT_GAP,
     SIDEBAR_SELECTED_BACKGROUND,
     SIDEBAR_ICON_COLOR,
     SIDEBAR_ICON_SIZE,
@@ -168,6 +169,7 @@ class AlbumSidebar(QWidget):
     bindLibraryRequested = Signal()
     excludeAlbumRequested = Signal(Path)
     filesDropped = Signal(Path, object)
+    albumCheckStateChanged = Signal(list)
 
     ALL_PHOTOS_TITLE = _ALL_PHOTOS_TITLE
 
@@ -254,6 +256,7 @@ class AlbumSidebar(QWidget):
         self._apply_current_minimum_width()
 
         self._model.modelReset.connect(self._on_model_reset)
+        self._model.dataChanged.connect(self._on_data_changed)
         self._tree.filesDropped.connect(self._on_files_dropped)
         self._expand_defaults()
         self._update_title()
@@ -342,6 +345,14 @@ class AlbumSidebar(QWidget):
         """Force the sidebar model to rebuild its current contents."""
 
         self._model.refresh()
+
+    def checked_root_paths(self) -> list[Path]:
+        """Return the currently checked root-level album paths."""
+        return self._model.checked_root_paths()
+
+    def set_checked_root_paths(self, paths: set[str]) -> None:
+        """Restore checked state from a set of path strings."""
+        self._model.set_checked_root_paths(paths)
 
     def _expand_defaults(self) -> None:
         """Expand high-level nodes to match the reference layout."""
@@ -466,9 +477,10 @@ class AlbumSidebar(QWidget):
             self.bindLibraryRequested.emit()
 
     def _on_clicked(self, index: QModelIndex) -> None:
-        """Toggle expansion when the branch indicator hot zone is clicked."""
+        """Toggle expansion when the branch indicator hot zone is clicked,
+        or toggle checkbox when the checkbox area is clicked."""
 
-        if not index.isValid() or not self._model.hasChildren(index):
+        if not index.isValid():
             return
 
         delegate = self._tree.itemDelegate()
@@ -477,6 +489,44 @@ class AlbumSidebar(QWidget):
 
         item_rect = self._tree.visualRect(index)
         if not item_rect.isValid():
+            return
+
+        cursor_pos = QCursor.pos()
+        viewport_pos = self._tree.viewport().mapFromGlobal(cursor_pos)
+
+        # Check if click is on the checkbox area (for checkable albums)
+        if delegate._is_checkable_album(index):
+            from ..delegates.album_sidebar_delegate import (
+                SIDEBAR_CHECKBOX_SIZE,
+                SIDEBAR_CHECKBOX_ICON_GAP,
+            )
+            from ..palette import SIDEBAR_INDICATOR_SLOT_WIDTH
+            depth = delegate._depth_for_index(index)
+            indentation = depth * SIDEBAR_INDENT_PER_LEVEL
+            x = item_rect.left() + SIDEBAR_LEFT_PADDING + indentation
+            has_children = self._model.hasChildren(index)
+            if has_children:
+                x += SIDEBAR_INDICATOR_SIZE + SIDEBAR_BRANCH_CONTENT_GAP
+            elif indentation > 0:
+                x += SIDEBAR_INDICATOR_SLOT_WIDTH
+            checkbox_rect = QRect(
+                x,
+                item_rect.top() + (item_rect.height() - SIDEBAR_CHECKBOX_SIZE) // 2,
+                SIDEBAR_CHECKBOX_SIZE,
+                SIDEBAR_CHECKBOX_SIZE,
+            )
+            if checkbox_rect.contains(viewport_pos):
+                current = index.data(Qt.ItemDataRole.CheckStateRole)
+                new_state = (
+                    Qt.CheckState.Unchecked
+                    if current == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+                self._model.setData(index, new_state, Qt.ItemDataRole.CheckStateRole)
+                return
+
+        # Otherwise check if click is on the branch indicator hot zone
+        if not self._model.hasChildren(index):
             return
 
         depth = delegate._depth_for_index(index)
@@ -495,8 +545,6 @@ class AlbumSidebar(QWidget):
             SIDEBAR_INDICATOR_HOTZONE_MARGIN,
             SIDEBAR_INDICATOR_HOTZONE_MARGIN,
         )
-        cursor_pos = QCursor.pos()
-        viewport_pos = self._tree.viewport().mapFromGlobal(cursor_pos)
         if not hot_zone.contains(viewport_pos):
             return
 
@@ -645,6 +693,11 @@ class AlbumSidebar(QWidget):
             if child and child.title == title:
                 return index
         return QModelIndex()
+
+    def _on_data_changed(self, topLeft, bottomRight, roles=None) -> None:
+        if roles and Qt.ItemDataRole.CheckStateRole in roles:
+            checked = self._model.checked_root_paths()
+            self.albumCheckStateChanged.emit(checked)
 
     def _on_files_dropped(self, target: Path, paths: list[Path]) -> None:
         """Relay drop notifications to consumers of :class:`AlbumSidebar`."""

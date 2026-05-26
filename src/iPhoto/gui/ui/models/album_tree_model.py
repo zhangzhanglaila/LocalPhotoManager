@@ -61,6 +61,7 @@ class AlbumTreeItem:
     pinned_item: Optional[PinnedSidebarItem] = None
     parent: Optional["AlbumTreeItem"] = None
     children: List["AlbumTreeItem"] = field(default_factory=list)
+    checked: bool = True
 
     def add_child(self, item: "AlbumTreeItem") -> None:
         item.parent = self
@@ -156,6 +157,10 @@ class AlbumTreeModel(QAbstractItemModel):
             return item.title
         if role == Qt.ItemDataRole.ToolTipRole and item.album is not None:
             return str(item.album.path)
+        if role == Qt.ItemDataRole.CheckStateRole:
+            if item.node_type == NodeType.ALBUM and item.album is not None and item.album.level == 1:
+                return Qt.CheckState.Checked if item.checked else Qt.CheckState.Unchecked
+            return None
         if role == AlbumTreeRole.NODE_TYPE:
             return item.node_type
         if role == AlbumTreeRole.ALBUM_NODE:
@@ -180,11 +185,62 @@ class AlbumTreeModel(QAbstractItemModel):
             return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         if item.node_type == NodeType.ACTION:
             return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
-        return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        base = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        # Checkbox is drawn by AlbumSidebarDelegate; no Qt built-in checkbox needed.
+        return base
+
+    def setData(self, index: QModelIndex, value: object, role: int = Qt.ItemDataRole.EditRole) -> bool:  # noqa: N802
+        if not index.isValid():
+            return False
+        item = self._item_from_index(index)
+        if role == Qt.ItemDataRole.CheckStateRole:
+            if item.node_type == NodeType.ALBUM and item.album is not None and item.album.level == 1:
+                item.checked = bool(value)
+                self.dataChanged.emit(index, index, [Qt.ItemDataRole.CheckStateRole])
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
+    def checked_root_paths(self) -> list[Path]:
+        """Return paths of all checked root-level album folders."""
+
+        paths: list[Path] = []
+        for child in self._root_item.children:
+            self._collect_checked_paths(child, paths)
+        return paths
+
+    def set_checked_root_paths(self, paths: set[str]) -> None:
+        """Restore checked state from a set of path strings."""
+
+        for child in self._root_item.children:
+            self._apply_checked_state(child, paths)
+
+    def _collect_checked_paths(self, item: AlbumTreeItem, out: list[Path]) -> None:
+        if item.node_type == NodeType.ALBUM and item.album is not None and item.album.level == 1:
+            if item.checked:
+                out.append(item.album.path)
+            return
+        for child in item.children:
+            self._collect_checked_paths(child, out)
+
+    def _apply_checked_state(self, item: AlbumTreeItem, checked_paths: set[str]) -> None:
+        if item.node_type == NodeType.ALBUM and item.album is not None and item.album.level == 1:
+            if checked_paths:
+                path_str = str(item.album.path)
+                resolved_str = None
+                try:
+                    resolved_str = str(item.album.path.resolve())
+                except OSError:
+                    pass
+                item.checked = path_str in checked_paths or (resolved_str is not None and resolved_str in checked_paths)
+            else:
+                item.checked = True
+            return
+        for child in item.children:
+            self._apply_checked_state(child, checked_paths)
+
     def _schedule_refresh(self) -> None:
         """Coalesce rapid treeUpdated signals into a single model reset."""
         self._refresh_timer.start()
@@ -206,6 +262,10 @@ class AlbumTreeModel(QAbstractItemModel):
 
     def refresh(self) -> None:
         """Rebuild the model from the current state of the library."""
+
+        # Preserve checkbox state before rebuilding.
+        old_checked = self.checked_root_paths()
+        old_checked_strs = {str(p) for p in old_checked}
 
         self.beginResetModel()
         self._root_item = AlbumTreeItem("root", NodeType.ROOT)
@@ -243,19 +303,12 @@ class AlbumTreeModel(QAbstractItemModel):
             self._root_item.add_child(pinned_header)
             self._root_item.add_child(AlbumTreeItem("──────────", NodeType.SEPARATOR))
 
-        # Promote the Albums section to a header-level entry so that it shares the
-        # same visual hierarchy, font weight, and font size as the "Basic Library"
-        # group. Assigning the dedicated folder SVG keeps the bespoke iconography
-        # request intact while the emoji prefix maintains parity with the existing
-        # bookshelf glyph for the library header.
         albums_section = AlbumTreeItem(
             "Albums",
             NodeType.HEADER,
             icon_name="folder.svg",
         )
         self._root_item.add_child(albums_section)
-        # "Set Basic Library…" is the first item under Albums so users can
-        # easily change or add another library folder.
         albums_section.add_child(AlbumTreeItem("Set Basic Library…", NodeType.ACTION))
         for album in self._library.list_albums():
             album_item = self._create_album_item(album, NodeType.ALBUM)
@@ -268,6 +321,7 @@ class AlbumTreeModel(QAbstractItemModel):
         # promoted to a top-level header. The helper also restores the divider that
         # separated the smart collections from the trash entry in the original UI.
         self._add_trailing_static_nodes(self._root_item)
+        self.set_checked_root_paths(old_checked_strs)
         self.endResetModel()
 
     def index_for_path(self, path: Path) -> QModelIndex:

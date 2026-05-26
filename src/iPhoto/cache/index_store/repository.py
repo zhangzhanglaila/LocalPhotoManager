@@ -670,6 +670,35 @@ class AssetRepository:
             if should_close:
                 conn.close()
 
+    def has_any_assets(
+        self,
+        filter_hidden: bool = False,
+        album_path: Optional[str] = None,
+        include_subalbums: bool = True,
+    ) -> bool:
+        """Return True if at least one asset matches the given filters.
+
+        Faster than ``count()`` for existence checks because it uses LIMIT 1.
+        """
+        query, params = QueryBuilder.build_pagination_query(
+            select_clause="SELECT 1",
+            album_path=album_path,
+            include_subalbums=include_subalbums,
+            filter_hidden=filter_hidden,
+            sort_by_date=False,
+            limit=1,
+        )
+
+        conn = self._db_manager.get_connection()
+        should_close = (conn != self._db_manager._conn)
+
+        try:
+            cursor = conn.execute(query, params)
+            return cursor.fetchone() is not None
+        finally:
+            if should_close:
+                conn.close()
+
     def set_favorite_status(self, rel: str, is_favorite: bool) -> None:
         """Toggle the favorite status for a single asset efficiently."""
         val = 1 if is_favorite else 0

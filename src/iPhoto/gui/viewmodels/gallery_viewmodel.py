@@ -54,6 +54,7 @@ class GalleryViewModel(BaseViewModel):
         self._cluster_gallery_origin: Literal["location", "people", None] = None
         self._people_cluster_kind: Literal["person", "group", None] = None
         self._people_cluster_id: str | None = None
+        self._checked_album_paths: list[str] | None = None
 
         self.current_section = ObservableProperty("gallery")
         self.static_selection = ObservableProperty(None)
@@ -88,13 +89,40 @@ class GalleryViewModel(BaseViewModel):
     ) -> None:
         self._asset_state_service = asset_state_service
 
+    def set_checked_album_paths(self, paths: list[Path] | None) -> None:
+        """Store the currently checked root folder paths for query filtering."""
+        if paths is None:
+            self._checked_album_paths = None
+        else:
+            self._checked_album_paths = [str(p.resolve()) for p in paths]
+
+    def _has_unchecked_folders(self) -> bool:
+        """Return True if any root folder is unchecked (not in _checked_album_paths)."""
+        if not self._checked_album_paths:
+            return False
+        library = self._context.library
+        roots = library.roots()
+        if not roots:
+            return False
+        checked_set = {p.lower().replace("\\", "/") for p in self._checked_album_paths}
+        for r in roots:
+            r_str = str(r.resolve()).lower().replace("\\", "/")
+            if r_str not in checked_set:
+                return True
+        return False
+
+    def on_album_check_state_changed(self, checked_paths: list[Path]) -> None:
+        """Handle sidebar checkbox changes — refresh current view if applicable."""
+        self.set_checked_album_paths(checked_paths if checked_paths else None)
+        section = self.current_section.value
+        if section == "all_photos":
+            self.open_all_photos()
+        elif section == "location_map":
+            self._location_session.invalidate()
+            self.open_location_map()
+
     def open_album(self, path: Path, *, select_sidebar_path: bool = True) -> None:
-        import time, logging
-        _log = logging.getLogger(__name__)
-        _log.info("gallery.open_album: start %s", path)
-        t0 = time.monotonic()
         album = self._facade.open_album(path)
-        _log.info("gallery.open_album: facade.open_album done (%.2fs)", time.monotonic() - t0)
         active_root = album.root if album else path
         if album:
             self._context.remember_album(album.root)
@@ -108,14 +136,12 @@ class GalleryViewModel(BaseViewModel):
         query.include_subalbums = True
         self._clear_location_context()
         self._clear_cluster_gallery_context()
-        t1 = time.monotonic()
         self._load_query(
             section="album",
             static_selection=None,
             root=active_root,
             query=query,
         )
-        _log.info("gallery.open_album: _load_query done (%.2fs), total=%.2fs", time.monotonic() - t1, time.monotonic() - t0)
 
     def open_pinned_album(self, path: Path) -> None:
         album = self._facade.open_album(path)
@@ -140,11 +166,16 @@ class GalleryViewModel(BaseViewModel):
             self.bind_library_requested.emit()
             return
         self._clear_cluster_gallery_context()
+        query = AssetQuery()
+        # Only use album_paths filter when a proper subset is checked.
+        # When all folders are checked (or none), use the fast SQL path.
+        if self._checked_album_paths and self._has_unchecked_folders():
+            query.album_paths = self._checked_album_paths
         self._load_query(
             section="all_photos",
             static_selection=ALL_PHOTOS_TITLE,
             root=root,
-            query=AssetQuery(),
+            query=query,
         )
         # Populate the map with geotagged assets so the map view stays useful.
         self._location_session.set_mode("map")
@@ -154,7 +185,7 @@ class GalleryViewModel(BaseViewModel):
             and not self._location_session.invalidated
         ):
             cached = self._location_session.full_assets()
-            self.map_assets_changed.emit(cached, root)
+            self.map_assets_changed.emit(self._filter_assets_by_checked_paths(cached), root)
         else:
             self._request_location_assets(root)
 
@@ -249,7 +280,7 @@ class GalleryViewModel(BaseViewModel):
         ):
             cached = self._location_session.full_assets()
             _logger.info("open_location_map: using cached assets, count=%d", len(cached))
-            self.map_assets_changed.emit(cached, root)
+            self.map_assets_changed.emit(self._filter_assets_by_checked_paths(cached), root)
             return
 
         _logger.info("open_location_map: requesting fresh assets")
@@ -470,13 +501,30 @@ class GalleryViewModel(BaseViewModel):
         assets: list,
     ) -> None:
         _logger.info("_handle_location_assets_loaded: serial=%d root=%s assets=%d", serial, root, len(assets))
-        if not self._location_session.accept_loaded(serial, root, list(assets)):
+        filtered = self._filter_assets_by_checked_paths(assets)
+        if not self._location_session.accept_loaded(serial, root, filtered):
             _logger.warning("_handle_location_assets_loaded: accept_loaded returned False")
             return
         if self._location_session.mode == "map":
             full = self._location_session.full_assets()
             _logger.info("_handle_location_assets_loaded: emitting map_assets_changed, count=%d", len(full))
             self.map_assets_changed.emit(full, root)
+
+    def _filter_assets_by_checked_paths(self, assets: list) -> list:
+        """Filter assets to only include those under checked root paths."""
+        if not self._checked_album_paths or not self._has_unchecked_folders():
+            return assets
+        prefixes = tuple(p.rstrip("/").lower() + "/" for p in self._checked_album_paths)
+        exact = tuple(p.rstrip("/").lower() for p in self._checked_album_paths)
+        filtered = []
+        for asset in assets:
+            abs_path = getattr(asset, "absolute_path", None)
+            if abs_path is None:
+                continue
+            path_str = str(abs_path).replace("\\", "/").lower()
+            if path_str in exact or path_str.startswith(prefixes):
+                filtered.append(asset)
+        return filtered
 
     def handle_album_renamed(self, old_path: Path, new_path: Path) -> None:
         if self.current_section.value not in {"album", "pinned_album"}:
@@ -625,7 +673,9 @@ class GalleryViewModel(BaseViewModel):
         self.current_query.value = query
         self.current_direct_assets.value = None
         self.can_return_to_map.value = False
-        self._store.load_selection(root, query=query)
+        # Defer heavy DB query to next event-loop tick so the sidebar can render first.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self._store.load_selection(root, query=query))
         self.cluster_gallery_mode_changed.emit(False)
         self.route_requested.emit("gallery")
 
@@ -648,7 +698,7 @@ class GalleryViewModel(BaseViewModel):
             try:
                 rel = path.relative_to(library_root)
             except ValueError:
-                return path.name
+                return path.resolve().as_posix()
         rel_str = rel.as_posix()
         if rel_str in ("", "."):
             return None

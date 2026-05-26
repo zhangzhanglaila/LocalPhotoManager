@@ -331,6 +331,10 @@ class LibraryAssetQueryService:
         if query.album_path != RECENTLY_DELETED_DIR_NAME and self._is_trash_row(row):
             return False
 
+        if query.album_paths:
+            if not self._row_matches_album_paths(row, query.album_paths):
+                return False
+
         if query.media_types and not self._row_matches_media_types(row, query.media_types):
             return False
 
@@ -375,6 +379,8 @@ class LibraryAssetQueryService:
 
     def _requires_in_memory_query(self, query: AssetQuery) -> bool:
         if query.asset_ids or query.album_id or query.has_gps is not None:
+            return True
+        if query.album_paths:
             return True
         if query.date_from is not None or query.date_to is not None:
             return True
@@ -473,6 +479,39 @@ class LibraryAssetQueryService:
             return False
         trash = RECENTLY_DELETED_DIR_NAME.rstrip("/")
         return parent == trash or parent.startswith(trash + "/")
+
+    def _row_matches_album_paths(
+        self, row: dict[str, Any], album_paths: list[str]
+    ) -> bool:
+        """Return True if *row* falls under any path in *album_paths*.
+
+        Uses ``parent_album_path`` (already stored in DB) to avoid expensive
+        per-row ``Path.resolve()`` filesystem calls.
+        """
+        parent = row.get("parent_album_path")
+        if isinstance(parent, str) and parent:
+            parent_lower = parent.replace("\\", "/").lower()
+            for p in album_paths:
+                prefix = p.replace("\\", "/").rstrip("/").lower()
+                if parent_lower == prefix or parent_lower.startswith(prefix + "/"):
+                    return True
+            return False
+
+        # Fallback for rows without parent_album_path (should be rare).
+        rel = row.get("rel")
+        if not isinstance(rel, str) or not rel:
+            return False
+        rel_path = Path(rel)
+        if rel_path.is_absolute():
+            abs_path = rel_path.as_posix()
+        else:
+            abs_path = (self.library_root / rel_path).as_posix()
+        abs_path_lower = abs_path.lower()
+        for p in album_paths:
+            prefix = p.replace("\\", "/").rstrip("/").lower()
+            if abs_path_lower == prefix or abs_path_lower.startswith(prefix + "/"):
+                return True
+        return False
 
     @staticmethod
     def _int_value(value: Any, *, default: int) -> int:

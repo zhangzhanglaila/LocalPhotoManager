@@ -150,6 +150,8 @@ class BranchIndicatorController(QObject):
 
 # Shared stroke width override applied to sidebar icons to reduce visual aliasing.
 SIDEBAR_ICON_STROKE_WIDTH = 2.0
+SIDEBAR_CHECKBOX_SIZE = 16
+SIDEBAR_CHECKBOX_ICON_GAP = 6
 
 
 class AlbumSidebarDelegate(QStyledItemDelegate):
@@ -186,6 +188,7 @@ class AlbumSidebarDelegate(QStyledItemDelegate):
 
         x = rect.left() + SIDEBAR_LEFT_PADDING + state.indentation
         x = self._draw_branch_indicator(painter, state, x)
+        x = self._draw_checkbox(painter, state, x)
         icon = self._get_icon_for_paint_state(index, state)
         x = self._draw_icon(painter, option, icon, x)
         self._draw_text(painter, rect, font, index, state, x)
@@ -456,6 +459,53 @@ class AlbumSidebarDelegate(QStyledItemDelegate):
         painter.restore()
 
         return branch_rect.right() + SIDEBAR_BRANCH_CONTENT_GAP
+
+    def _is_checkable_album(self, index: QModelIndex) -> bool:
+        """Return True if *index* is a root-level album that should show a checkbox."""
+        model = index.model()
+        if not isinstance(model, AlbumTreeModel):
+            return False
+        item = index.internalPointer()
+        if not isinstance(item, AlbumTreeItem):
+            return False
+        return item.node_type == NodeType.ALBUM and item.album is not None and item.album.level == 1
+
+    def _draw_checkbox(self, painter: QPainter, state: _PaintState, x: int) -> int:
+        """Draw a checkbox for root-level album nodes and return the next x coordinate."""
+        if not self._is_checkable_album(state.index):
+            return x
+
+        checked = state.index.data(Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+
+        opt = QStyleOptionViewItem()
+        opt.rect = QRect(
+            x,
+            state.rect.top() + (state.rect.height() - SIDEBAR_CHECKBOX_SIZE) // 2,
+            SIDEBAR_CHECKBOX_SIZE,
+            SIDEBAR_CHECKBOX_SIZE,
+        )
+        opt.state = QStyle.StateFlag.State_Enabled
+        if state.is_enabled:
+            opt.state |= QStyle.StateFlag.State_Enabled
+        if checked:
+            opt.state |= QStyle.StateFlag.State_On
+        else:
+            opt.state |= QStyle.StateFlag.State_Off
+
+        style = self._resolve_style(state)
+        style.drawControl(QStyle.ControlElement.CE_CheckBox, opt, painter)
+
+        return x + SIDEBAR_CHECKBOX_SIZE + SIDEBAR_CHECKBOX_ICON_GAP
+
+    def _resolve_style(self, state: _PaintState):
+        """Return the QStyle to use for drawing standard controls."""
+        if state.tree_view is not None:
+            return state.tree_view.style()
+        parent = self.parent()
+        if isinstance(parent, QWidget):
+            return parent.style()
+        from PySide6.QtWidgets import QApplication
+        return QApplication.style()
 
     def _draw_icon(
         self,

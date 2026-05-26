@@ -225,6 +225,16 @@ def sync_live_roles_to_db(
         repository.update_still_image_times(still_time_updates)
 
 
+def _rel_matches_root_prefix(row: dict, root_prefix: str, root_prefix_slash: str) -> bool:
+    """Return True if *row*'s rel path falls under the given root prefix."""
+    rel = normalise_rel_key(row.get("rel"))
+    if rel is None:
+        return False
+    if rel == root_prefix or rel.startswith(root_prefix_slash):
+        return True
+    return False
+
+
 def prune_index_scope(
     root: Path,
     materialised_rows: Iterable[dict],
@@ -259,7 +269,17 @@ def prune_index_scope(
             filter_hidden=False,
         )
     else:
-        scoped_rows = repository.read_all(sort_by_date=False, filter_hidden=False)
+        # Non-primary root outside the library root.  Its rows are stored with
+        # absolute ``rel`` paths (e.g. ``D:/Huawei/photo.jpg``).  We must scope
+        # the prune to only those rows so that entries from other roots are not
+        # deleted.
+        all_rows = repository.read_all(sort_by_date=False, filter_hidden=False)
+        root_prefix = root.resolve().as_posix()
+        root_prefix_slash = root_prefix.rstrip("/") + "/"
+        scoped_rows = [
+            row for row in all_rows
+            if isinstance(row, dict) and _rel_matches_root_prefix(row, root_prefix, root_prefix_slash)
+        ]
 
     preserve_existing_trash_rows = (
         root.name != RECENTLY_DELETED_DIR_NAME

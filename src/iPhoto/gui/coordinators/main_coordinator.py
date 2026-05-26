@@ -566,6 +566,10 @@ class MainCoordinator(QObject):
             )
             self._context.library.faceScanStatusChanged.connect(ui.people_page.set_status_message)
 
+        # Sidebar checkbox filtering
+        ui.sidebar.albumCheckStateChanged.connect(self._on_album_check_state_changed)
+        self._restore_checked_library_paths()
+
         # Navigation
         self._navigation.bindLibraryRequested.connect(self._dialog.bind_library_dialog)
         ui.bind_library_action.triggered.connect(self._dialog.bind_library_dialog)
@@ -1029,6 +1033,23 @@ class MainCoordinator(QObject):
             return str(path.resolve())
         except OSError:
             return str(path)
+
+    def _on_album_check_state_changed(self, checked_paths: list[Path]) -> None:
+        """Persist checkbox state and refresh the current view."""
+        path_strings = [str(p) for p in checked_paths]
+        self._context.settings.set("ui.checked_library_paths", path_strings)
+        self._gallery_vm.on_album_check_state_changed(checked_paths)
+
+    def _restore_checked_library_paths(self) -> None:
+        """Restore sidebar checkbox state from settings on startup."""
+        stored = self._context.settings.get("ui.checked_library_paths", []) or []
+        if not stored:
+            return
+        paths = set(stored)
+        self._window.ui.sidebar.set_checked_root_paths(paths)
+        from pathlib import Path as PathType
+        resolved = [PathType(p) for p in stored]
+        self._gallery_vm.set_checked_album_paths(resolved)
 
     # --- Public Accessors for Window ---
     def toggle_playback(self):
