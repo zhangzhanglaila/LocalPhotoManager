@@ -9,10 +9,11 @@ import sys
 from typing import Callable, Mapping, Optional
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QRectF, QSize, QSizeF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QRegion, QResizeEvent
+from PySide6.QtGui import QColor, QImage, QImageReader, QPainter, QPainterPath, QPixmap, QPen, QRegion, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
+    QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
     QVBoxLayout,
@@ -105,7 +106,11 @@ class _VideoView(QGraphicsView):
         self._on_resize = on_resize
         self._scene = QGraphicsScene(self)
         self._video_item = _RoundedVideoItem(corner_radius)
+        self._image_item = QGraphicsPixmapItem()
+        self._image_item.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
         self._scene.addItem(self._video_item)
+        self._scene.addItem(self._image_item)
+        self._image_item.setVisible(False)
         self.setScene(self._scene)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -122,9 +127,23 @@ class _VideoView(QGraphicsView):
     def video_item(self) -> _RoundedVideoItem:
         return self._video_item
 
+    def show_image(self, pixmap: QPixmap) -> None:
+        """Switch to image mode: display a static pixmap instead of video."""
+        self._video_item.setVisible(False)
+        self._image_item.setPixmap(pixmap)
+        self._image_item.setVisible(True)
+        self._fit_image_item()
+
+    def show_video_mode(self) -> None:
+        """Switch back to video mode."""
+        self._image_item.setVisible(False)
+        self._image_item.setPixmap(QPixmap())
+        self._video_item.setVisible(True)
+
     def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._update_video_geometry()
+        self._fit_image_item()
         self._on_resize()
 
     def _update_video_geometry(self) -> None:
@@ -139,6 +158,24 @@ class _VideoView(QGraphicsView):
         self._video_item.setSize(rect.size())
         center = rect.center()
         self._video_item.setPos(center - self._video_item.boundingRect().center())
+
+    def _fit_image_item(self) -> None:
+        """Scale and center the image pixmap to fill the viewport."""
+        if not self._image_item.isVisible():
+            return
+        pixmap = self._image_item.pixmap()
+        if pixmap.isNull():
+            return
+        viewport_size = self.viewport().size()
+        scaled = pixmap.scaled(
+            viewport_size,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self._image_item.setPixmap(scaled)
+        x = (viewport_size.width() - scaled.width()) / 2.0
+        y = (viewport_size.height() - scaled.height()) / 2.0
+        self._image_item.setPos(x, y)
 
 
 class _PreviewFrame(QWidget):
@@ -308,6 +345,7 @@ class _RhiPreviewPopup(QWidget):
             target.installEventFilter(self._wheel_guard)
         self._active_render_profile: str | None = None
         self._video_area = self._create_video_area()
+        self._video_area.playbackFinished.connect(self._loop_playback)
         self._set_rounding_mode()
         self.resize_preview(self._content_size)
         self.hide()
@@ -354,6 +392,10 @@ class _RhiPreviewPopup(QWidget):
         )
         self.show()
         self.raise_()
+        self._video_area.play()
+
+    def _loop_playback(self) -> None:
+        """Restart playback from the beginning when it reaches the end."""
         self._video_area.play()
 
     def close_preview(self) -> None:
@@ -525,6 +567,7 @@ class PreviewWindow(QWidget):
         self._media = MediaController(self)
         self._media.set_video_output(self._frame.video_item())
         self._media.set_muted(PREVIEW_WINDOW_MUTED)
+        self._media.mediaStatusChanged.connect(self._on_media_status_changed)
         self._frame.video_item().nativeSizeChanged.connect(self._on_native_size_changed)
         self._rhi_popup = _RhiPreviewPopup(parent)
         self._rhi_popup.displaySizeChanged.connect(self._on_native_size_changed)
@@ -589,6 +632,44 @@ class PreviewWindow(QWidget):
             self.raise_()
             self._media.play()
 
+    def show_image_preview(
+        self,
+        source: Path | str,
+        at: Optional[QRect | QPoint] = None,
+        *,
+        aspect_ratio_hint: Optional[float] = None,
+    ) -> None:
+        """Display a static image preview near *at*."""
+        self._close_timer.stop()
+        self._media.unload()
+        self._rhi_popup.close_preview()
+        self._using_rhi_popup = False
+
+        reader = QImageReader(str(source))
+        reader.setAutoTransform(True)
+        qimg = reader.read()
+        if qimg.isNull():
+            return
+
+        self._current_native_size = QSizeF(qimg.width(), qimg.height())
+        self._native_size_seeded_from_probe = False
+        self._native_size_seeded = True
+        self._pending_orientation_flip = None
+        self._aspect_ratio_hint = None
+        if isinstance(aspect_ratio_hint, (int, float)):
+            numeric = float(aspect_ratio_hint)
+            if numeric > 0.0:
+                self._aspect_ratio_hint = numeric
+
+        self._anchor_rect = at if isinstance(at, QRect) else None
+        self._anchor_point = at if isinstance(at, QPoint) else None
+        self._apply_layout_for_anchor()
+
+        pixmap = QPixmap.fromImage(qimg)
+        self._frame.video_view().show_image(pixmap)
+        self.show()
+        self.raise_()
+
     def close_preview(self, delayed: bool = True) -> None:
         """Hide the preview window, optionally with a delay."""
 
@@ -597,10 +678,21 @@ class PreviewWindow(QWidget):
         else:
             self._do_close()
 
+    def _on_media_status_changed(self, status: object) -> None:
+        """Loop video playback when it reaches the end."""
+        try:
+            from PySide6.QtMultimedia import QMediaPlayer
+            if status == QMediaPlayer.MediaStatus.EndOfMedia:
+                self._media.seek(0)
+                self._media.play()
+        except Exception:
+            pass
+
     def _do_close(self) -> None:
         self._close_timer.stop()
         self._media.unload()
         self._rhi_popup.close_preview()
+        self._frame.video_view().show_video_mode()
         self.hide()
 
     def _clamp_to_screen(self, origin: QPoint, *, size: Optional[QSize] = None) -> QPoint:

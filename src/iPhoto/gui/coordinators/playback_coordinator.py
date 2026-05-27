@@ -9,6 +9,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
+from ...i18n import tr
+
 from PySide6.QtCore import QItemSelectionModel, QModelIndex, QObject, QLocale, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QColor, QPalette
 
@@ -54,18 +56,11 @@ LOGGER = logging.getLogger(__name__)
 _INFO_PANEL_METADATA_CACHE_MAX = 200
 _LOCATION_SEARCH_RESULT_LIMIT = 5
 _LOCATION_SEARCH_DEBOUNCE_MS = 80
-_LOCATION_EXTENSION_PROMPT = "Install the map extension to use Assign a Location."
-_LOCATION_EXIFTOOL_LIMITED_TITLE = "功能受限"
-_LOCATION_EXIFTOOL_LIMITED_MESSAGE = (
-    "地点已保存到本机图库数据库。\n\n"
-    "应用当前环境未找到或无法访问 ExifTool，暂时无法把 GPS 信息写入原始照片/视频文件。"
-    "请确认 ExifTool 已安装并可被应用访问。"
-)
-_LOCATION_FILE_WRITE_LIMITED_TITLE = "原文件写入失败"
-_LOCATION_FILE_WRITE_LIMITED_MESSAGE_TEMPLATE = (
-    "地点已保存到本机图库数据库。\n\n"
-    "GPS 信息未能写入原始照片/视频文件：{reason}"
-)
+_LOCATION_EXTENSION_PROMPT = "map.install_extension_prompt"
+_LOCATION_EXIFTOOL_LIMITED_TITLE = "map.feature_limited"
+_LOCATION_EXIFTOOL_LIMITED_MESSAGE = "map.location_saved_no_exiftool"
+_LOCATION_FILE_WRITE_LIMITED_TITLE = "map.file_write_failed"
+_LOCATION_FILE_WRITE_LIMITED_MESSAGE_TEMPLATE = "map.location_saved_file_write_failed_reason"
 
 
 class PlaybackCoordinator(QObject):
@@ -225,7 +220,7 @@ class PlaybackCoordinator(QObject):
         self._info_panel.set_location_capability(
             enabled=self._refresh_location_extension_state(),
             preview_enabled=self._info_panel_preview_enabled(capabilities),
-            fallback_text=_LOCATION_EXTENSION_PROMPT,
+            fallback_text=tr(_LOCATION_EXTENSION_PROMPT),
         )
 
     def set_face_name_display_enabled(self, enabled: bool) -> None:
@@ -638,6 +633,11 @@ class PlaybackCoordinator(QObject):
     def _handle_playback_finished(self) -> None:
         if not self._active_live_motion or not self._active_live_still:
             return
+        # Loop: replay the live photo motion automatically.
+        presentation = self._current_presentation
+        if presentation is not None and presentation.is_live:
+            self._autoplay_live_motion(presentation)
+            return
         still = self._active_live_still
         self._active_live_motion = None
         self._player_view.defer_still_updates(False)
@@ -949,7 +949,7 @@ class PlaybackCoordinator(QObject):
         self._info_panel.set_location_capability(
             enabled=location_enabled,
             preview_enabled=self._info_panel_preview_enabled(capabilities, location_enabled=location_enabled),
-            fallback_text=_LOCATION_EXTENSION_PROMPT,
+            fallback_text=tr(_LOCATION_EXTENSION_PROMPT),
         )
         local_info = dict(info)
         abs_path = local_info.get("abs")
@@ -1389,8 +1389,8 @@ class PlaybackCoordinator(QObject):
             return
         dialogs.show_warning(
             popup_parent,
-            _LOCATION_EXIFTOOL_LIMITED_MESSAGE,
-            title=_LOCATION_EXIFTOOL_LIMITED_TITLE,
+            tr(_LOCATION_EXIFTOOL_LIMITED_MESSAGE),
+            title=tr(_LOCATION_EXIFTOOL_LIMITED_TITLE),
         )
 
     def _show_location_file_write_warning(self, message: str) -> None:
@@ -1399,8 +1399,8 @@ class PlaybackCoordinator(QObject):
             return
         dialogs.show_warning(
             popup_parent,
-            _LOCATION_FILE_WRITE_LIMITED_MESSAGE_TEMPLATE.format(reason=message.strip()),
-            title=_LOCATION_FILE_WRITE_LIMITED_TITLE,
+            tr(_LOCATION_FILE_WRITE_LIMITED_MESSAGE_TEMPLATE, reason=message.strip()),
+            title=tr(_LOCATION_FILE_WRITE_LIMITED_TITLE),
         )
 
     @Slot(str)
