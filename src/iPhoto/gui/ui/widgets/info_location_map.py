@@ -19,6 +19,7 @@ from PySide6.QtCore import (
     QTimer,
 )
 from PySide6.QtGui import (
+    QColor,
     QPainter,
     QPainterPath,
     QPixmap,
