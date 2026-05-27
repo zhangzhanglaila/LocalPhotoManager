@@ -108,17 +108,16 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
 
     # Pre-build lookup indices to avoid O(photos × videos) scans.
     video_by_cid: Dict[str, List[Dict[str, object]]] = defaultdict(list)
-    videos_by_stem: Dict[str, List[Dict[str, object]]] = defaultdict(list)
-    videos_by_stem_cf: Dict[str, List[Dict[str, object]]] = defaultdict(list)
     videos_by_folder: Dict[str, List[Dict[str, object]]] = defaultdict(list)
+    videos_by_folder_stem: Dict[str, Dict[str, Dict[str, object]]] = defaultdict(dict)
     for video in videos.values():
         cid = _normalise_content_id(video.get("content_id"))
         if cid:
             video_by_cid[cid].append(video)
         vpath = Path(video["rel"])
-        videos_by_stem[vpath.stem].append(video)
-        videos_by_stem_cf[vpath.stem.casefold()].append(video)
-        videos_by_folder[str(vpath.parent)].append(video)
+        folder = str(vpath.parent)
+        videos_by_folder[folder].append(video)
+        videos_by_folder_stem[folder][vpath.stem.casefold()] = video
 
     # 1) strong match by content_id
     for photo in photos.values():
@@ -139,31 +138,20 @@ def pair_live(index_rows: List[Dict[str, object]]) -> List[LiveGroup]:
             )
             used_videos.add(chosen["rel"])
 
-    # 2) medium match by same stem + time delta
+    # 2a) same directory + same stem — strong evidence without needing
+    #     content_id or time delta (iPhone Live Photos share the stem).
     for photo in photos.values():
         if photo["rel"] in matched:
             continue
-        stem = Path(photo["rel"]).stem
-        candidates = videos_by_stem.get(stem, [])
-        chosen = _match_by_time(photo, candidates, used_videos)
-        if chosen:
-            used_videos.add(chosen["rel"])
-            matched[photo["rel"]] = _build_group(photo, chosen, confidence=0.7)
-
-    # 2b) same-stem match without time delta — iPhone Live Photos always
-    #     share the same filename stem (e.g. IMG_1234.HEIC + IMG_1234.MOV).
-    for photo in photos.values():
-        if photo["rel"] in matched:
-            continue
-        stem = Path(photo["rel"]).stem.casefold()
-        candidates = [
-            v for v in videos_by_stem_cf.get(stem, [])
-            if v["rel"] not in used_videos
-        ]
-        if len(candidates) == 1:
-            chosen = candidates[0]
-            used_videos.add(chosen["rel"])
-            matched[photo["rel"]] = _build_group(photo, chosen, confidence=0.6)
+        ppath = Path(photo["rel"])
+        folder = str(ppath.parent)
+        stem_cf = ppath.stem.casefold()
+        folder_stems = videos_by_folder_stem.get(folder)
+        if folder_stems and stem_cf in folder_stems:
+            candidate = folder_stems[stem_cf]
+            if candidate["rel"] not in used_videos:
+                used_videos.add(candidate["rel"])
+                matched[photo["rel"]] = _build_group(photo, candidate, confidence=0.8)
 
     # 3) weak match by directory proximity
     for photo in photos.values():
