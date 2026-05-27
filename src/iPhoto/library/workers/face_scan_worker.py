@@ -31,6 +31,7 @@ class FaceScanWorker(QThread):
 
     peopleIndexUpdated = Signal()
     statusChanged = Signal(str)
+    downloadProgress = Signal(int, int)
 
     BATCH_SIZE = 4
     QUEUE_TARGET_SIZE = 16
@@ -80,11 +81,20 @@ class FaceScanWorker(QThread):
             return
 
         paths = face_library_paths(self._library_root)
-        pipeline = FaceClusterPipeline(model_root=paths.model_dir)
+
+        def _on_download_progress(downloaded: int, total: int) -> None:
+            self.downloadProgress.emit(downloaded, total)
+
+        pipeline = FaceClusterPipeline(
+            model_root=paths.model_dir,
+            on_download_progress=_on_download_progress,
+        )
         coordinator = self._people_service.coordinator
         if coordinator is None:
             self.statusChanged.emit("Face scanning is unavailable for this library.")
             return
+
+        model_ready = False
 
         while not self._cancelled:
             self._top_up_pending_rows()
@@ -97,12 +107,17 @@ class FaceScanWorker(QThread):
                 continue
 
             try:
+                if not model_ready:
+                    self.statusChanged.emit("正在下载人脸检测模型，首次需要下载约 120MB，请稍候...")
                 committed = self._process_batch(
                     batch,
                     coordinator,
                     pipeline,
                     paths.thumbnail_dir,
                 )
+                if not model_ready:
+                    model_ready = True
+                    self.statusChanged.emit("正在扫描人脸...")
                 for asset_id in [str(row.get("id") or "") for row in batch if row.get("id")]:
                     self._queued_ids.discard(asset_id)
                 if committed:
