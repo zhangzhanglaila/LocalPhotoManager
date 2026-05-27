@@ -354,7 +354,11 @@ class FaceNameOverlayWidget(QWidget):
     def _handle_viewer_mouse_move(self, event: QEvent) -> bool:
         if self._viewer is None or not isinstance(event, QMouseEvent):
             return False
-        point = QPointF(self._viewer.mapTo(self, event.position().toPoint()))
+        try:
+            global_pt = self._viewer.mapToGlobal(event.position().toPoint())
+            point = QPointF(self.mapFromGlobal(global_pt))
+        except RuntimeError:
+            return False
         return self._handle_manual_mouse_move(point, event)
 
     def _handle_manual_mouse_move(self, point: QPointF, event: QMouseEvent) -> bool:
@@ -387,7 +391,11 @@ class FaceNameOverlayWidget(QWidget):
             return False
         if self._viewer is None or self._manual_draft is None or self._manual_busy:
             return False
-        point = QPointF(self._viewer.mapTo(self, event.position().toPoint()))
+        try:
+            global_pt = self._viewer.mapToGlobal(event.position().toPoint())
+            point = QPointF(self.mapFromGlobal(global_pt))
+        except RuntimeError:
+            return False
         return self._handle_manual_mouse_press(point, event)
 
     def _handle_manual_mouse_press(self, point: QPointF, event: QMouseEvent) -> bool:
@@ -516,7 +524,11 @@ class FaceNameOverlayWidget(QWidget):
         if viewer is None:
             return QRect()
         surface = self.parentWidget() or self
-        return QRect(viewer.mapTo(surface, QPoint(0, 0)), viewer.size())
+        try:
+            global_pt = viewer.mapToGlobal(QPoint(0, 0))
+            return QRect(surface.mapFromGlobal(global_pt), viewer.size())
+        except RuntimeError:
+            return QRect()
 
     def _relayout(self) -> None:
         self._sync_child_visibility()
