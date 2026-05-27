@@ -33,6 +33,57 @@ _LOGGER = logging.getLogger(__name__)
 _REQUIRED_FACE_MODULES = ("detection", "recognition")
 
 
+def _make_progress_download(on_progress: "Callable[[int, int], None]"):
+    """Return a drop-in replacement for ``insightface.utils.download.download_file``
+    that reports download progress via *on_progress(downloaded_bytes, total_bytes)*
+    instead of printing a tqdm bar to the console."""
+
+    import requests as _requests
+
+    def _download_file_with_progress(url, path=None, overwrite=False, sha1_hash=None):
+        from insightface.utils.download import check_sha1
+
+        if path is None:
+            fname = url.split("/")[-1]
+        else:
+            path = os.path.expanduser(path)
+            if os.path.isdir(path):
+                fname = os.path.join(path, url.split("/")[-1])
+            else:
+                fname = path
+
+        if overwrite or not os.path.exists(fname) or (
+            sha1_hash and not check_sha1(fname, sha1_hash)
+        ):
+            dirname = os.path.dirname(os.path.abspath(os.path.expanduser(fname)))
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+
+            _LOGGER.info("Downloading model from %s ...", url)
+            r = _requests.get(url, stream=True)
+            if r.status_code != 200:
+                raise RuntimeError("Failed downloading url %s" % url)
+            total_length = r.headers.get("content-length")
+            total = int(total_length) if total_length is not None else 0
+            downloaded = 0
+            on_progress(0, total)
+            with open(fname, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        on_progress(downloaded, total)
+
+            if sha1_hash and not check_sha1(fname, sha1_hash):
+                raise UserWarning(
+                    f"File {fname} is downloaded but the content hash does not match."
+                )
+
+        return fname
+
+    return _download_file_with_progress
+
+
 @dataclass(frozen=True)
 class DetectedAssetFaces:
     asset_id: str
@@ -46,17 +97,21 @@ class FaceClusterPipeline:
         self,
         *,
         model_root: Path,
-        model_pack: str = "buffalo_s",
-        distance_threshold: float = 0.6,
+        model_pack: str = "buffalo_l",
+        distance_threshold: float = 0.5,
         min_samples: int = 2,
-        min_face_size: int = 40,
+        min_face_size: int = 60,
+        min_confidence: float = 0.6,
+        on_download_progress: "Callable[[int, int], None] | None" = None,
     ) -> None:
         self._model_root = Path(model_root)
         self._model_pack = model_pack
         self._distance_threshold = float(distance_threshold)
         self._min_samples = int(min_samples)
         self._min_face_size = int(min_face_size)
+        self._min_confidence = float(min_confidence)
         self._analysis_app = None
+        self._on_download_progress = on_download_progress
 
     @property
     def distance_threshold(self) -> float:
@@ -108,8 +163,16 @@ class FaceClusterPipeline:
                 break
 
             image_width, image_height = image.size
-            faces: list[FaceRecord] = []
+            image_area = image_width * image_height
+
+            # Pre-filter: skip faces that are too small relative to the image.
+            # This removes poster/screen faces in the background.
+            MIN_FACE_AREA_RATIO = 0.005  # 0.5% of image area
+            candidates = []
             for detected in detected_faces:
+                det_score = float(getattr(detected, "det_score", 0.0))
+                if det_score < self._min_confidence:
+                    continue
                 bbox = _normalize_bbox(
                     detected.bbox,
                     image_width=image_width,
@@ -117,7 +180,22 @@ class FaceClusterPipeline:
                 )
                 if bbox[2] < self._min_face_size or bbox[3] < self._min_face_size:
                     continue
+                face_area = bbox[2] * bbox[3]
+                if image_area > 0 and face_area / image_area < MIN_FACE_AREA_RATIO:
+                    continue
+                candidates.append((detected, bbox, det_score))
 
+            # Relative filter: remove faces much smaller than the largest face
+            # in the same image (poster/painting faces in the background).
+            if len(candidates) > 1:
+                max_area = max(b[2] * b[3] for _, b, _ in candidates)
+                candidates = [
+                    (d, b, s) for d, b, s in candidates
+                    if (b[2] * b[3]) >= max_area * 0.15
+                ]
+
+            faces: list[FaceRecord] = []
+            for detected, bbox, det_score in candidates:
                 embedding = _extract_embedding(detected)
                 if embedding is None:
                     continue
@@ -140,7 +218,7 @@ class FaceClusterPipeline:
                         box_y=bbox[1],
                         box_w=bbox[2],
                         box_h=bbox[3],
-                        confidence=float(getattr(detected, "det_score", 0.0)),
+                        confidence=det_score,
                         embedding=embedding,
                         embedding_dim=int(embedding.shape[0]),
                         thumbnail_path=thumbnail_path.relative_to(thumbnail_dir.parent).as_posix(),
@@ -181,6 +259,20 @@ class FaceClusterPipeline:
         _patch_insightface_alignment_estimate()
         providers = _resolve_execution_providers()
         ctx_id = 0 if "CUDAExecutionProvider" in providers else -1
+
+        # Monkey-patch InsightFace download to report progress to the UI.
+        original_download_file = None
+        if self._on_download_progress is not None:
+            try:
+                import insightface.utils.download as _dl_mod
+                original_download_file = _dl_mod.download_file
+                _dl_mod.download_file = _make_progress_download(self._on_download_progress)
+                # Also patch the reference in storage module
+                import insightface.utils.storage as _stor_mod
+                _stor_mod.download_file = _dl_mod.download_file
+            except Exception:
+                original_download_file = None
+
         try:
             app = FaceAnalysis(
                 name=self._model_pack,
@@ -196,6 +288,17 @@ class FaceClusterPipeline:
                 model_dir=self._model_root.resolve(),
                 exc=exc,
             ) from exc
+        finally:
+            # Restore original download function
+            if original_download_file is not None:
+                try:
+                    import insightface.utils.download as _dl_mod
+                    import insightface.utils.storage as _stor_mod
+                    _dl_mod.download_file = original_download_file
+                    _stor_mod.download_file = original_download_file
+                except Exception:
+                    pass
+
         self._analysis_app = app
         return app
 
@@ -224,6 +327,114 @@ def build_face_key(
     return hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
+def _merge_close_clusters(
+    persons: list[PersonRecord],
+    faces: list[FaceRecord],
+    *,
+    merge_threshold: float = 0.35,
+) -> tuple[list[PersonRecord], list[FaceRecord]]:
+    """Merge clusters whose center embeddings are very close.
+
+    DBSCAN can split a single person into multiple clusters when face
+    angles, lighting, or colour grading create gaps in embedding space.
+    This post-pass reunites clusters whose centres fall within
+    *merge_threshold* (cosine distance).
+    """
+    if len(persons) <= 1:
+        return persons, faces
+
+    # Build face lists per person.
+    faces_by_pid: dict[str, list[FaceRecord]] = defaultdict(list)
+    for face in faces:
+        if face.person_id is not None:
+            faces_by_pid[face.person_id].append(face)
+
+    # Union-Find for merging.
+    parent: dict[str, str] = {p.person_id: p.person_id for p in persons}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Compare all pairs of cluster centres.
+    for i, a in enumerate(persons):
+        for b in persons[i + 1:]:
+            if a.center_embedding.size == 0 or b.center_embedding.size == 0:
+                continue
+            if a.center_embedding.shape != b.center_embedding.shape:
+                continue
+            dist = cosine_distance(a.center_embedding, b.center_embedding)
+            if dist <= merge_threshold:
+                union(a.person_id, b.person_id)
+
+    # Check if any merges happened.
+    groups: dict[str, list[str]] = defaultdict(list)
+    for pid in parent:
+        groups[find(pid)].append(pid)
+    merged_groups = {root: members for root, members in groups.items() if len(members) > 1}
+    if not merged_groups:
+        return persons, faces
+
+    # Build merged person records and update face assignments.
+    old_persons = {p.person_id: p for p in persons}
+    new_persons: list[PersonRecord] = []
+    removed_pids: set[str] = set()
+    face_updates: dict[str, str] = {}  # old_pid -> new_pid
+
+    for root, members in merged_groups.items():
+        all_member_faces: list[FaceRecord] = []
+        for pid in members:
+            all_member_faces.extend(faces_by_pid.get(pid, []))
+            removed_pids.add(pid)
+
+        if not all_member_faces:
+            continue
+
+        # Use the person with the most faces as the base.
+        base_pid = max(members, key=lambda p: len(faces_by_pid.get(p, [])))
+        new_center = compute_cluster_center(
+            np.stack([f.embedding for f in all_member_faces], axis=0)
+        )
+        key_face = max(all_member_faces, key=_key_face_sort_key)
+        base_person = old_persons[base_pid]
+
+        merged_person = replace(
+            base_person,
+            key_face_id=key_face.face_id,
+            face_count=len(all_member_faces),
+            center_embedding=new_center,
+            sample_count=len(all_member_faces),
+            profile_state=profile_state_for_sample_count(len(all_member_faces)),
+        )
+        new_persons.append(merged_person)
+
+        for pid in members:
+            if pid != base_pid:
+                face_updates[pid] = base_pid
+
+    # Keep unmerged persons.
+    for p in persons:
+        if p.person_id not in removed_pids:
+            new_persons.append(p)
+
+    # Update face person_ids.
+    updated_faces = [
+        replace(face, person_id=face_updates[face.person_id])
+        if face.person_id in face_updates
+        else face
+        for face in faces
+    ]
+
+    return new_persons, updated_faces
+
+
 def cluster_face_records(
     faces: list[FaceRecord],
     *,
@@ -241,9 +452,10 @@ def cluster_face_records(
     )
 
     grouped_indices: dict[str, list[int]] = defaultdict(list)
+    noise_indices: list[int] = []
     for index, label in enumerate(labels.tolist()):
         if label == -1:
-            grouped_indices[f"noise-{index}"].append(index)
+            noise_indices.append(index)
         else:
             grouped_indices[f"cluster-{label}"].append(index)
 
@@ -272,6 +484,18 @@ def cluster_face_records(
         )
         for index in indices:
             updated_faces[index] = replace(updated_faces[index], person_id=person_id)
+
+    # Noise faces (label -1) are left without a person_id — they won't
+    # appear as individual "person" entries in the People dashboard.
+
+    # Post-DBSCAN merge: combine clusters whose center embeddings are very
+    # close.  DBSCAN can split a single person into multiple clusters when
+    # face angles or lighting create gaps in embedding space.  This merge
+    # pass reunites them.
+    persons, updated_faces = _merge_close_clusters(
+        persons, updated_faces, merge_threshold=0.35,
+    )
+
     persons.sort(key=lambda person: (-person.face_count, person.created_at))
     return updated_faces, persons
 

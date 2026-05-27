@@ -279,9 +279,10 @@ def cluster_face_records(
     )
 
     grouped_indices: dict[str, list[int]] = defaultdict(list)
+    noise_indices: list[int] = []
     for index, label in enumerate(labels.tolist()):
         if label == -1:
-            grouped_indices[f"noise-{index}"].append(index)
+            noise_indices.append(index)
         else:
             grouped_indices[f"cluster-{label}"].append(index)
 
@@ -308,6 +309,9 @@ def cluster_face_records(
         )
         for index in indices:
             updated_faces[index] = replace(updated_faces[index], person_id=person_id)
+
+    # Noise faces (label -1) are left without a person_id — they won't
+    # appear as individual "person" entries in the People dashboard.
     persons.sort(key=lambda person: (-person.face_count, person.created_at))
     return updated_faces, persons
 

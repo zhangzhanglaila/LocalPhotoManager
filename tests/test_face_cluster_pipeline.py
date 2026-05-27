@@ -97,7 +97,7 @@ def test_run_dbscan_finds_two_clusters() -> None:
     assert set(labels.tolist()) == {0, 1}
 
 
-def test_noise_points_become_singleton_clusters() -> None:
+def test_noise_points_excluded_from_persons() -> None:
     faces = [
         _face("f1", np.array([1.0, 0.0], dtype=np.float32), 0.95),
         _face("f2", np.array([0.0, 1.0], dtype=np.float32), 0.90),
@@ -108,8 +108,9 @@ def test_noise_points_become_singleton_clusters() -> None:
         distance_threshold=0.2,
         min_samples=2,
     )
-    assert len(persons) == 3
-    assert len({face.person_id for face in updated_faces}) == 3
+    # Noise faces are no longer assigned to individual person records.
+    assert len(persons) == 0
+    assert all(face.person_id is None for face in updated_faces)
 
 
 def test_cluster_face_records_selects_highest_confidence_key_face() -> None:
