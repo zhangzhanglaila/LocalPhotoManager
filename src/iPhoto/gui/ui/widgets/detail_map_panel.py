@@ -92,6 +92,18 @@ class DetailMapPanel(QWidget):
         self._map_view.hide()
         self._no_location_label.show()
 
+    def current_location(self) -> tuple[float | None, float | None]:
+        """Return the current pin location (latitude, longitude)."""
+        return self._map_view.current_location()
+
+    def show_nearby_photos(self, points: list[tuple[float, float]]) -> None:
+        """Show nearby geotagged photos as dots on the map."""
+        self._map_view.set_nearby_points(points)
+
+    def clear_nearby_photos(self) -> None:
+        """Remove nearby photo dots from the map."""
+        self._map_view.clear_nearby_points()
+
     def set_map_runtime(self, map_runtime) -> None:
         self._map_view.set_map_runtime(map_runtime)
 

@@ -753,8 +753,30 @@ class MainCoordinator(QObject):
 
     def _handle_detail_map_show_all(self, show_all: bool) -> None:
         """Handle the 'Show All Photos' toggle in the detail map panel."""
-        if show_all:
-            self._navigation.open_location_view()
+        ui = self._window.ui
+        if not hasattr(ui, "map_panel"):
+            return
+        panel = ui.map_panel
+        if not show_all:
+            panel.clear_nearby_photos()
+            return
+        lat, lon = panel.current_location()
+        if lat is None or lon is None:
+            return
+        root = self._library_root()
+        if root is None:
+            return
+        from iPhoto.bootstrap.library_location_service import LibraryLocationService
+        svc = LibraryLocationService(root)
+        assets = svc.list_geotagged_assets()
+        # Filter: same library root and within ~0.5 degree (~55km).
+        nearby = [
+            (a.latitude, a.longitude)
+            for a in assets
+            if abs(a.latitude - lat) <= 0.5 and abs(a.longitude - lon) <= 0.5
+        ]
+        if nearby:
+            panel.show_nearby_photos(nearby)
 
     @staticmethod
     def _resolve_map_package_root(map_runtime: object | None) -> Path:

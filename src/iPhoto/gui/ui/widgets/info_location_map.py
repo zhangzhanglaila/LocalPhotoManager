@@ -271,6 +271,7 @@ class InfoLocationMapView(QWidget):
         self._latitude: float | None = None
         self._longitude: float | None = None
         self._screen_point: QPointF | None = None
+        self._nearby_lonlat: list[tuple[float, float]] = []
         self._requested_zoom = self.DEFAULT_ZOOM
         self._last_set_location: tuple[float, float, float] | None = None
         self._pending_viewport_sync = False
@@ -414,6 +415,16 @@ class InfoLocationMapView(QWidget):
         self._viewport_settle_timer.stop()
         self._overlay.set_screen_point(None)
         self._overlay.hide()
+        self._request_pin_repaint()
+
+    def set_nearby_points(self, points: list[tuple[float, float]]) -> None:
+        """Set additional coordinate points to render as small dots."""
+        self._nearby_lonlat = list(points)
+        self._request_pin_repaint()
+
+    def clear_nearby_points(self) -> None:
+        """Remove all nearby point dots."""
+        self._nearby_lonlat = []
         self._request_pin_repaint()
 
     def shutdown(self) -> None:
@@ -889,6 +900,22 @@ class InfoLocationMapView(QWidget):
         self._uses_post_render_pin = False
 
     def _paint_pin(self, painter: QPainter) -> None:
+        # Draw nearby point dots first (behind the pin).
+        if self._nearby_lonlat and self._map_widget is not None:
+            painter.save()
+            dot_color = QColor(66, 133, 244, 180)
+            outline_color = QColor(255, 255, 255, 220)
+            painter.setPen(Qt.PenStyle.NoPen)
+            for lon, lat in self._nearby_lonlat:
+                pt = self._map_widget.project_lonlat(lon, lat)
+                if pt is None:
+                    continue
+                painter.setBrush(outline_color)
+                painter.drawEllipse(pt, 6, 6)
+                painter.setBrush(dot_color)
+                painter.drawEllipse(pt, 4, 4)
+            painter.restore()
+
         if self._screen_point is None:
             return
         pin = self._overlay.pin_pixmap()
