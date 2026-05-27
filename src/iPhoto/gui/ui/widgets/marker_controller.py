@@ -94,7 +94,7 @@ class _MarkerCluster:
 class _ClusterWorker(QObject):
     """Worker object that performs clustering on a dedicated thread."""
 
-    finished = Signal(int, list)
+    finished = Signal(int, object)
 
     TILE_SIZE = 256
     MERCATOR_LAT_BOUND = 85.05112878
@@ -256,9 +256,9 @@ class _ClusterWorker(QObject):
 class MarkerController(QObject):
     """Encapsulates marker state, clustering and event handling."""
 
-    clustersUpdated = Signal(list)
-    citiesUpdated = Signal(list)
-    markerActivated = Signal(list)
+    clustersUpdated = Signal(object)
+    citiesUpdated = Signal(object)
+    markerActivated = Signal(object)
     thumbnailUpdated = Signal(str, QPixmap)
     thumbnailsInvalidated = Signal()
     _clustering_requested = Signal(int, object, int, int, float, float, float, float, int, int)

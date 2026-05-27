@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import faulthandler
 import logging
 import os
 import signal
@@ -10,12 +11,15 @@ import sys
 import threading
 from pathlib import Path
 
+faulthandler.enable()
+
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor, QPalette, QSurfaceFormat
 from PySide6.QtWidgets import QApplication
 
 from iPhoto.bootstrap.qt_shader_cache import configure_shader_cache_environment
 from iPhoto.gui.render_backend import should_configure_global_desktop_opengl
+from iPhoto.i18n import tr
 
 _logger = logging.getLogger(__name__)
 _TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
@@ -336,7 +340,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _step1_create_coordinator() -> None:
         try:
-            overlay.set_message("正在初始化组件…")
+            overlay.set_message(tr("startup.init_components"))
             app.processEvents()
             _logger.info("startup step 1: creating MainCoordinator")
             coordinator = MainCoordinator(window, context)
@@ -349,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _step2_start_coordinator() -> None:
         try:
-            overlay.set_message("正在启动服务…")
+            overlay.set_message(tr("startup.starting_services"))
             app.processEvents()
             _logger.info("startup step 2: starting coordinator")
             coordinator_ref[0].start()
@@ -360,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _step3a_open_library() -> None:
         try:
-            overlay.set_message("正在打开图库…")
+            overlay.set_message(tr("startup.opening_library"))
             app.processEvents()
             _logger.info("startup step 3a: opening library")
             context.resume_startup_tasks()
@@ -371,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _step3b_scan_check() -> None:
         try:
-            overlay.set_message("正在检查扫描状态…")
+            overlay.set_message(tr("startup.checking_scan"))
             app.processEvents()
             _logger.info("startup step 3b: scan state check done")
             QTimer.singleShot(0, _step4_select_photos)
@@ -381,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def _step4_select_photos() -> None:
         try:
-            overlay.set_message("正在加载照片…")
+            overlay.set_message(tr("startup.loading_photos"))
             app.processEvents()
             coordinator = coordinator_ref[0]
             if len(arguments) > 1:

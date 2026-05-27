@@ -9,7 +9,7 @@ from PySide6.QtCore import QAbstractListModel, QModelIndex, QSize, Qt, Slot
 
 from iPhoto.application.ports import EditServicePort
 from iPhoto.application.dtos import AssetDTO
-from iPhoto.gui.ui.models.roles import Roles, role_names
+from iPhoto.gui.ui.models.roles import Roles, _DictHolder, role_names
 from iPhoto.infrastructure.services.thumbnail_cache_service import ThumbnailCacheService
 from iPhoto.utils.geocoding import resolve_location_name
 
@@ -115,12 +115,12 @@ class GalleryListModelAdapter(QAbstractListModel):
                 return str(motion_abs) if motion_abs else None
             return str(motion_rel) if motion_rel else None
         if role_int == Roles.SIZE:
-            return {
+            return _DictHolder({
                 "duration": self._effective_video_duration(asset),
                 "width": asset.width,
                 "height": asset.height,
                 "bytes": asset.size_bytes,
-            }
+            })
         if role_int == Roles.DT:
             return asset.created_at
         if role_int == Roles.FEATURED:
@@ -142,7 +142,8 @@ class GalleryListModelAdapter(QAbstractListModel):
         if role_int == Roles.MICRO_THUMBNAIL:
             return asset.micro_thumbnail
         if role_int == Roles.INFO:
-            return self.info_for_row(row)
+            info = self.info_for_row(row)
+            return _DictHolder(info) if info is not None else None
         if role_int == Roles.IS_PANO:
             return asset.is_pano
         return None
@@ -169,7 +170,7 @@ class GalleryListModelAdapter(QAbstractListModel):
     def asset_dto(self, row: int) -> Optional[AssetDTO]:
         return self._store.asset_at(row)
 
-    @Slot(int, result="QVariant")
+    @Slot(int, result=str)
     def get(self, row: int):
         idx = self.index(row, 0)
         return self.data(idx, Roles.ABS)

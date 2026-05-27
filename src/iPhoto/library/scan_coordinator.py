@@ -111,6 +111,7 @@ class ScanCoordinatorMixin:
             people_service=getattr(self, "_people_service", None),
         )
         face_worker.statusChanged.connect(self._on_face_scan_status_changed)
+        face_worker.downloadProgress.connect(self._on_face_download_progress)
         face_worker.finished.connect(self._on_face_scan_finished)
         self._current_face_scanner = face_worker
         # Release lock before starting the worker
@@ -379,6 +380,18 @@ class ScanCoordinatorMixin:
     def _on_face_scan_status_changed(self, message: str) -> None:
         self._face_scan_status_message = message or None
         self.faceScanStatusChanged.emit(message)
+
+    def _on_face_download_progress(self, downloaded: int, total: int) -> None:
+        if total > 0:
+            pct = downloaded * 100 // total
+            mb_done = downloaded / (1024 * 1024)
+            mb_total = total / (1024 * 1024)
+            msg = f"正在下载人脸检测模型... {pct}% ({mb_done:.1f}/{mb_total:.1f} MB)"
+        else:
+            mb_done = downloaded / (1024 * 1024)
+            msg = f"正在下载人脸检测模型... {mb_done:.1f} MB"
+        self._face_scan_status_message = msg
+        self.faceScanStatusChanged.emit(msg)
 
     def _on_face_scan_finished(self) -> None:
         self._current_face_scanner = None

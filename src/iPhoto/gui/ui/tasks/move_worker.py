@@ -27,7 +27,7 @@ class MoveSignals(QObject):
     # ``finished`` now emits the source root, destination root, a list of
     # ``(original, target)`` path tuples, and two booleans indicating whether the
     # on-disk caches were updated successfully for the respective albums.
-    finished = Signal(Path, Path, list, bool, bool)
+    finished = Signal(Path, Path, object, bool, bool)
     error = Signal(str)
 
 

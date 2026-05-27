@@ -36,7 +36,7 @@ class AppFacade(QObject):
     linksUpdated = Signal(Path)
     errorRaised = Signal(str)
     scanProgress = Signal(Path, int, int)
-    scanChunkReady = Signal(Path, list)
+    scanChunkReady = Signal(Path, object)
     scanFinished = Signal(Path, bool)
     scanBatchFailed = Signal(Path, int)
     loadStarted = Signal(Path)

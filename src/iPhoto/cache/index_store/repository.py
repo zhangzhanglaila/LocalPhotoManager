@@ -761,6 +761,25 @@ class AssetRepository:
             (location, rel),
         )
 
+    def clear_location_for_null_gps(self) -> int:
+        """Clear persisted location names for assets with (0, 0) GPS coordinates.
+
+        Returns the number of rows affected.
+        """
+        # The gps column stores a JSON dict like {"lat": 0.0, "lon": 0.0}.
+        # We match rows where both lat and lon are effectively zero.
+        return self._db_manager.execute_in_transaction(
+            """
+            UPDATE assets SET location = NULL
+            WHERE location IS NOT NULL
+              AND gps IS NOT NULL
+              AND (
+                json_extract(gps, '$.lat') BETWEEN -0.000001 AND 0.000001
+                AND json_extract(gps, '$.lon') BETWEEN -0.000001 AND 0.000001
+              )
+            """,
+        )
+
     def update_asset_geodata(
         self,
         rel: str,

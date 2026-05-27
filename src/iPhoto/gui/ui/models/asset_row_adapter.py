@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 from PySide6.QtCore import Qt, QSize
 
-from .roles import Roles
+from .roles import Roles, _DictHolder
 from ..tasks.thumbnail_loader import ThumbnailLoader
 
 
@@ -47,7 +47,8 @@ class AssetRowAdapter:
         if role == Roles.LIVE_MOTION_ABS:
             return row["live_motion_abs"]
         if role == Roles.SIZE:
-            return row["size"]
+            size = row["size"]
+            return _DictHolder(size) if isinstance(size, dict) else size
         if role == Roles.DT:
             return row["dt"]
         if role == Roles.DT_SORT:
@@ -59,7 +60,7 @@ class AssetRowAdapter:
         if role == Roles.IS_CURRENT:
             return bool(row.get("is_current", False))
         if role == Roles.INFO:
-            return dict(row)
+            return _DictHolder(dict(row))
         if role == Roles.MICRO_THUMBNAIL:
             return row.get("micro_thumbnail_image")
         return None

@@ -17,7 +17,7 @@ LOGGER = logging.getLogger(__name__)
 class IncrementalRefreshSignals(QObject):
     """Signal container for :class:`IncrementalRefreshWorker` events."""
 
-    resultsReady = Signal(Path, list)  # list is fresh_rows
+    resultsReady = Signal(Path, object)  # list is fresh_rows
     error = Signal(Path, str)
 
     def __init__(self, parent: QObject | None = None) -> None:

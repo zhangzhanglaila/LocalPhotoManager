@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional, cast
 
 from PySide6.QtCore import QObject, QRectF, Qt, QEvent, Signal, Slot
+from ....i18n import tr
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -279,7 +280,7 @@ class PhotoMapView(QWidget):
     assetActivated = Signal(str)
     """Signal emitted when the user activates a single asset marker."""
 
-    clusterActivated = Signal(list)
+    clusterActivated = Signal(object)
     """Signal emitted when the user clicks a cluster with multiple assets.
 
     The payload is a list of :class:`GeotaggedAsset` objects representing the
@@ -341,7 +342,7 @@ class PhotoMapView(QWidget):
         self._last_tooltip_text = ""
         self._thumbnail_loader = ThumbnailLoader(self)
         self._map_widget_built = False
-        self._placeholder_label = QLabel("正在加载地图…", self)
+        self._placeholder_label = QLabel(tr("map.loading"), self)
         self._placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder_label.setStyleSheet("color: #888; font-size: 14px;")
         self._layout.addWidget(self._placeholder_label)
@@ -361,14 +362,14 @@ class PhotoMapView(QWidget):
 
         if self._map_widget_built:
             return
-        self._placeholder_label.setText("正在加载地图…")
+        self._placeholder_label.setText(tr("map.loading"))
         try:
             self._build_map_widget()
             self._map_widget_built = True
             self._placeholder_label.hide()
         except Exception:
             logger.exception("_ensure_map_widget: failed to build map widget")
-            self._placeholder_label.setText("地图加载失败，请重启应用重试")
+            self._placeholder_label.setText(tr("map.load_failed"))
 
     def activate_map(self) -> None:
         """Called by the view router when the user navigates to the map view."""

@@ -16,7 +16,7 @@ from iPhoto.domain.models.query import AssetQuery
 
 class AlbumViewModel(QObject):
     albumLoaded = Signal(object)  # Payload: Album DTO or similar
-    assetsLoaded = Signal(list)
+    assetsLoaded = Signal(object)
     scanFinished = Signal()
 
     def __init__(self, album_service: AlbumService, asset_service: AssetService):

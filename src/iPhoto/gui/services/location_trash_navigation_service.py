@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 class _LocationAssetsSignals(QObject):
-    finished = Signal(int, Path, list)
+    finished = Signal(int, Path, object)
     error = Signal(int, Path, str)
 
 
@@ -73,7 +73,7 @@ class _TrashCleanupWorker(QRunnable):
 class LocationTrashNavigationService(QObject):
     """Own background transport and request state for Location/Trash flows."""
 
-    locationAssetsLoaded = Signal(int, Path, list)
+    locationAssetsLoaded = Signal(int, Path, object)
     errorRaised = Signal(str)
 
     _TRASH_CLEANUP_THROTTLE_SEC = 300.0

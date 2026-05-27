@@ -285,6 +285,15 @@ class FaceRepository:
                 LEFT JOIN faces ON faces.face_id = persons.key_face_id
                 ORDER BY persons.face_count DESC, persons.created_at ASC
                 """).fetchall()
+            asset_count_rows = conn.execute("""
+                SELECT person_id, COUNT(DISTINCT asset_id) AS asset_count
+                FROM faces
+                WHERE person_id IS NOT NULL
+                GROUP BY person_id
+                """).fetchall()
+        asset_count_map: dict[str, int] = {
+            str(row["person_id"]): int(row["asset_count"]) for row in asset_count_rows
+        }
         auto_rows_by_person_id = {str(row["person_id"]): row for row in rows if row["person_id"]}
         manual_faces_by_person_id: dict[str, list[ManualFaceRecord]] = defaultdict(list)
         profile_map = {}
@@ -311,6 +320,9 @@ class FaceRepository:
             face_count = auto_count + len(manual_faces)
             if face_count <= 0:
                 continue
+            auto_asset_count = asset_count_map.get(person_id, 0)
+            manual_asset_ids = {face.asset_id for face in manual_faces}
+            asset_count = auto_asset_count + len(manual_asset_ids)
             key_face_id = (
                 str(row["key_face_id"])
                 if row is not None and row["key_face_id"]
@@ -341,6 +353,7 @@ class FaceRepository:
                     thumbnail_path=resolved_thumbnail,
                     created_at=str(created_at),
                     is_hidden=bool(hidden_map.get(person_id, False)),
+                    asset_count=asset_count,
                 )
             )
         summaries.sort(key=lambda summary: (-summary.face_count, summary.created_at, summary.person_id))

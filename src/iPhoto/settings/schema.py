@@ -77,6 +77,10 @@ SETTINGS_SCHEMA: dict[str, Any] = {
                     "type": "array",
                     "items": {"type": "string"},
                 },
+                "language": {
+                    "type": "string",
+                    "enum": ["zh", "en"],
+                },
             },
             "additionalProperties": True,
         },
@@ -106,6 +110,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "show_hidden_people": False,
         "show_map_extension_startup_prompt": True,
         "wheel_action": "navigate",
+        "language": "zh",
     },
     "last_open_albums": [],
 }

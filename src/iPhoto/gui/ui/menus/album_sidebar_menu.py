@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from ..widgets import dialogs
 from ....errors import LibraryError
+from ....i18n import tr
 from ....library.runtime_controller import LibraryRuntimeController
 from ....library.tree import AlbumNode
 from ..models.album_tree_model import AlbumTreeItem, AlbumTreeModel, NodeType
@@ -123,70 +124,70 @@ class AlbumSidebarContextMenu(QMenu):
 
     def _build_menu(self) -> None:
         if self._item.node_type in {NodeType.HEADER, NodeType.SECTION}:
-            self.addAction("新建相册…", self._prompt_new_album)
+            self.addAction(tr("menu.new_album"), self._prompt_new_album)
         if self._item.node_type == NodeType.ALBUM:
             self.addAction(self._album_pin_label(), self._toggle_album_pin)
             self.addSeparator()
             self.addAction(
-                "New Sub-Album…",
+                tr("menu.new_sub_album"),
                 lambda: self._prompt_new_album(self._item),
             )
             self.addAction(
-                "重命名相册…",
+                tr("menu.rename_album"),
                 lambda: self._prompt_rename_album(self._item),
             )
             self.addSeparator()
             self.addAction(
-                "Show in File Manager",
+                tr("menu.show_in_file_manager"),
                 lambda: self._reveal_path(self._item.album),
             )
             if self._on_exclude_album is not None and self._item.album is not None:
                 self.addAction(
-                    "从扫描中排除",
+                    tr("menu.exclude_from_scan"),
                     lambda: self._on_exclude_album(self._item.album.path),
                 )
         if self._item.node_type == NodeType.SUBALBUM:
             self.addAction(self._album_pin_label(), self._toggle_album_pin)
             self.addSeparator()
             self.addAction(
-                "重命名相册…",
+                tr("menu.rename_album"),
                 lambda: self._prompt_rename_album(self._item),
             )
             self.addSeparator()
             self.addAction(
-                "Show in File Manager",
+                tr("menu.show_in_file_manager"),
                 lambda: self._reveal_path(self._item.album),
             )
             if self._on_exclude_album is not None and self._item.album is not None:
                 self.addAction(
-                    "从扫描中排除",
+                    tr("menu.exclude_from_scan"),
                     lambda: self._on_exclude_album(self._item.album.path),
                 )
         if self._item.node_type == NodeType.PINNED_ALBUM:
             if self._item.album is not None:
                 self.addAction(
-                    "重命名相册…",
+                    tr("menu.rename_album"),
                     lambda: self._prompt_rename_album(self._item),
                 )
             else:
-                self.addAction("Rename…", self._prompt_rename_pinned_item)
+                self.addAction(tr("menu.rename"), self._prompt_rename_pinned_item)
             self.addSeparator()
-            self.addAction("Unpin", self._unpin_sidebar_item)
+            self.addAction(tr("menu.unpin"), self._unpin_sidebar_item)
         if self._item.node_type in {
             NodeType.PINNED_PERSON,
             NodeType.PINNED_GROUP,
         }:
-            self.addAction("Rename…", self._prompt_rename_pinned_item)
+            self.addAction(tr("menu.rename"), self._prompt_rename_pinned_item)
             self.addSeparator()
-            self.addAction("Unpin", self._unpin_sidebar_item)
+            self.addAction(tr("menu.unpin"), self._unpin_sidebar_item)
         if self._item.node_type == NodeType.ACTION:
-            self.addAction("Set Basic Library…", self._on_bind_library)
+            self.addAction(tr("action.set_basic_library"), self._on_bind_library)
 
     def _album_pin_label(self) -> str:
         album = self._item.album
         if album is None:
-            return "Pin Album"
-        return "Unpin Album" if self._is_album_pinned(album.path) else "Pin Album"
+            return tr("menu.pin_album")
+        return tr("menu.unpin_album") if self._is_album_pinned(album.path) else tr("menu.pin_album")
 
     def _toggle_album_pin(self) -> None:
         pinned_service = self._model._pinned_service
@@ -228,15 +229,15 @@ class AlbumSidebarContextMenu(QMenu):
 
         name, ok = _create_styled_input_dialog(
             self.parentWidget(),
-            "Rename Pinned Item",
-            "新置顶标签：",
+            tr("dialog.rename_pinned_item"),
+            tr("dialog.new_pinned_label"),
             text=self._item.title or pinned_item.label,
         )
         if not ok:
             return
         target_name = name.strip()
         if not target_name:
-            dialogs.show_warning(self.parentWidget(), "置顶标签不能为空。")
+            dialogs.show_warning(self.parentWidget(), tr("msg.pinned_label_empty"))
             return
         pinned_service.rename_item(
             kind=pinned_item.kind,
@@ -264,12 +265,12 @@ class AlbumSidebarContextMenu(QMenu):
         if base_item is None:
             return
 
-        name, ok = _create_styled_input_dialog(self.parentWidget(), "新建相册", "相册名称：")
+        name, ok = _create_styled_input_dialog(self.parentWidget(), tr("dialog.new_album"), tr("dialog.album_name"))
         if not ok:
             return
         target_name = name.strip()
         if not target_name:
-            dialogs.show_warning(self.parentWidget(), "相册名称不能为空。")
+            dialogs.show_warning(self.parentWidget(), tr("msg.album_name_empty"))
             return
         try:
             if base_item.node_type == NodeType.ALBUM and base_item.album is not None:
@@ -287,15 +288,15 @@ class AlbumSidebarContextMenu(QMenu):
         current_title = item.album.title
         name, ok = _create_styled_input_dialog(
             self.parentWidget(),
-            "重命名相册",
-            "新相册名称：",
+            tr("dialog.rename_album"),
+            tr("dialog.new_album_name"),
             text=current_title,
         )
         if not ok:
             return
         target_name = name.strip()
         if not target_name:
-            dialogs.show_warning(self.parentWidget(), "相册名称不能为空。")
+            dialogs.show_warning(self.parentWidget(), tr("msg.album_name_empty"))
             return
         try:
             self._library.rename_album(item.album, target_name)
@@ -330,7 +331,7 @@ def show_context_menu(
         menu = QMenu(parent)
         _apply_main_window_menu_style(menu, parent)
 
-        menu.addAction("Set Basic Library…", on_bind_library)
+        menu.addAction(tr("action.set_basic_library"), on_bind_library)
         menu.exec(global_pos)
         return
 

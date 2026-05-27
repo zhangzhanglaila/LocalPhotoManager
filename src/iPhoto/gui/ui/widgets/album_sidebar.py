@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from ....library.runtime_controller import LibraryRuntimeController
 from ....config import ALL_PHOTOS_TITLE as _ALL_PHOTOS_TITLE
+from ....i18n import tr
 from ...services.pinned_items_service import PinnedItemsService, PinnedSidebarItem
 from ..models.album_tree_model import AlbumTreeModel, NodeType
 from ..delegates.album_sidebar_delegate import (
@@ -169,7 +170,7 @@ class AlbumSidebar(QWidget):
     bindLibraryRequested = Signal()
     excludeAlbumRequested = Signal(Path)
     filesDropped = Signal(Path, object)
-    albumCheckStateChanged = Signal(list)
+    albumCheckStateChanged = Signal(object)
 
     ALL_PHOTOS_TITLE = _ALL_PHOTOS_TITLE
 
@@ -190,7 +191,7 @@ class AlbumSidebar(QWidget):
         # parent widgets are translucent (required for the rounded window shell).
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self._title = QLabel("Basic Library")
+        self._title = QLabel(tr("sidebar.basic_library"))
         self._title.setObjectName("albumSidebarTitle")
         self._title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         # `Ignored` allows the label to be compressed below its size hint so the navigation
@@ -346,6 +347,12 @@ class AlbumSidebar(QWidget):
 
         self._model.refresh()
 
+    def retranslate(self) -> None:
+        """Refresh translatable strings for the current language."""
+
+        self._update_title()
+        self._model.refresh()
+
     def checked_root_paths(self) -> list[Path]:
         """Return the currently checked root-level album paths."""
         return self._model.checked_root_paths()
@@ -370,7 +377,7 @@ class AlbumSidebar(QWidget):
                     self._tree.expand(child)
 
     def _on_model_reset(self) -> None:
-        _logger.info(
+        _logger.debug(
             "_on_model_reset: pending=%s current=%s static=%s library_root=%s",
             self._pending_selection,
             self._current_selection,
@@ -411,12 +418,12 @@ class AlbumSidebar(QWidget):
             # Keep the unbound state explicit so users know they still need to
             # attach a library before navigating, but avoid appending verbose
             # filesystem paths that clutter the chrome.
-            self._title.setText("Basic Library — not bound")
+            self._title.setText(tr("sidebar.basic_library_unbound"))
         else:
             # Always display a concise title without the backing path to keep
             # the window chrome tidy while the sidebar continues to show the
             # simple library name.
-            self._title.setText("Basic Library")
+            self._title.setText(tr("sidebar.basic_library"))
         # Recalculate the manual minimum so manual splitter drags continue to honour the
         # configured width even if the displayed path becomes longer or shorter.
         self._refresh_manual_minimum_width()
@@ -433,9 +440,9 @@ class AlbumSidebar(QWidget):
             self.bindLibraryRequested.emit()
             return
         if node_type == NodeType.HEADER:
-            if item.title == "Albums":
+            if item.title == tr("sidebar.albums"):
                 self._current_pinned_selection = None
-                self.staticNodeSelected.emit("Albums")
+                self.staticNodeSelected.emit(tr("sidebar.albums"))
             return
         if node_type == NodeType.STATIC:
             if self._library.root() is None:
@@ -447,10 +454,10 @@ class AlbumSidebar(QWidget):
             self._current_selection = None
             self._current_static_selection = item.title
             if item.title == self.ALL_PHOTOS_TITLE:
-                _logger.info("_on_selection_changed: emitting allPhotosSelected")
+                _logger.debug("_on_selection_changed: emitting allPhotosSelected")
                 self.allPhotosSelected.emit()
             else:
-                _logger.info("_on_selection_changed: emitting staticNodeSelected(%r)", item.title)
+                _logger.debug("_on_selection_changed: emitting staticNodeSelected(%r)", item.title)
                 self.staticNodeSelected.emit(item.title)
             return
         if node_type in {NodeType.PINNED_ALBUM, NodeType.PINNED_PERSON, NodeType.PINNED_GROUP}:

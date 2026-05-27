@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Optional
 
 from PySide6.QtCore import QObject, QTimer, Signal
+from ...i18n import tr
 
 from iPhoto.application.contracts.runtime_entry_contract import RuntimeEntryContract
 from iPhoto.config import ALL_PHOTOS_TITLE
@@ -202,6 +203,7 @@ class NavigationCoordinator(QObject):
     def open_people_cluster_gallery(self, query) -> None:
         self._reset_playback()
         self._gallery_vm.open_people_cluster_gallery(query)
+        self._router.show_gallery()
 
     def return_from_cluster_gallery(self) -> None:
         self._gallery_vm.return_from_cluster_gallery()
@@ -214,11 +216,13 @@ class NavigationCoordinator(QObject):
 
     def _handle_static_node(self, name: str) -> None:
         normalized = name.casefold()
+        # Also check against translated header names so that translated
+        # sidebar titles (e.g. "相册" for "Albums") are recognised.
         if normalized == "all photos":
             self.open_all_photos()
         elif normalized == "recently deleted":
             self.open_recently_deleted()
-        elif normalized == "albums":
+        elif normalized == "albums" or name == tr("sidebar.albums"):
             self._reset_playback()
             self._gallery_vm.open_albums_dashboard()
         elif normalized == "favorites":
@@ -303,10 +307,10 @@ class NavigationCoordinator(QObject):
             from iPhoto.gui.ui.widgets import dialogs
             confirmed = dialogs.confirm_action(
                 self._sidebar,
-                f"确定要移除图库 {matching_root} 吗？\n移除后将不再扫描该文件夹。",
-                title="移除图库",
-                yes_label="移除",
-                no_label="取消",
+                tr("dialog.remove_library_msg", root=matching_root),
+                title=tr("dialog.remove_library"),
+                yes_label=tr("dialog.remove"),
+                no_label=tr("generic.cancel"),
             )
             if not confirmed:
                 return

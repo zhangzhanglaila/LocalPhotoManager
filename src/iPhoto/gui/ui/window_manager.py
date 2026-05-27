@@ -418,7 +418,12 @@ class FramelessWindowManager(QObject):
     def _configure_window_controls(self) -> None:
         self._ui.minimize_button.clicked.connect(self._window.showMinimized)
         self._ui.close_button.clicked.connect(self._window.close)
-        self._ui.fullscreen_button.clicked.connect(self.toggle_fullscreen)
+        # Title bar green button (must connect via title_bar directly because
+        # ui.fullscreen_button gets overwritten by detail_page.fullscreen_button
+        # later in setupUi).
+        self._ui.title_bar.fullscreen_button.clicked.connect(self.toggle_fullscreen)
+        # Detail page fullscreen button
+        self._ui.detail_page.fullscreen_button.clicked.connect(self.toggle_fullscreen)
         self._ui.image_viewer.fullscreenToggleRequested.connect(self.toggle_fullscreen)
         self._ui.image_viewer.fullscreenExitRequested.connect(self.exit_fullscreen)
         self._ui.video_area.fullscreenExitRequested.connect(self.exit_fullscreen)

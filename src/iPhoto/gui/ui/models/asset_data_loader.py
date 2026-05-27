@@ -20,7 +20,7 @@ from ..tasks.asset_loader_worker import (
 class AssetDataLoader(QObject):
     """Wrap :class:`AssetLoaderWorker` to provide a minimal Qt friendly API."""
 
-    chunkReady = Signal(Path, list)
+    chunkReady = Signal(Path, object)
     loadFinished = Signal(Path, bool)
     loadProgress = Signal(Path, int, int)
     error = Signal(Path, str)

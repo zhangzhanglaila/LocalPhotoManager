@@ -22,7 +22,7 @@ from .people_dashboard_shared import (
 
 class PeopleBoard(QWidget):
     mergeRequested = Signal(str, str)
-    orderChanged = Signal(list)
+    orderChanged = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -54,6 +54,10 @@ class PeopleBoard(QWidget):
             card.show()
         self.update_positions()
 
+    def strip_shadows(self) -> None:
+        for card in self.top_cards:
+            card.setGraphicsEffect(None)
+
     def clear_cards(self) -> None:
         if (
             self._active_anim is not None
@@ -61,6 +65,7 @@ class PeopleBoard(QWidget):
         ):
             self._active_anim.stop()
         for card in self.top_cards:
+            card.setGraphicsEffect(None)
             card.hide()
             card.deleteLater()
         self.top_cards = []
@@ -207,7 +212,7 @@ class PeopleBoard(QWidget):
 
 
 class GroupBoard(QWidget):
-    orderChanged = Signal(list)
+    orderChanged = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -227,6 +232,10 @@ class GroupBoard(QWidget):
             card.show()
         self.update_positions()
 
+    def strip_shadows(self) -> None:
+        for card in self.top_cards:
+            card.setGraphicsEffect(None)
+
     def clear_cards(self) -> None:
         if (
             self._active_anim is not None
@@ -234,6 +243,7 @@ class GroupBoard(QWidget):
         ):
             self._active_anim.stop()
         for card in self.top_cards:
+            card.setGraphicsEffect(None)
             card.hide()
             card.deleteLater()
         self.top_cards = []

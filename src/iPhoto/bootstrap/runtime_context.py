@@ -13,6 +13,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..di.container import DependencyContainer
     from ..gui.facade import AppFacade
     from ..gui.ui.theme_manager import ThemeManager
+    from ..i18n import LanguageStore
     from ..infrastructure.services.library_asset_runtime import LibraryAssetRuntime
     from ..library.runtime_controller import LibraryRuntimeController
     from ..settings.manager import SettingsManager
@@ -49,6 +50,12 @@ def _create_theme_manager(settings: "SettingsManager") -> "ThemeManager":
     return theme
 
 
+def _create_language_store(settings: "SettingsManager") -> "LanguageStore":
+    from ..i18n import LanguageStore
+
+    return LanguageStore(settings)
+
+
 def _create_asset_runtime() -> "LibraryAssetRuntime":
     from ..infrastructure.services.library_asset_runtime import LibraryAssetRuntime
 
@@ -71,6 +78,7 @@ class RuntimeContext:
     recent_albums: list[Path] = field(default_factory=list)
     defer_startup_tasks: bool = False
     theme: "ThemeManager" = field(init=False)
+    language: "LanguageStore" = field(init=False)
     library_session: "LibrarySession | None" = field(init=False, default=None)
     _container: "DependencyContainer | None" = field(
         init=False,
@@ -82,6 +90,7 @@ class RuntimeContext:
 
     def __post_init__(self) -> None:
         self.theme = _create_theme_manager(self.settings)
+        self.language = _create_language_store(self.settings)
         self.facade.bind_library(self.library)
 
         # Migrate: if basic_library_paths is empty but basic_library_path exists,

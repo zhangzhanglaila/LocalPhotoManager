@@ -5,6 +5,8 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
 
+from ....i18n import tr
+
 
 class StartupOverlay(QWidget):
     """Semi-transparent overlay with loading text and progress bar.
@@ -24,7 +26,7 @@ class StartupOverlay(QWidget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self._label = QLabel("正在启动…", self)
+        self._label = QLabel(tr("startup.starting"), self)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label.setStyleSheet(
             "color: #333; font-size: 16px; font-weight: bold; background: transparent;"

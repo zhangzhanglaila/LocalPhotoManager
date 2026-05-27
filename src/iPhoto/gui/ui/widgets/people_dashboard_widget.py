@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
+from ....i18n import tr
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -38,7 +40,7 @@ from ..menus.style import apply_menu_style
 
 
 class _PeopleDashboardLoaderSignals(QObject):
-    loaded = Signal(int, int, bool, list, list, int, object)
+    loaded = Signal(int, int, bool, object, object, int, object)
 
 
 class _PeopleDashboardLoaderWorker(QRunnable):
@@ -61,7 +63,34 @@ class _PeopleDashboardLoaderWorker(QRunnable):
         self._signals = signals
 
     def run(self) -> None:
-        if self._people_service.library_root() is None:
+        try:
+            if self._people_service.library_root() is None:
+                self._signals.loaded.emit(
+                    self._generation,
+                    self._index_version,
+                    False,
+                    [],
+                    [],
+                    0,
+                    self._status_message,
+                )
+                return
+            summaries, groups, pending = self._people_service.load_dashboard(
+                include_hidden=self._show_hidden_people
+            )
+            self._signals.loaded.emit(
+                self._generation,
+                self._index_version,
+                True,
+                summaries,
+                groups,
+                pending,
+                self._status_message,
+            )
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "PeopleDashboardLoaderWorker failed"
+            )
             self._signals.loaded.emit(
                 self._generation,
                 self._index_version,
@@ -71,19 +100,6 @@ class _PeopleDashboardLoaderWorker(QRunnable):
                 0,
                 self._status_message,
             )
-            return
-        summaries, groups, pending = self._people_service.load_dashboard(
-            include_hidden=self._show_hidden_people
-        )
-        self._signals.loaded.emit(
-            self._generation,
-            self._index_version,
-            True,
-            summaries,
-            groups,
-            pending,
-            self._status_message,
-        )
 
 
 class PeopleDashboardWidget(QWidget):
@@ -104,6 +120,7 @@ class PeopleDashboardWidget(QWidget):
         self._index_version = 0
         self._loaded_index_version = -1
         self._pending_index_refresh = False
+        self._pending_card_population = False
         self._current_library_root: Path | None = None
         self._show_hidden_people = False
         self._load_signals = _PeopleDashboardLoaderSignals()
@@ -244,6 +261,10 @@ class PeopleDashboardWidget(QWidget):
     def build_group_query(self, group_id: str):
         return self._service.build_group_query(group_id)
 
+    def prepare_for_hide(self) -> None:
+        self._board.strip_shadows()
+        self._groups_board.strip_shadows()
+
     def set_status_message(self, message: str | None) -> None:
         self._status_message = message or None
         self._update_status_labels()
@@ -326,8 +347,11 @@ class PeopleDashboardWidget(QWidget):
             self._empty.hide()
             self._scroll.show()
             if cards_changed:
-                self._populate_groups()
-                self._populate_cards()
+                if self.isVisible():
+                    self._populate_groups()
+                    self._populate_cards()
+                else:
+                    self._pending_card_population = True
             return
 
         if status_text:
@@ -575,7 +599,7 @@ class PeopleDashboardWidget(QWidget):
         if self._is_group_pinned(summary.group_id):
             dialogs.show_warning(
                 self,
-                "置顶的群组需要先取消置顶才能解散。",
+                tr("people.unpin_group_first"),
             )
             return
         if not self._confirm_disband_group(summary):
@@ -594,18 +618,16 @@ class PeopleDashboardWidget(QWidget):
             if has_other_people:
                 dialogs.show_information(
                     self,
-                    (
-                        "隐藏和显示状态的人物无法合并，请先将两个人物卡片都设为隐藏或都设为显示。"
-                    ),
-                    title="无法合并人物",
+                    tr("people.cannot_merge_hidden"),
+                    title=tr("people.cannot_merge"),
                 )
             return
 
         dialog = GroupPeopleDialog(
             choices,
-            title_text="合并人物",
-            prompt_text="合并到",
-            confirm_text="选择",
+            title_text=tr("people.merge_person"),
+            prompt_text=tr("people.merge_to"),
+            confirm_text=tr("people.select"),
             min_selection=1,
             max_selection=1,
             dark_mode=self._uses_dark_theme(),
@@ -647,8 +669,8 @@ class PeopleDashboardWidget(QWidget):
         if source.is_hidden != target.is_hidden:
             dialogs.show_information(
                 self,
-                "隐藏和显示状态的人物无法合并，请先将两个人物卡片都设为隐藏或都设为显示。",
-                title="无法合并人物",
+                tr("people.cannot_merge_hidden"),
+                title=tr("people.cannot_merge"),
             )
             return False
 
@@ -661,23 +683,23 @@ class PeopleDashboardWidget(QWidget):
         return merged
 
     def _confirm_hide_person(self, summary: PersonSummary) -> bool:
-        name = (summary.name or "").strip() or "此人"
+        name = (summary.name or "").strip() or tr("people.unnamed")
         return MergeConfirmDialog.confirm_action(
             item_count=1,
             parent=self,
-            title_text="隐藏此人物？",
-            body_text=f"隐藏 {name} 后，将从人物视图中移除，直到你选择「显示隐藏的人物」或取消隐藏。",
-            confirm_text="隐藏人物",
+            title_text=tr("people.hide_person_title"),
+            body_text=tr("people.hide_person_body", name=name),
+            confirm_text=tr("people.hide_person_confirm"),
         )
 
     def _confirm_disband_group(self, summary: PeopleGroupSummary) -> bool:
-        label = summary.name.strip() or "此群组"
+        label = summary.name.strip() or tr("people.unnamed_group")
         return MergeConfirmDialog.confirm_action(
             item_count=max(2, len(summary.member_person_ids)),
             parent=self,
-            title_text="解散此群组？",
-            body_text=f"解散 {label} 后将移除群组，但保留其中的所有人物和照片。",
-            confirm_text="解散群组",
+            title_text=tr("people.dissolve_group_title"),
+            body_text=tr("people.dissolve_group_body", label=label),
+            confirm_text=tr("people.dissolve_group_confirm"),
         )
 
     def _persist_cluster_order(self, ordered_person_ids: list[str]) -> None:
@@ -736,17 +758,16 @@ class PeopleDashboardWidget(QWidget):
         normalized = text.strip()
         if normalized:
             return normalized
-        dialogs.show_warning(self, "置顶此人物前需要先填写名称。")
+        dialogs.show_warning(self, tr("people.pin_requires_name"))
         return None
 
     def _update_status_labels(self) -> None:
-        if self._loading:
-            return
         if self._summaries:
-            self._message.setText(
-                "Click a cluster or group card to open matching assets, "
-                "or drag cards close together to merge clusters."
-            )
+            if not self._loading:
+                self._message.setText(
+                    "Click a cluster or group card to open matching assets, "
+                    "or drag cards close together to merge clusters."
+                )
             return
         if self._status_message:
             self._message.setText(self._status_message)
@@ -841,6 +862,10 @@ class PeopleDashboardWidget(QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
+        if self._pending_card_population:
+            self._pending_card_population = False
+            self._populate_groups()
+            self._populate_cards()
         if self._pending_index_refresh or self._loaded_index_version < self._index_version:
             self._schedule_visible_refresh()
 

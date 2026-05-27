@@ -22,7 +22,7 @@ class ImportSignals(QObject):
 
     started = Signal(Path)
     progress = Signal(Path, int, int)
-    finished = Signal(Path, list, bool)
+    finished = Signal(Path, object, bool)
     error = Signal(str)
 
 

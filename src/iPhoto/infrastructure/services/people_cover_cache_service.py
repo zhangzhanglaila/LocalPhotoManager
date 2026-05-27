@@ -46,6 +46,7 @@ class PeopleCoverCacheService(QObject):
         self._disk_cache_path.mkdir(parents=True, exist_ok=True)
         self._memory_cache: dict[str, QPixmap] = {}
         self._pending_tasks: set[str] = set()
+        self._worker_signals: dict[str, PeopleCoverWorkerSignals] = {}
         self._thread_pool = QThreadPool.globalInstance()
         self._memory_limit_items = max(32, int(memory_limit_items))
         self._is_shutting_down = False
@@ -53,6 +54,7 @@ class PeopleCoverCacheService(QObject):
     def shutdown(self) -> None:
         self._is_shutting_down = True
         self._pending_tasks.clear()
+        self._worker_signals.clear()
         self._memory_cache.clear()
 
     def set_disk_cache_path(self, disk_cache_path: Path) -> None:
@@ -114,8 +116,9 @@ class PeopleCoverCacheService(QObject):
 
         if cache_key not in self._pending_tasks:
             self._pending_tasks.add(cache_key)
-            worker_signals = PeopleCoverWorkerSignals()
+            worker_signals = PeopleCoverWorkerSignals(self)
             worker_signals.result.connect(self._handle_render_result)
+            self._worker_signals[cache_key] = worker_signals
             worker = PeopleCoverRenderTask(
                 cache_key=cache_key,
                 renderer=renderer,
@@ -126,6 +129,7 @@ class PeopleCoverCacheService(QObject):
 
     def _handle_render_result(self, cache_key: str, image: QImage) -> None:
         self._pending_tasks.discard(cache_key)
+        self._worker_signals.pop(cache_key, None)
         if self._is_shutting_down:
             return
         if image.isNull():

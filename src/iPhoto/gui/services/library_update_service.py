@@ -56,7 +56,7 @@ class LibraryUpdateService(QObject):
     """Coordinate rescans, Live Photo pairing, and move aftermath bookkeeping."""
 
     scanProgress = Signal(Path, int, int)
-    scanChunkReady = Signal(Path, list)
+    scanChunkReady = Signal(Path, object)
     scanFinished = Signal(Path, bool)
     scanBatchFailed = Signal(Path, int)
     indexUpdated = Signal(Path)

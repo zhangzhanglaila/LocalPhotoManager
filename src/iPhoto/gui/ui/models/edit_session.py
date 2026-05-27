@@ -47,7 +47,7 @@ class EditSession(QObject):
     valueChanged = Signal(str, object)
     """Emitted when a single adjustment changes."""
 
-    valuesChanged = Signal(dict)
+    valuesChanged = Signal(object)
     """Emitted after one or more adjustments have been updated."""
 
     resetPerformed = Signal()

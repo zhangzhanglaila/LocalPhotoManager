@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any, Iterable, Literal, Optional
 
@@ -54,6 +55,7 @@ class GalleryViewModel(BaseViewModel):
         self._cluster_gallery_origin: Literal["location", "people", None] = None
         self._people_cluster_kind: Literal["person", "group", None] = None
         self._people_cluster_id: str | None = None
+        self._cluster_gallery_opened_at: float = 0.0
         self._checked_album_paths: list[str] | None = None
 
         self.current_section = ObservableProperty("gallery")
@@ -333,6 +335,7 @@ class GalleryViewModel(BaseViewModel):
         self._cluster_gallery_origin = "people"
         self._people_cluster_kind = kind
         self._people_cluster_id = entity_id if entity_id else None
+        self._cluster_gallery_opened_at = time.monotonic()
         self._location_session.set_mode("inactive")
         self.current_section.value = "people_cluster_gallery"
         self.static_selection.value = "People"
@@ -342,7 +345,6 @@ class GalleryViewModel(BaseViewModel):
         self.can_return_to_map.value = True
         self._store.load_selection(root, query=query)
         self.cluster_gallery_mode_changed.emit(True)
-        self.route_requested.emit("gallery")
 
     def open_pinned_people_query(
         self,
@@ -387,6 +389,9 @@ class GalleryViewModel(BaseViewModel):
             return
         if self._people_cluster_kind not in {"person", "group"} or not self._people_cluster_id:
             return
+        _GRACE_PERIOD = 3.0
+        if time.monotonic() - self._cluster_gallery_opened_at < _GRACE_PERIOD:
+            return
         root = self._context.library.root()
         if root is None:
             return
@@ -408,7 +413,6 @@ class GalleryViewModel(BaseViewModel):
         affected = (
             current_id in changed_ids
             or current_id in redirects
-            or bool(changed_asset_ids and asset_ids and changed_asset_ids.intersection(asset_ids))
         )
         if not affected:
             return
@@ -426,12 +430,18 @@ class GalleryViewModel(BaseViewModel):
         if service is None:
             return
         if self._people_cluster_kind == "person":
+            if not service.has_cluster(current_id):
+                self.return_from_cluster_gallery()
+                return
             query = service.build_cluster_query(current_id)
         else:
+            if not service.has_group(current_id):
+                self.return_from_cluster_gallery()
+                return
             query = service.build_group_query(current_id)
 
         if not query.asset_ids:
-            self.return_from_cluster_gallery()
+            self._store.reload_current_selection()
             return
 
         self._people_cluster_id = current_id

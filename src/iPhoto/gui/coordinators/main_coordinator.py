@@ -23,6 +23,7 @@ from PySide6.QtGui import QAction
 
 from iPhoto.application.contracts.runtime_entry_contract import RuntimeEntryContract
 from iPhoto.config import RECENTLY_DELETED_DIR_NAME
+from iPhoto.i18n import tr
 from iPhoto.gui.coordinators.edit_coordinator import EditCoordinator
 from iPhoto.gui.coordinators.navigation_coordinator import NavigationCoordinator
 from iPhoto.gui.coordinators.playback_coordinator import PlaybackCoordinator
@@ -367,6 +368,7 @@ class MainCoordinator(QObject):
         """Start the coordinator."""
         self._logger.info("MainCoordinator started")
         self._wire_exiftool_missing_warning()
+        self._cleanup_null_gps_locations()
         self._view_router.show_gallery()
         self._map_extension_download.maybe_prompt_on_startup()
 
@@ -375,6 +377,21 @@ class MainCoordinator(QObject):
         self._startup_loading = False
         self._logger.info("Startup loading complete, tree-update cascade enabled")
 
+    def _cleanup_null_gps_locations(self) -> None:
+        """One-time cleanup: clear persisted location names for (0, 0) GPS assets."""
+        try:
+            repo = getattr(self._context.asset_runtime, "repository", None)
+            if repo is None:
+                return
+            clear_fn = getattr(repo, "clear_location_for_null_gps", None)
+            if clear_fn is None:
+                return
+            count = clear_fn()
+            if count > 0:
+                self._logger.info("Cleared %d stale location entries for (0,0) GPS assets", count)
+        except Exception:
+            self._logger.debug("GPS location cleanup skipped", exc_info=True)
+
     def _wire_exiftool_missing_warning(self) -> None:
         """Show a one-time warning dialog if ExifTool is not found during scanning."""
         from iPhoto.infrastructure.services import metadata_provider
@@ -382,15 +399,9 @@ class MainCoordinator(QObject):
 
         def _show_warning(message: str) -> None:
             from iPhoto.gui.ui.widgets import dialogs
-            warning = (
-                "未找到 ExifTool，无法提取照片元数据（GPS、尺寸、拍摄日期等）。\n\n"
-                "解决方法（任选其一）：\n"
-                "1. 安装 ExifTool 并添加到系统 PATH：https://exiftool.org/\n"
-                "2. 设置环境变量 IPHOTO_EXIFTOOL_PATH 指向 exiftool 可执行文件路径\n\n"
-                f"详细信息：{message}"
-            )
-            self._logger.warning("ExifTool 缺失，弹出警告对话框")
-            dialogs.show_warning(self._window, warning, title="未找到 ExifTool")
+            warning = tr("dialog.exiftool_warning", message=message)
+            self._logger.warning("ExifTool not found, showing warning dialog")
+            dialogs.show_warning(self._window, warning, title=tr("dialog.exiftool_not_found"))
 
         # Proactively check exiftool availability at startup
         try:
@@ -540,9 +551,7 @@ class MainCoordinator(QObject):
         if hasattr(ui, "back_button"):
             ui.back_button.clicked.connect(self._detail_vm.back_to_gallery)
 
-        # Fullscreen Button (detail page)
-        if hasattr(ui, "fullscreen_button") and hasattr(self._window, "window_manager"):
-            ui.fullscreen_button.clicked.connect(self._window.window_manager.toggle_fullscreen)
+        # Fullscreen Button — already connected in window_manager._configure_window_controls
 
         # Map Button (detail page)
         if hasattr(ui, "map_button"):
@@ -624,6 +633,19 @@ class MainCoordinator(QObject):
             ui.theme_dark.setChecked(True)
         else:
             ui.theme_system.setChecked(True)
+
+        # Language Switching
+        ui.language_zh.triggered.connect(lambda: self._context.settings.set("ui.language", "zh"))
+        ui.language_en.triggered.connect(lambda: self._context.settings.set("ui.language", "en"))
+
+        current_lang = self._context.settings.get("ui.language", "zh")
+        if current_lang == "en":
+            ui.language_en.setChecked(True)
+        else:
+            ui.language_zh.setChecked(True)
+
+        self._context.language.languageChanged.connect(lambda _lang: ui.main_header.retranslate())
+        self._context.language.languageChanged.connect(lambda _lang: ui.sidebar.retranslate())
 
         # Note: keyboard shortcuts are now managed centrally by
         # AppShortcutManager, which is created in __init__ after all
@@ -731,8 +753,8 @@ class MainCoordinator(QObject):
 
     def _handle_detail_map_show_all(self, show_all: bool) -> None:
         """Handle the 'Show All Photos' toggle in the detail map panel."""
-        # TODO: Populate the map with all geotagged library assets when enabled.
-        pass
+        if show_all:
+            self._navigation.open_location_view()
 
     @staticmethod
     def _resolve_map_package_root(map_runtime: object | None) -> Path:
@@ -828,7 +850,7 @@ class MainCoordinator(QObject):
 
         self._media_failure_cleanup_paths.add(path_key)
         try:
-            self._dialog.show_error(f"文件无法找到或读取：{path.name}\n\n{message}")
+            self._dialog.show_error(tr("msg.file_unreadable", name=path.name, message=message))
             facade = getattr(self, "_facade", None)
             updates = getattr(facade, "library_updates", None)
             if updates is None:
@@ -877,26 +899,40 @@ class MainCoordinator(QObject):
         self._navigation.open_location_asset(rel)
 
     def _on_people_cluster_activated(self, person_id: str) -> None:
-        query = self._window.ui.people_page.build_cluster_query(person_id)
-        if not query.asset_ids:
-            return
-        self._gallery_vm.open_people_cluster_gallery(
-            query,
-            kind="person",
-            entity_id=person_id,
-        )
-        self._view_router.show_gallery()
+        QTimer.singleShot(0, lambda: self._open_people_cluster(person_id))
 
     def _on_people_group_activated(self, group_id: str) -> None:
-        query = self._window.ui.people_page.build_group_query(group_id)
-        if not query.asset_ids:
-            return
-        self._gallery_vm.open_people_cluster_gallery(
-            query,
-            kind="group",
-            entity_id=group_id,
-        )
-        self._view_router.show_gallery()
+        QTimer.singleShot(0, lambda: self._open_people_group(group_id))
+
+    def _open_people_cluster(self, person_id: str) -> None:
+        try:
+            query = self._window.ui.people_page.build_cluster_query(person_id)
+            if not query.asset_ids:
+                return
+            self._window.ui.people_page.prepare_for_hide()
+            self._gallery_vm.open_people_cluster_gallery(
+                query,
+                kind="person",
+                entity_id=person_id,
+            )
+            self._view_router.show_gallery()
+        except Exception:
+            self._logger.exception("Failed to open people cluster gallery for %s", person_id)
+
+    def _open_people_group(self, group_id: str) -> None:
+        try:
+            query = self._window.ui.people_page.build_group_query(group_id)
+            if not query.asset_ids:
+                return
+            self._window.ui.people_page.prepare_for_hide()
+            self._gallery_vm.open_people_cluster_gallery(
+                query,
+                kind="group",
+                entity_id=group_id,
+            )
+            self._view_router.show_gallery()
+        except Exception:
+            self._logger.exception("Failed to open people group gallery for %s", group_id)
 
     def open_album_from_path(self, path: Path):
         import time

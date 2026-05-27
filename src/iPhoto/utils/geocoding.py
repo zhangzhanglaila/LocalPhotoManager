@@ -98,6 +98,13 @@ def resolve_location_name(gps: Optional[Dict[str, float]]) -> Optional[str]:
     if latitude is None or longitude is None:
         return None
 
+    # Filter out (0, 0) — "Null Island" in the Gulf of Guinea.
+    # Photos with missing GPS data often default to (0, 0) rather than
+    # storing no coordinates at all.  Reverse-geocoding (0, 0) returns
+    # a real place name (Takoradi, Ghana) which is misleading.
+    if abs(latitude) < 1e-6 and abs(longitude) < 1e-6:
+        return None
+
     # City/admin names are stable at a much coarser resolution than the raw
     # EXIF GPS coordinates, so rounding dramatically improves cache reuse for
     # burst photos taken in the same area without changing the visible label.

@@ -23,8 +23,8 @@ class ScannerSignals(QObject):
     """Signals emitted by :class:`ScannerWorker` while scanning."""
 
     progressUpdated = Signal(Path, int, int)
-    chunkReady = Signal(Path, list)
-    finished = Signal(Path, list)
+    chunkReady = Signal(Path, object)
+    finished = Signal(Path, object)
     error = Signal(Path, str)
     batchFailed = Signal(Path, int)
 

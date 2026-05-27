@@ -22,7 +22,7 @@ from ..widgets.video_area import VideoArea
 class _AdjustedImageSignals(QObject):
     """Relay worker completion events back to the GUI thread."""
 
-    completed = Signal(Path, QImage, dict)
+    completed = Signal(Path, QImage, object)
     """Emitted when the adjusted image finished loading successfully."""
 
     failed = Signal(Path, str)

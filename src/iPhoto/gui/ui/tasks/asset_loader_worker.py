@@ -43,7 +43,7 @@ class AssetLoaderSignals(QObject):
     """Signal container for :class:`AssetLoaderWorker` events."""
 
     progressUpdated = Signal(Path, int, int)
-    chunkReady = Signal(Path, list)
+    chunkReady = Signal(Path, object)
     finished = Signal(Path, bool)
     error = Signal(Path, str)
 

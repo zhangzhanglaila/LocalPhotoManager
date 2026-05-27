@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QProgressBar
 
 from ....application.contracts.runtime_entry_contract import RuntimeEntryContract
 from ....config import RECENTLY_DELETED_DIR_NAME
+from ....i18n import tr
 
 if TYPE_CHECKING:
     from ..widgets.chrome_status_bar import ChromeStatusBar
@@ -58,8 +59,8 @@ class StatusBarController(QObject):
         self._progress_bar.setVisible(True)
         if self._rescan_action is not None:
             self._rescan_action.setEnabled(False)
-            self._rescan_action.setText("扫描中…")
-        self.show_message("开始扫描…")
+            self._rescan_action.setText(tr("status.scanning"))
+        self.show_message(tr("status.scan_started"))
 
     # Facade callbacks ------------------------------------------------
     def handle_scan_progress(self, root: Path, current: int, total: int) -> None:
@@ -76,14 +77,14 @@ class StatusBarController(QObject):
 
         if total < 0:
             self._progress_bar.setRange(0, 0)
-            self.show_message("扫描中…（正在统计文件）")
+            self.show_message(tr("status.scanning_counting"))
         elif total == 0:
             self._progress_bar.setRange(0, 0)
-            self.show_message("扫描中…（未找到文件）")
+            self.show_message(tr("status.scanning_no_files"))
         else:
             self._progress_bar.setRange(0, total)
             self._progress_bar.setValue(max(0, min(current, total)))
-            self.show_message(f"扫描中…（{current}/{total}）")
+            self.show_message(tr("status.scanning_progress", current=current, total=total))
         self._progress_bar.setVisible(True)
 
     def handle_scan_finished(self, _root: Path, success: bool) -> None:
@@ -99,13 +100,13 @@ class StatusBarController(QObject):
             self._progress_context = None
         if self._rescan_action is not None:
             self._rescan_action.setEnabled(True)
-            self._rescan_action.setText("Rescan")
-        message = "扫描完成。" if success else "扫描失败。"
+            self._rescan_action.setText(tr("action.rescan"))
+        message = tr("status.scan_complete") if success else tr("status.scan_failed")
         self.show_message(message, 5000)
 
     def handle_scan_batch_failed(self, _root: Path, count: int) -> None:
         """Report a partial failure without interrupting the active scan."""
-        self.show_message(f"有 {count} 个项目保存到数据库失败", 5000)
+        self.show_message(tr("status.scan_batch_failed", count=count), 5000)
 
     def handle_load_started(self, root: Path) -> None:
         """Show an indeterminate progress indicator while assets load."""
@@ -114,7 +115,7 @@ class StatusBarController(QObject):
         self._progress_bar.setRange(0, 0)
         self._progress_bar.setValue(0)
         self._progress_bar.setVisible(True)
-        self.show_message("正在加载项目…")
+        self.show_message(tr("status.loading_items"))
 
     def handle_load_progress(self, root: Path, current: int, total: int) -> None:
         """Update the progress bar while assets stream into the model."""
@@ -127,7 +128,7 @@ class StatusBarController(QObject):
             self._progress_bar.setRange(0, total)
             self._progress_bar.setValue(max(0, min(current, total)))
         if total > 0:
-            self.show_message(f"正在加载项目…（{current}/{total}）")
+            self.show_message(tr("status.loading_progress", current=current, total=total))
 
     def handle_load_finished(self, root: Path, success: bool) -> None:
         """Hide the progress bar once loading wraps up."""
@@ -137,7 +138,7 @@ class StatusBarController(QObject):
         self._progress_bar.setVisible(False)
         self._progress_bar.setRange(0, 0)
         self._progress_context = None
-        message = "相册加载完成。" if success else "相册加载失败。"
+        message = tr("status.load_complete") if success else tr("status.load_failed")
         self.show_message(message, 5000)
 
     def handle_import_started(self, root: Path) -> None:
@@ -150,7 +151,7 @@ class StatusBarController(QObject):
         self._progress_bar.setRange(0, 0)
         self._progress_bar.setValue(0)
         self._progress_bar.setVisible(True)
-        self.show_message("开始导入…")
+        self.show_message(tr("status.import_started"))
 
     def handle_import_progress(self, root: Path, current: int, total: int) -> None:
         """Update the progress bar while the worker copies files."""
@@ -165,11 +166,11 @@ class StatusBarController(QObject):
             self._progress_bar.setRange(0, total)
             self._progress_bar.setValue(max(0, min(current, total)))
         if 0 < current < total:
-            self.show_message(f"导入中…（{current}/{total}）")
+            self.show_message(tr("status.import_progress", current=current, total=total))
         elif total > 0 and current >= total:
             # The worker emits a final update once all files are copied to let
             # the user know that the subsequent rescan is in progress.
-            self.show_message("正在重新扫描以完成导入…")
+            self.show_message(tr("status.import_rescanning"))
 
     def handle_import_finished(self, root: Path | None, success: bool, message: str) -> None:
         """Reset the status bar once the import worker signals completion."""
@@ -198,11 +199,11 @@ class StatusBarController(QObject):
         self._progress_bar.setValue(0)
         self._progress_bar.setVisible(True)
         if self._move_context_delete:
-            message = "开始删除…"
+            message = tr("status.delete_started")
         elif self._move_context_restore:
-            message = "开始还原…"
+            message = tr("status.restore_started")
         else:
-            message = "开始移动…"
+            message = tr("status.move_started")
         self.show_message(message)
 
     def handle_move_progress(self, _source: Path, current: int, total: int) -> None:
@@ -217,20 +218,19 @@ class StatusBarController(QObject):
             self._progress_bar.setValue(max(0, min(current, total)))
         if 0 < current < total:
             if self._move_context_delete:
-                verb = "删除中"
+                msg_key = "status.delete_progress"
             elif self._move_context_restore:
-                verb = "还原中"
+                msg_key = "status.restore_progress"
             else:
-                verb = "移动中"
-            self.show_message(f"{verb}…（{current}/{total}）")
+                msg_key = "status.move_progress"
+            self.show_message(tr(msg_key, current=current, total=total))
         elif total > 0 and current >= total:
             if self._move_context_delete:
-                tail = "删除"
+                self.show_message(tr("status.delete_rescanning"))
             elif self._move_context_restore:
-                tail = "还原"
+                self.show_message(tr("status.restore_rescanning"))
             else:
-                tail = "移动"
-            self.show_message(f"正在重新扫描以完成{tail}…")
+                self.show_message(tr("status.move_rescanning"))
 
     def handle_move_finished(
         self,

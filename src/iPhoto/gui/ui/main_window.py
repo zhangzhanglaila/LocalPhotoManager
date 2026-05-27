@@ -77,9 +77,8 @@ class MainWindow(QMainWindow):
             self.window_manager.handle_change_event(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore[override]
-        if event.key() == Qt.Key.Key_Escape:
-            self.close()
-            return
+        # Escape is handled by AppShortcutManager → exit_fullscreen (guarded).
+        # Do NOT unconditionally close the window here.
         super().keyPressEvent(event)
 
     # ------------------------------------------------------------------

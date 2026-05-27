@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QAbstractItemView, QListView, QLabel, QStyleOption
 
 from ..styles import modern_scrollbar_style
 from .asset_grid import AssetGrid
+from ....i18n import tr
 from ..models.roles import Roles
 
 
@@ -61,7 +62,7 @@ class GalleryGridView(AssetGrid):
         self._empty_label.setStyleSheet("color: #86868b; font-size: 15px;")
         self._empty_label.hide()
 
-        self._loading_label = QLabel("正在加载…", vp)
+        self._loading_label = QLabel(tr("preview.loading"), vp)
         self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._loading_label.setStyleSheet("color: #86868b; font-size: 15px;")
         self._loading_label.hide()

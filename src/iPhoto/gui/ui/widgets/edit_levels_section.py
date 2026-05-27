@@ -39,7 +39,7 @@ def _clamp01(x: float) -> float:
 class LevelsComposite(QWidget):
     """Interactive levels widget with histogram backdrop and draggable handles."""
 
-    valuesChanged = Signal(list)
+    valuesChanged = Signal(object)
     interactionStarted = Signal()
     interactionFinished = Signal()
 

@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ....i18n import tr
+
 
 class MainHeaderWidget(QWidget):
     """Container hosting the menu bar alongside quick access buttons."""
@@ -86,29 +88,29 @@ class MainHeaderWidget(QWidget):
     def _create_actions(self, main_window: QWidget) -> None:
         """Instantiate the :class:`QAction` objects exposed to controllers."""
 
-        self.open_album_action = QAction("Open Album Folder…", main_window)
-        self.rescan_action = QAction("Rescan", main_window)
-        self.rebuild_links_action = QAction("Rebuild Live Links", main_window)
-        self.bind_library_action = QAction("Set Basic Library…", main_window)
-        self.download_map_extension_action = QAction("Download Map Extension…", main_window)
+        self.open_album_action = QAction(tr("action.open_album"), main_window)
+        self.rescan_action = QAction(tr("action.rescan"), main_window)
+        self.rebuild_links_action = QAction(tr("action.rebuild_links"), main_window)
+        self.bind_library_action = QAction(tr("action.set_basic_library"), main_window)
+        self.download_map_extension_action = QAction(tr("action.download_map_ext"), main_window)
         self.toggle_filmstrip_action = QAction(
-            "Show Filmstrip", main_window, checkable=True
+            tr("action.show_filmstrip"), main_window, checkable=True
         )
         self.toggle_filmstrip_action.setChecked(True)
         self.toggle_face_names_action = QAction(
-            "Show face names", main_window, checkable=True
+            tr("action.show_face_names"), main_window, checkable=True
         )
         self.toggle_face_names_action.setChecked(False)
         self.toggle_hidden_people_action = QAction(
-            "Show Hidden People", main_window, checkable=True
+            tr("action.show_hidden_people"), main_window, checkable=True
         )
         self.toggle_hidden_people_action.setChecked(False)
 
         self.share_action_group = QActionGroup(main_window)
-        self.share_action_copy_file = QAction("Copy File", main_window, checkable=True)
-        self.share_action_copy_path = QAction("Copy Path", main_window, checkable=True)
+        self.share_action_copy_file = QAction(tr("action.copy_file"), main_window, checkable=True)
+        self.share_action_copy_path = QAction(tr("action.copy_path"), main_window, checkable=True)
         self.share_action_reveal_file = QAction(
-            "Reveal in File Manager", main_window, checkable=True
+            tr("action.reveal_file"), main_window, checkable=True
         )
         self.share_action_group.addAction(self.share_action_copy_file)
         self.share_action_group.addAction(self.share_action_copy_path)
@@ -116,18 +118,18 @@ class MainHeaderWidget(QWidget):
         self.share_action_reveal_file.setChecked(True)
 
         self.wheel_action_group = QActionGroup(main_window)
-        self.wheel_action_navigate = QAction("Navigate", main_window, checkable=True)
-        self.wheel_action_zoom = QAction("Zoom", main_window, checkable=True)
+        self.wheel_action_navigate = QAction(tr("action.navigate"), main_window, checkable=True)
+        self.wheel_action_zoom = QAction(tr("action.zoom"), main_window, checkable=True)
         self.wheel_action_group.addAction(self.wheel_action_navigate)
         self.wheel_action_group.addAction(self.wheel_action_zoom)
         self.wheel_action_navigate.setChecked(True)
 
-        self.export_all_edited_action = QAction("Export All Edited", main_window)
-        self.export_selected_action = QAction("Export Selected", main_window)
+        self.export_all_edited_action = QAction(tr("action.export_all_edited"), main_window)
+        self.export_selected_action = QAction(tr("action.export_selected"), main_window)
 
         self.export_destination_group = QActionGroup(main_window)
-        self.export_destination_library = QAction("Basic Library", main_window, checkable=True)
-        self.export_destination_ask = QAction("Ask Every Time", main_window, checkable=True)
+        self.export_destination_library = QAction(tr("action.export_to_library"), main_window, checkable=True)
+        self.export_destination_ask = QAction(tr("action.export_ask"), main_window, checkable=True)
         self.export_destination_group.addAction(self.export_destination_library)
         self.export_destination_group.addAction(self.export_destination_ask)
         self.export_destination_library.setChecked(True)
@@ -142,18 +144,25 @@ class MainHeaderWidget(QWidget):
         self.export_format_jpg.setChecked(True)
 
         self.theme_group = QActionGroup(main_window)
-        self.theme_system = QAction("System Default", main_window, checkable=True)
-        self.theme_light = QAction("Light Mode", main_window, checkable=True)
-        self.theme_dark = QAction("Dark Mode", main_window, checkable=True)
+        self.theme_system = QAction(tr("action.system_default"), main_window, checkable=True)
+        self.theme_light = QAction(tr("action.light_mode"), main_window, checkable=True)
+        self.theme_dark = QAction(tr("action.dark_mode"), main_window, checkable=True)
         self.theme_group.addAction(self.theme_system)
         self.theme_group.addAction(self.theme_light)
         self.theme_group.addAction(self.theme_dark)
         self.theme_system.setChecked(True)
 
+        self.language_group = QActionGroup(main_window)
+        self.language_zh = QAction(tr("action.lang_zh"), main_window, checkable=True)
+        self.language_en = QAction(tr("action.lang_en"), main_window, checkable=True)
+        self.language_group.addAction(self.language_zh)
+        self.language_group.addAction(self.language_en)
+        self.language_zh.setChecked(True)
+
     def _populate_menus(self) -> None:
         """Populate the menu bar and wire shared actions to widgets."""
 
-        file_menu = self.menu_bar.addMenu("&File")
+        self._file_menu = self.menu_bar.addMenu(tr("menu.file"))
         for action in (
             self.open_album_action,
             None,
@@ -165,45 +174,86 @@ class MainHeaderWidget(QWidget):
             self.rebuild_links_action,
         ):
             if action is None:
-                file_menu.addSeparator()
+                self._file_menu.addSeparator()
             else:
-                file_menu.addAction(action)
+                self._file_menu.addAction(action)
 
         self.rescan_button.setDefaultAction(self.rescan_action)
 
-        view_menu = self.menu_bar.addMenu("&View")
-        view_menu.addAction(self.toggle_face_names_action)
-        view_menu.addAction(self.toggle_hidden_people_action)
-        view_menu.addSeparator()
-        view_menu.addAction(self.toggle_filmstrip_action)
+        self._view_menu = self.menu_bar.addMenu(tr("menu.view"))
+        self._view_menu.addAction(self.toggle_face_names_action)
+        self._view_menu.addAction(self.toggle_hidden_people_action)
+        self._view_menu.addSeparator()
+        self._view_menu.addAction(self.toggle_filmstrip_action)
 
-        settings_menu = self.menu_bar.addMenu("&Settings")
-        settings_menu.addAction(self.bind_library_action)
-        settings_menu.addAction(self.download_map_extension_action)
-        settings_menu.addSeparator()
+        self._settings_menu = self.menu_bar.addMenu(tr("menu.settings"))
+        self._settings_menu.addAction(self.bind_library_action)
+        self._settings_menu.addAction(self.download_map_extension_action)
+        self._settings_menu.addSeparator()
 
-        appearance_menu = settings_menu.addMenu("Appearance")
-        appearance_menu.addAction(self.theme_system)
-        appearance_menu.addAction(self.theme_light)
-        appearance_menu.addAction(self.theme_dark)
+        self._appearance_menu = self._settings_menu.addMenu(tr("menu.appearance"))
+        self._appearance_menu.addAction(self.theme_system)
+        self._appearance_menu.addAction(self.theme_light)
+        self._appearance_menu.addAction(self.theme_dark)
 
-        export_dest_menu = settings_menu.addMenu("Export Destination")
-        export_dest_menu.addAction(self.export_destination_library)
-        export_dest_menu.addAction(self.export_destination_ask)
+        self._export_dest_menu = self._settings_menu.addMenu(tr("menu.export_destination"))
+        self._export_dest_menu.addAction(self.export_destination_library)
+        self._export_dest_menu.addAction(self.export_destination_ask)
 
-        export_fmt_menu = settings_menu.addMenu("Export Format")
-        export_fmt_menu.addAction(self.export_format_jpg)
-        export_fmt_menu.addAction(self.export_format_png)
-        export_fmt_menu.addAction(self.export_format_tiff)
+        self._export_fmt_menu = self._settings_menu.addMenu(tr("menu.export_format"))
+        self._export_fmt_menu.addAction(self.export_format_jpg)
+        self._export_fmt_menu.addAction(self.export_format_png)
+        self._export_fmt_menu.addAction(self.export_format_tiff)
 
-        wheel_menu = settings_menu.addMenu("Wheel Action")
-        wheel_menu.addAction(self.wheel_action_navigate)
-        wheel_menu.addAction(self.wheel_action_zoom)
+        self._wheel_menu = self._settings_menu.addMenu(tr("menu.wheel_action"))
+        self._wheel_menu.addAction(self.wheel_action_navigate)
+        self._wheel_menu.addAction(self.wheel_action_zoom)
 
-        share_menu = settings_menu.addMenu("Share Action")
-        share_menu.addAction(self.share_action_copy_file)
-        share_menu.addAction(self.share_action_copy_path)
-        share_menu.addAction(self.share_action_reveal_file)
+        self._share_menu = self._settings_menu.addMenu(tr("menu.share_action"))
+        self._share_menu.addAction(self.share_action_copy_file)
+        self._share_menu.addAction(self.share_action_copy_path)
+        self._share_menu.addAction(self.share_action_reveal_file)
+
+        self._language_menu = self._settings_menu.addMenu(tr("menu.language"))
+        self._language_menu.addAction(self.language_zh)
+        self._language_menu.addAction(self.language_en)
+
+    def retranslate(self) -> None:
+        """Refresh all menu and action texts for the current language."""
+
+        self.open_album_action.setText(tr("action.open_album"))
+        self.rescan_action.setText(tr("action.rescan"))
+        self.rebuild_links_action.setText(tr("action.rebuild_links"))
+        self.bind_library_action.setText(tr("action.set_basic_library"))
+        self.download_map_extension_action.setText(tr("action.download_map_ext"))
+        self.toggle_filmstrip_action.setText(tr("action.show_filmstrip"))
+        self.toggle_face_names_action.setText(tr("action.show_face_names"))
+        self.toggle_hidden_people_action.setText(tr("action.show_hidden_people"))
+        self.share_action_copy_file.setText(tr("action.copy_file"))
+        self.share_action_copy_path.setText(tr("action.copy_path"))
+        self.share_action_reveal_file.setText(tr("action.reveal_file"))
+        self.wheel_action_navigate.setText(tr("action.navigate"))
+        self.wheel_action_zoom.setText(tr("action.zoom"))
+        self.export_all_edited_action.setText(tr("action.export_all_edited"))
+        self.export_selected_action.setText(tr("action.export_selected"))
+        self.export_destination_library.setText(tr("action.export_to_library"))
+        self.export_destination_ask.setText(tr("action.export_ask"))
+        self.theme_system.setText(tr("action.system_default"))
+        self.theme_light.setText(tr("action.light_mode"))
+        self.theme_dark.setText(tr("action.dark_mode"))
+        self.language_zh.setText(tr("action.lang_zh"))
+        self.language_en.setText(tr("action.lang_en"))
+
+        # Menu titles
+        self._file_menu.setTitle(tr("menu.file"))
+        self._view_menu.setTitle(tr("menu.view"))
+        self._settings_menu.setTitle(tr("menu.settings"))
+        self._appearance_menu.setTitle(tr("menu.appearance"))
+        self._export_dest_menu.setTitle(tr("menu.export_destination"))
+        self._export_fmt_menu.setTitle(tr("menu.export_format"))
+        self._wheel_menu.setTitle(tr("menu.wheel_action"))
+        self._share_menu.setTitle(tr("menu.share_action"))
+        self._language_menu.setTitle(tr("menu.language"))
 
 
 __all__ = ["MainHeaderWidget"]

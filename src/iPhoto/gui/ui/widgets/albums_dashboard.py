@@ -5,6 +5,8 @@ from collections import deque
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
+from ....i18n import tr
+
 from PySide6.QtCore import (
     QObject,
     QPoint,
@@ -743,7 +745,7 @@ class AlbumsDashboard(QWidget):
             return
         target_name = name.strip()
         if not target_name:
-            dialogs.show_warning(self, "相册名称不能为空。")
+            dialogs.show_warning(self, tr("msg.album_name_empty"))
             return
         try:
             self._library.rename_album(album, target_name)

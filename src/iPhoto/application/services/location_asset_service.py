@@ -26,6 +26,10 @@ def geotagged_asset_from_row(
     if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
         return None
 
+    # Filter out (0, 0) — missing/default GPS data, not a real location.
+    if abs(lat) < 1e-6 and abs(lon) < 1e-6:
+        return None
+
     rel = row.get("rel")
     if not isinstance(rel, str) or not rel:
         return None

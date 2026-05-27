@@ -166,6 +166,9 @@ class Ui_MainWindow(object):
         self.theme_system = self.main_header.theme_system
         self.theme_light = self.main_header.theme_light
         self.theme_dark = self.main_header.theme_dark
+        self.language_group = self.main_header.language_group
+        self.language_zh = self.main_header.language_zh
+        self.language_en = self.main_header.language_en
 
         self.window_shell_layout.addWidget(self.window_chrome)
         self.window_shell_layout.addWidget(self.menu_bar_container)

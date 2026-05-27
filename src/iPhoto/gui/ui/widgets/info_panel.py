@@ -9,6 +9,8 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+from ....i18n import tr
+
 from PySide6.QtCore import QDateTime, QEvent, QLocale, QObject, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPalette, QPixmap, QShowEvent
 from PySide6.QtWidgets import (
@@ -269,9 +271,9 @@ class _FaceAvatarWidget(QLabel):
         host = self.window() if isinstance(self.window(), QWidget) else self
         dialog = GroupPeopleDialog(
             options,
-            title_text="选择其他人",
-            prompt_text="将此人脸分配给",
-            confirm_text="选择",
+            title_text=tr("people.select_other"),
+            prompt_text=tr("people.assign_face_to"),
+            confirm_text=tr("people.select"),
             min_selection=1,
             max_selection=1,
             dark_mode=_uses_dark_theme(host),
@@ -328,7 +330,7 @@ class _FaceAvatarWidget(QLabel):
 
 def _person_choice_label(summary: PersonSummary) -> str:
     display_name = str(summary.name or "").strip() or "Unnamed"
-    return f"{display_name} ({summary.face_count})"
+    return f"{display_name} ({summary.asset_count}张)"
 
 @dataclass
 class _FormattedMetadata:

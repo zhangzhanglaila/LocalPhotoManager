@@ -15,6 +15,7 @@ from ....errors import LibraryError
 from ....config import DEFAULT_EXCLUDE, DEFAULT_INCLUDE
 from ....utils.pathutils import resolve_work_dir
 from ..widgets import dialogs
+from ....i18n import tr
 
 if TYPE_CHECKING:
     from ..widgets.chrome_status_bar import ChromeStatusBar
@@ -39,10 +40,10 @@ class DialogController:
     # Public API
     # ------------------------------------------------------------------
     def open_album_dialog(self) -> Optional[Path]:
-        return dialogs.select_directory(self._parent, "Select album")
+        return dialogs.select_directory(self._parent, tr("dialog.select_album"))
 
     def bind_library_dialog(self) -> Optional[Path]:
-        root = dialogs.select_directory(self._parent, "Select Basic Library")
+        root = dialogs.select_directory(self._parent, tr("dialog.select_basic_library"))
         if root is None:
             _logger.info("bind_library_dialog: user cancelled folder selection")
             return None
@@ -71,7 +72,7 @@ class DialogController:
                     current_root,
                 )
                 self._start_scan_if_needed(current_root)
-                self._status.showMessage(f"正在扫描新文件夹 {root.name}…")
+                self._status.showMessage(tr("dialog.scanning_new_folder", name=root.name))
                 return current_root
 
             # Already a bound root — nothing to do.
@@ -87,7 +88,7 @@ class DialogController:
                         root, existing,
                     )
                     self._status.showMessage(
-                        f"{root} 已经是图库文件夹"
+                        tr("dialog.already_library_folder", root=root)
                     )
                     return root
 
@@ -102,7 +103,7 @@ class DialogController:
 
             self._persist_library_paths()
             self._start_scan_if_needed(root)
-            self._status.showMessage(f"已添加图库文件夹 {root.name}")
+            self._status.showMessage(tr("dialog.added_library_folder", name=root.name))
             return root
 
         # No existing library — open as the primary root.
@@ -117,7 +118,7 @@ class DialogController:
         if bound_root is not None:
             self._persist_library_paths()
             self._start_initial_scan_if_needed(bound_root)
-            self._status.showMessage(f"Basic Library bound to {bound_root}")
+            self._status.showMessage(tr("dialog.basic_library_bound", root=bound_root))
             try:
                 self._context.facade.open_album(bound_root)
                 _logger.info("bind_library_dialog: facade.open_album succeeded")
@@ -170,23 +171,19 @@ class DialogController:
     def prompt_for_basic_library(self) -> None:
         dialogs.show_information(
             self._parent,
-            "请选择一个文件夹作为基础图库。",
-            title="绑定基础图库",
+            tr("dialog.prompt_bind_library"),
+            title=tr("dialog.bind_basic_library"),
         )
         self.bind_library_dialog()
 
     def prompt_restore_to_root(self, filename: str) -> bool:
         """Ask whether *filename* should be restored to the library root."""
 
-        message = (
-            "The original album for '{name}' could not be found or its original "
-            "location could not be determined. Do you want to restore this file "
-            "to the main 'Basic Library' folder instead?"
-        ).format(name=filename)
+        message = tr("dialog.restore_to_root_msg", name=filename)
         return dialogs.confirm_action(
             self._parent,
             message,
-            title="Restore Failed",
-            yes_label="Yes",
-            no_label="No",
+            title=tr("dialog.restore_failed"),
+            yes_label=tr("dialog.yes"),
+            no_label=tr("dialog.no"),
         )

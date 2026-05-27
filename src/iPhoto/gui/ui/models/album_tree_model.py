@@ -12,6 +12,7 @@ from PySide6.QtGui import QIcon
 
 from ....library.runtime_controller import LibraryRuntimeController
 from ....library.tree import AlbumNode
+from ....i18n import tr
 from ...services.pinned_items_service import PinnedItemsService, PinnedSidebarItem
 from ...services.people_service_resolver import resolve_people_service
 from ..icon import load_icon
@@ -180,7 +181,7 @@ class AlbumTreeModel(QAbstractItemModel):
         if item.node_type in {NodeType.SECTION, NodeType.SEPARATOR}:
             return Qt.ItemFlag.ItemIsEnabled
         if item.node_type == NodeType.HEADER:
-            if item.title == "Pinned":
+            if item.title == tr("sidebar.pinned"):
                 return Qt.ItemFlag.ItemIsEnabled
             return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         if item.node_type == NodeType.ACTION:
@@ -297,19 +298,19 @@ class AlbumTreeModel(QAbstractItemModel):
         # the visual grouping intact regardless of how many custom albums exist.
         self._root_item.add_child(AlbumTreeItem("──────────", NodeType.SEPARATOR))
 
-        pinned_header = AlbumTreeItem("Pinned", NodeType.HEADER)
+        pinned_header = AlbumTreeItem(tr("sidebar.pinned"), NodeType.HEADER)
         self._add_pinned_nodes(pinned_header, library_root)
         if pinned_header.children:
             self._root_item.add_child(pinned_header)
             self._root_item.add_child(AlbumTreeItem("──────────", NodeType.SEPARATOR))
 
         albums_section = AlbumTreeItem(
-            "Albums",
+            tr("sidebar.albums"),
             NodeType.HEADER,
             icon_name="folder.svg",
         )
         self._root_item.add_child(albums_section)
-        albums_section.add_child(AlbumTreeItem("Set Basic Library…", NodeType.ACTION))
+        albums_section.add_child(AlbumTreeItem(tr("action.set_basic_library"), NodeType.ACTION))
         for album in self._library.list_albums():
             album_item = self._create_album_item(album, NodeType.ALBUM)
             albums_section.add_child(album_item)
@@ -541,7 +542,7 @@ class AlbumTreeModel(QAbstractItemModel):
         if item.node_type == NodeType.PINNED_GROUP:
             return load_icon("person.2.svg", stroke_width=stroke_width, color=color)
         if item.node_type == NodeType.HEADER:
-            if item.title == "Pinned":
+            if item.title == tr("sidebar.pinned"):
                 return QIcon()
             return load_icon(
                 "photo.on.rectangle",

@@ -45,6 +45,9 @@ class AggregateGeoDataUseCase(UseCase):
                     lon_f = float(lon)
                 except (ValueError, TypeError):
                     continue
+                # Filter out (0, 0) — missing/default GPS data.
+                if abs(lat_f) < 1e-6 and abs(lon_f) < 1e-6:
+                    continue
                 location = asset.metadata.get("location_name", "")
                 geo_assets.append(GeoAssetInfo(
                     asset_id=asset.id,

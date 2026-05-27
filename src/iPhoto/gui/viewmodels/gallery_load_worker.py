@@ -24,7 +24,7 @@ LOGGER = logging.getLogger(__name__)
 class GalleryLoadSignals(QObject):
     """Signals emitted by :class:`GalleryLoadWorker`."""
 
-    finished = Signal(int, dict, int)   # generation, row_cache, total_count
+    finished = Signal(int, object, int)   # generation, row_cache, total_count
     error = Signal(int, str)            # generation, error_message
 
 

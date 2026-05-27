@@ -16,6 +16,7 @@ from ....library.runtime_controller import LibraryRuntimeController
 from ..widgets.notification_toast import NotificationToast
 from .status_bar_controller import StatusBarController
 from ...ui.widgets.dialogs import show_error
+from ....i18n import tr
 
 
 class ExportSignals(QObject):
@@ -81,7 +82,7 @@ class LibraryExportWorker(QRunnable):
         self.signals = ExportSignals()
 
     def run(self) -> None:
-        self.signals.message.emit("Scanning library for edited images...")
+        self.signals.message.emit(tr("status.export_scanning"))
         root = self._library.root()
         if not root:
             self.signals.finished.emit(0, 0)
@@ -119,7 +120,7 @@ class LibraryExportWorker(QRunnable):
             self.signals.finished.emit(0, 0)
             return
 
-        self.signals.message.emit(f"Exporting {total} edited images...")
+        self.signals.message.emit(tr("status.export_exporting", total=total))
 
         success = 0
         fail = 0
@@ -220,7 +221,7 @@ class ExportController(QObject):
         dest = self._settings.get("ui.export_destination", "library")
         library_root = self._library.root()
         if not library_root:
-            show_error(self._main_window, "图库未绑定。")
+            show_error(self._main_window, tr("msg.library_not_bound"))
             return None
 
         if dest == "library":
@@ -228,11 +229,11 @@ class ExportController(QObject):
             try:
                 path.mkdir(exist_ok=True)
             except OSError as exc:
-                show_error(self._main_window, f"无法创建导出文件夹：{exc}")
+                show_error(self._main_window, tr("msg.cannot_create_export_folder", exc=exc))
                 return None
             return path
         else:
-            selected = QFileDialog.getExistingDirectory(self._main_window, "选择导出目标位置")
+            selected = QFileDialog.getExistingDirectory(self._main_window, tr("msg.select_export_destination"))
             if not selected:
                 return None
             return Path(selected)
@@ -240,7 +241,7 @@ class ExportController(QObject):
     def _handle_export_selected(self) -> None:
         paths = self._get_selection()
         if not paths:
-            self._status_bar.show_message("未选择任何项目。", 3000)
+            self._status_bar.show_message(tr("msg.no_items_selected"), 3000)
             return
 
         export_root = self._resolve_export_root()
@@ -249,7 +250,7 @@ class ExportController(QObject):
 
         library_root = self._library.root()
         if not library_root:
-            show_error(self._main_window, "图库未绑定。")
+            show_error(self._main_window, tr("msg.library_not_bound"))
             return
 
         fmt = self._settings.get("ui.export_format", DEFAULT_EXPORT_FORMAT)
@@ -276,15 +277,16 @@ class ExportController(QObject):
         worker.signals.finished.connect(self._on_finished)
         worker.signals.message.connect(self._status_bar.show_message)
 
-        self._status_bar.show_message("开始导出…", 0)
+        self._status_bar.show_message(tr("status.export_started"), 0)
         QThreadPool.globalInstance().start(worker)
 
     def _on_progress(self, current: int, total: int) -> None:
-        self._status_bar.show_message(f"Exporting {current}/{total}...")
+        self._status_bar.show_message(tr("status.export_progress", current=current, total=total))
 
     def _on_finished(self, success: int, fail: int) -> None:
-        msg = f"{success} media exported"
         if fail > 0:
-            msg += f", {fail} failed"
+            msg = tr("status.export_finished_with_fail", success=success, fail=fail)
+        else:
+            msg = tr("status.export_finished", success=success)
         self._status_bar.show_message(msg, 5000)
         self._toast.show_toast(msg)

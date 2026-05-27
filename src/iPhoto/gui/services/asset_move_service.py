@@ -34,7 +34,7 @@ class AssetMoveService(QObject):
     # type system does not understand ``list[tuple[Path, Path]]`` so we emit
     # the raw ``list`` that contains :class:`pathlib.Path` pairs alongside the
     # worker flags.
-    moveCompletedDetailed = Signal(Path, Path, list, bool, bool, bool, bool)
+    moveCompletedDetailed = Signal(Path, Path, object, bool, bool, bool, bool)
     errorRaised = Signal(str)
 
     def __init__(

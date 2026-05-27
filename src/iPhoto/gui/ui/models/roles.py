@@ -3,9 +3,43 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Dict
+from typing import Any, Dict
 
 from PySide6.QtCore import Qt
+
+
+class _DictHolder:
+    """Wrap a dict so PySide6 shiboken won't auto-convert it to C++."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: dict) -> None:
+        self._data = data
+
+    @property
+    def data(self) -> dict:
+        return self._data
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __repr__(self):
+        return f"_DictHolder({self._data!r})"
+
+
+def unwrap_dict(value: Any) -> dict | None:
+    """Extract a dict from a _DictHolder, or return value if already a dict."""
+    if isinstance(value, _DictHolder):
+        return value.data
+    if isinstance(value, dict):
+        return value
+    return None
 
 
 class Roles(IntEnum):

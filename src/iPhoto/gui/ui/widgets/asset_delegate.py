@@ -173,9 +173,12 @@ class AssetGridDelegate(QStyledItemDelegate):
     @staticmethod
     def _extract_duration(index) -> float:
         """Safely extract the duration from the size role data."""
+        from ..models.roles import _DictHolder
         size_info = index.data(Roles.SIZE)
+        if isinstance(size_info, _DictHolder):
+            size_info = size_info.data
         if isinstance(size_info, dict):
-            raw = size_info.get("duration")  # type: ignore[arg-type]
+            raw = size_info.get("duration")
             if isinstance(raw, (int, float)):
                 return max(0.0, float(raw))
         return 0.0

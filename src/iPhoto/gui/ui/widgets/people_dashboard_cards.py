@@ -184,7 +184,7 @@ class PeopleCard(QWidget):
     def _paint_bottom_overlay(self, painter: QPainter, card_rect: QRectF) -> None:
         display_name = self.display_name()
         if not display_name:
-            return
+            display_name = f"{self.summary.asset_count} 张照片"
 
         gradient = QLinearGradient(
             card_rect.left(), card_rect.bottom() - 82, card_rect.left(), card_rect.bottom()
@@ -214,13 +214,14 @@ class PeopleCard(QWidget):
         )
 
     def _paint_count_badge(self, painter: QPainter, card_rect: QRectF) -> None:
+        label = str(self.seed_index + 1)
         badge_rect = QRectF(card_rect.left() + 12, card_rect.top() + 12, 44, 28)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(_qcolor("#111827", 175))
         painter.drawRoundedRect(badge_rect, 14, 14)
         painter.setPen(_qcolor("#FFFFFF"))
         painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, str(self.summary.face_count))
+        painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, label)
 
     def enterEvent(self, _event) -> None:  # noqa: N802
         if not self._dragging:

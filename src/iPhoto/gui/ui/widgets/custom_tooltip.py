@@ -154,6 +154,8 @@ class FloatingToolTip(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore[override]
         """Draw a clipped, rounded rectangle with the tooltip text."""
 
+        if self.width() < 1 or self.height() < 1:
+            return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
@@ -216,6 +218,9 @@ class FloatingToolTip(QWidget):
 
         self.setText(text)
         tooltip_size = self.sizeHint()
+        if tooltip_size.width() < 1 or tooltip_size.height() < 1:
+            self.hide_tooltip()
+            return
         self.resize(tooltip_size)
 
         target = QPoint(global_pos)
@@ -237,6 +242,14 @@ class FloatingToolTip(QWidget):
 
             if geometry.top() < available.top():
                 geometry.moveTop(available.top())
+
+            # Clamp geometry to screen bounds to prevent
+            # UpdateLayeredWindowIndirect failures on Windows
+            clamped = geometry.intersected(available)
+            if clamped.isEmpty():
+                self.hide_tooltip()
+                return
+            geometry = clamped
 
         self.setGeometry(geometry)
         if not self.isVisible():

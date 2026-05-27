@@ -59,8 +59,26 @@ class PreviewController(QObject):
             return
         is_video = bool(index.data(Roles.IS_VIDEO))
         is_live = bool(index.data(Roles.IS_LIVE))
-        if not is_video and not is_live:
+        is_image = bool(index.data(Roles.IS_IMAGE))
+        if not is_video and not is_live and not is_image:
             return
+        rect = view.visualRect(index)
+        global_rect = QRect(view.viewport().mapToGlobal(rect.topLeft()), rect.size())
+        info = index.data(Roles.INFO)
+        aspect_hint = self._extract_aspect_hint(info)
+
+        if not is_video and not is_live:
+            # Static image preview
+            abs_raw = index.data(Roles.ABS)
+            if not abs_raw:
+                return
+            self._preview_window.show_image_preview(
+                Path(str(abs_raw)),
+                global_rect,
+                aspect_ratio_hint=aspect_hint,
+            )
+            return
+
         preview_raw = None
         if is_live:
             preview_raw = index.data(Roles.LIVE_MOTION_ABS)
@@ -71,10 +89,6 @@ class PreviewController(QObject):
         preview_path = Path(str(preview_raw))
         adjustment_raw = index.data(Roles.ABS) or preview_raw
         adjustment_path = Path(str(adjustment_raw))
-        rect = view.visualRect(index)
-        global_rect = QRect(view.viewport().mapToGlobal(rect.topLeft()), rect.size())
-        info = index.data(Roles.INFO)
-        aspect_hint = self._extract_aspect_hint(info)
         adjustments, trim_range_ms, adjusted_preview = self._extract_preview_rendering(
             adjustment_path,
             info,
@@ -90,7 +104,9 @@ class PreviewController(QObject):
 
     def _extract_aspect_hint(self, info: Any) -> float | None:
         """Return a best-effort display aspect ratio hint from model metadata."""
-
+        from ..models.roles import _DictHolder
+        if isinstance(info, _DictHolder):
+            info = info.data
         if not isinstance(info, dict):
             return None
 
