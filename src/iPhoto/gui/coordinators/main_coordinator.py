@@ -812,7 +812,7 @@ class MainCoordinator(QObject):
                 ]
             )
             # Zoom in to the current photo's location.
-            panel._map_view.set_location(lat, lon, zoom=14.0)
+            panel._map_view.set_location(lat, lon, zoom=16.0)
             panel._show_all_btn.setText(f"Show All Photos ({len(nearby)})")
         else:
             panel._show_all_btn.setChecked(False)
