@@ -193,6 +193,18 @@ class FilmstripView(AssetGrid):
 
     def _restore_scroll_state(self, reason: str) -> None:
         self._restore_scheduled = False
+        try:
+            self._restore_scroll_state_impl(reason)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "_restore_scroll_state failed (reason=%s)", reason, exc_info=True
+            )
+        finally:
+            self._pending_scroll_value = None
+            self._pending_center_row = None
+
+    def _restore_scroll_state_impl(self, reason: str) -> None:
         model = self.model()
         if self._pending_scroll_value is None and self._pending_center_row is None:
             return
@@ -202,7 +214,6 @@ class FilmstripView(AssetGrid):
         scroll_value = self._pending_scroll_value
         center_row = self._pending_center_row
         scrollbar = self.horizontalScrollBar()
-        restored = False
         if center_row is not None and 0 <= center_row < model.rowCount():
             index = model.index(center_row, 0)
             if index.isValid() and not bool(index.data(Roles.IS_SPACER)):
@@ -215,9 +226,6 @@ class FilmstripView(AssetGrid):
 
         elif scroll_value is not None:
             scrollbar.setValue(scroll_value)
-
-        self._pending_scroll_value = None
-        self._pending_center_row = None
 
     def refresh_spacers(self, current_proxy_index: QModelIndex | None = None) -> None:
         """Recalculate spacer padding and optionally use the provided index.
@@ -250,6 +258,12 @@ class FilmstripView(AssetGrid):
 
     def _current_item_width(self, current_proxy_index: QModelIndex | None = None) -> int:
         """Return the width of the active tile, preferring the supplied index."""
+        try:
+            return self._current_item_width_impl(current_proxy_index)
+        except Exception:
+            return self._narrow_item_width()
+
+    def _current_item_width_impl(self, current_proxy_index: QModelIndex | None = None) -> int:
         model = self.model()
         delegate = self.itemDelegate()
         if model is None or delegate is None or model.rowCount() == 0:
@@ -290,6 +304,12 @@ class FilmstripView(AssetGrid):
         return self._narrow_item_width()
 
     def _narrow_item_width(self) -> int:
+        try:
+            return self._narrow_item_width_impl()
+        except Exception:
+            return max(1, int(round(self._base_height * self._default_ratio)))
+
+    def _narrow_item_width_impl(self) -> int:
         delegate = self.itemDelegate()
         model = self.model()
         if delegate is None or model is None or model.rowCount() == 0:

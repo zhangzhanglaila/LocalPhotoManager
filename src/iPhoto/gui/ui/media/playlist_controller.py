@@ -206,7 +206,10 @@ class PlaylistController(QObject):
             return
         if self._current_row == -1:
             return
-        count = self._model.rowCount()
+        try:
+            count = self._model.rowCount()
+        except Exception:
+            return
         if count == 0:
             self.clear()
             return
@@ -218,7 +221,10 @@ class PlaylistController(QObject):
             # different asset once the model compacts itself.  In that case the
             # playback controller needs to emit an updated selection so the
             # detail pane refreshes accordingly.
-            current_rel = self._resolve_rel(self._current_row)
+            try:
+                current_rel = self._resolve_rel(self._current_row)
+            except Exception:
+                return
             if current_rel == self._current_rel and current_rel is not None:
                 return
             # Attempt to relocate the original asset elsewhere in the model so
@@ -226,7 +232,10 @@ class PlaylistController(QObject):
             # disappears (for example, it leaves the Favorites filter) fall
             # back to a nearby surrogate.
             if self._current_rel:
-                relocated = self._find_row_by_rel(self._current_rel)
+                try:
+                    relocated = self._find_row_by_rel(self._current_rel)
+                except Exception:
+                    relocated = None
                 if relocated is not None:
                     self.set_current(relocated)
                     return

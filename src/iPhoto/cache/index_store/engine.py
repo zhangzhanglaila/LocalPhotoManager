@@ -55,10 +55,11 @@ class DatabaseManager:
 
     def _create_connection(self) -> sqlite3.Connection:
         """Create a new database connection with optimised PRAGMA settings."""
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
+        conn = sqlite3.connect(self.db_path, timeout=2.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA cache_size=-8000")  # 8 MB cache
+        conn.execute("PRAGMA busy_timeout=2000")  # 2s busy timeout
         return conn
 
     @contextmanager

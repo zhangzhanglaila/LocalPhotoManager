@@ -148,7 +148,7 @@ class FaceClusterPipeline:
             except Exception as exc:
                 if cancellation_requested():
                     break
-                _LOGGER.exception("Face detection failed for %s", image_path)
+                _LOGGER.warning("Face detection failed for %s: %s", image_path, exc)
                 results.append(
                     DetectedAssetFaces(
                         asset_id=asset_id,
@@ -444,6 +444,18 @@ def cluster_face_records(
     if not faces:
         return [], []
 
+    # Limit faces to avoid OOM from N×N distance matrix (5000×5000×4 ≈ 100MB).
+    MAX_CLUSTER_FACES = 5000
+    if len(faces) > MAX_CLUSTER_FACES:
+        # Keep existing clustered faces + most recent unclustered ones.
+        clustered = [f for f in faces if f.person_id]
+        unclustered = [f for f in faces if not f.person_id]
+        if len(clustered) >= MAX_CLUSTER_FACES:
+            faces = clustered[-MAX_CLUSTER_FACES:]
+        else:
+            remaining = MAX_CLUSTER_FACES - len(clustered)
+            faces = clustered + unclustered[-remaining:]
+
     embeddings = np.stack([face.embedding for face in faces], axis=0).astype(np.float32)
     labels = run_dbscan(
         embeddings,
@@ -653,16 +665,30 @@ def run_dbscan(
     if embeddings.size == 0:
         return np.empty((0,), dtype=np.int32)
 
-    distance_matrix = cosine_distance_matrix(embeddings)
-    neighbor_map = [
-        np.flatnonzero(distance_matrix[index] <= eps).tolist()
-        for index in range(distance_matrix.shape[0])
-    ]
+    n = embeddings.shape[0]
+    normalized = np.stack([normalize_vector(v) for v in embeddings], axis=0)
+    CHUNK_SIZE = 512
+
+    # Build neighbor lists in chunks to avoid materializing the full N×N
+    # distance matrix.  For large face sets (5000+) this keeps peak memory
+    # at ~CHUNK_SIZE×N instead of N×N.
+    neighbor_map: list[list[int]] = [[] for _ in range(n)]
+    for start in range(0, n, CHUNK_SIZE):
+        end = min(start + CHUNK_SIZE, n)
+        # (chunk, n) @ (n, n) → (chunk, n)
+        similarity_chunk = normalized[start:end] @ normalized.T
+        distance_chunk = np.clip(1.0 - similarity_chunk, 0.0, 2.0)
+        for local_idx in range(distance_chunk.shape[0]):
+            global_idx = start + local_idx
+            neighbor_map[global_idx] = [
+                int(j) for j in np.flatnonzero(distance_chunk[local_idx] <= eps)
+            ]
+        del similarity_chunk, distance_chunk
 
     unvisited = -99
-    labels = np.full(distance_matrix.shape[0], unvisited, dtype=np.int32)
+    labels = np.full(n, unvisited, dtype=np.int32)
     cluster_id = 0
-    for point_index in range(distance_matrix.shape[0]):
+    for point_index in range(n):
         if labels[point_index] != unvisited:
             continue
 
@@ -700,11 +726,21 @@ def run_dbscan(
 
 
 def cosine_distance_matrix(embeddings: np.ndarray) -> np.ndarray:
+    """Compute full N×N cosine distance matrix (kept for callers that need it).
+
+    Prefer using :func:`run_dbscan` directly for clustering — it computes
+    distances in chunks without materializing the full matrix.
+    """
+    n = embeddings.shape[0]
     normalized = np.stack([normalize_vector(vector) for vector in embeddings], axis=0)
-    similarity = normalized @ normalized.T
-    distance = 1.0 - similarity
+    CHUNK_SIZE = 512
+    distance = np.empty((n, n), dtype=np.float32)
+    for start in range(0, n, CHUNK_SIZE):
+        end = min(start + CHUNK_SIZE, n)
+        similarity_chunk = normalized[start:end] @ normalized.T
+        distance[start:end] = 1.0 - similarity_chunk
     np.clip(distance, 0.0, 2.0, out=distance)
-    return distance.astype(np.float32)
+    return distance
 
 
 def cosine_distance(left: np.ndarray, right: np.ndarray) -> float:

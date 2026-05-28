@@ -77,7 +77,10 @@ class ContextMenuController(QObject):
     def _handle_context_menu(self, point: QPoint) -> None:
         """Construct and display a context menu based on where the user right-clicked."""
 
-        index = self._grid_view.indexAt(point)
+        try:
+            index = self._grid_view.indexAt(point)
+        except Exception:
+            return
         menu = QMenu(self._grid_view)
         apply_menu_style(menu, self._grid_view)
 

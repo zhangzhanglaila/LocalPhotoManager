@@ -46,6 +46,7 @@ class AssetGrid(QListView):
         self._update_timer.timeout.connect(self._emit_visible_rows)
         self._visible_range: Optional[tuple[int, int]] = None
         self._model = None
+        self._model_resetting = False
         self._external_drop_enabled = False
         self._drop_handler: Optional[Callable[[List[Path]], None]] = None
         self._drop_validator: Optional[Callable[[List[Path]], bool]] = None
@@ -84,7 +85,7 @@ class AssetGrid(QListView):
         was_long_press = self._long_press_active
         index = self._pressed_index
         self._cancel_pending_long_press()
-        if event.button() == Qt.MouseButton.LeftButton and index is not None:
+        if event.button() == Qt.MouseButton.LeftButton and index is not None and not self._model_resetting:
             if was_long_press:
                 self.previewReleased.emit()
             elif index.isValid():
@@ -251,6 +252,14 @@ class AssetGrid(QListView):
     def setModel(self, model) -> None:  # type: ignore[override]
         if self._model is not None:
             try:
+                self._model.modelAboutToBeReset.disconnect(self._on_model_about_to_reset)
+            except (RuntimeError, TypeError):
+                pass
+            try:
+                self._model.modelReset.disconnect(self._on_model_reset_done)
+            except (RuntimeError, TypeError):
+                pass
+            try:
                 self._model.modelReset.disconnect(self._schedule_visible_rows_update)
             except (RuntimeError, TypeError):
                 pass
@@ -264,10 +273,31 @@ class AssetGrid(QListView):
                 pass
         super().setModel(model)
         self._model = model
+        self._model_resetting = False
         if model is not None:
+            model.modelAboutToBeReset.connect(self._on_model_about_to_reset)
+            model.modelReset.connect(self._on_model_reset_done)
             model.modelReset.connect(self._schedule_visible_rows_update)
             model.rowsInserted.connect(self._schedule_visible_rows_update)
             model.rowsRemoved.connect(self._schedule_visible_rows_update)
+        self._schedule_visible_rows_update()
+
+    def _on_model_about_to_reset(self) -> None:
+        self._model_resetting = True
+        self._update_timer.stop()
+        # Clear stale press state — the QModelIndex becomes invalid after reset.
+        self._press_timer.stop()
+        self._pressed_index = None
+        self._press_pos = None
+        self._long_press_active = False
+
+    def _on_model_reset_done(self) -> None:
+        # Defer clearing the flag so views finish processing the reset
+        # before we allow indexAt()/visualRect() calls.
+        QTimer.singleShot(50, self._clear_model_resetting)
+
+    def _clear_model_resetting(self) -> None:
+        self._model_resetting = False
         self._schedule_visible_rows_update()
 
     # ------------------------------------------------------------------
@@ -284,7 +314,7 @@ class AssetGrid(QListView):
         self._suppress_next_preview_leave = False
 
     def _on_long_press_timeout(self) -> None:
-        if not self._preview_enabled:
+        if not self._preview_enabled or self._model_resetting:
             self._reset_state()
             return
         if self._pressed_index is not None and self._pressed_index.isValid():
@@ -299,6 +329,8 @@ class AssetGrid(QListView):
         return bool(buttons & Qt.MouseButton.LeftButton)
 
     def _schedule_visible_rows_update(self) -> None:
+        if self._model_resetting:
+            return
         self._update_timer.start()
 
     def _viewport_pos(self, event: QMouseEvent) -> QPoint:
@@ -346,23 +378,46 @@ class AssetGrid(QListView):
         return QPoint(event.x(), event.y())
 
     def _emit_visible_rows(self) -> None:
+        try:
+            self._emit_visible_rows_impl()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).debug(
+                "_emit_visible_rows failed", exc_info=True
+            )
+
+    def _emit_visible_rows_impl(self) -> None:
+        if self._model_resetting:
+            return
         model = self.model()
         if model is None:
             return
-        row_count = model.rowCount()
-        if row_count == 0:
+        try:
+            row_count = model.rowCount()
+        except Exception:
+            return
+        if row_count <= 0:
             if self._visible_range is not None:
                 self._visible_range = None
             return
-        viewport_rect = self.viewport().rect()
+        viewport = self.viewport()
+        if viewport is None:
+            return
+        viewport_rect = viewport.rect()
         if viewport_rect.isEmpty():
             return
 
-        top_index = self.indexAt(viewport_rect.topLeft())
-        bottom_index = self.indexAt(viewport_rect.bottomRight())
-
-        first = top_index.row()
-        last = bottom_index.row()
+        # Re-check model state right before accessing C++ internals,
+        # since the model could have been invalidated between checks.
+        if self._model_resetting:
+            return
+        try:
+            top_index = self.indexAt(viewport_rect.topLeft())
+            bottom_index = self.indexAt(viewport_rect.bottomRight())
+            first = top_index.row()
+            last = bottom_index.row()
+        except Exception:
+            return
 
         if first == -1 and last == -1:
             return

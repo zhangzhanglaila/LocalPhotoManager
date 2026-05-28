@@ -34,6 +34,8 @@ LOGGER = logging.getLogger(__name__)
 class FileDiscoveryThread(threading.Thread):
     """Discover media paths for the filesystem scanner."""
 
+    _QUEUE_PUT_TIMEOUT = 2.0
+
     def __init__(
         self,
         root: Path,
@@ -76,8 +78,13 @@ class FileDiscoveryThread(threading.Thread):
                         self._exclude,
                         root=self._root,
                     ):
-                        self._queue.put(candidate)
-                        self.total_found += 1
+                        while not self._stop_event.is_set():
+                            try:
+                                self._queue.put(candidate, timeout=self._QUEUE_PUT_TIMEOUT)
+                                self.total_found += 1
+                                break
+                            except queue.Full:
+                                continue
                     else:
                         excluded_count += 1
                         if len(excluded_samples) < 10:
@@ -89,7 +96,18 @@ class FileDiscoveryThread(threading.Thread):
             if excluded_samples:
                 LOGGER.info("Sample excluded files: %s", excluded_samples)
         finally:
-            self._queue.put(None)
+            # Put sentinel — use a short timeout loop so we don't block here either
+            while not self._stop_event.is_set():
+                try:
+                    self._queue.put(None, timeout=self._QUEUE_PUT_TIMEOUT)
+                    break
+                except queue.Full:
+                    continue
+            if self._stop_event.is_set():
+                try:
+                    self._queue.put_nowait(None)
+                except queue.Full:
+                    pass
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -204,7 +222,7 @@ def scan_album(
 ) -> Iterator[Dict[str, Any]]:
     """Yield index rows for all matching assets in *root*, scanning in parallel."""
 
-    path_queue = queue.Queue(maxsize=1000)
+    path_queue = queue.Queue(maxsize=20000)
     # FileDiscoveryThread expects list, ensure we pass lists
     discoverer = FileDiscoveryThread(root, path_queue, include=list(include_globs), exclude=list(exclude_globs))
     discoverer.start()

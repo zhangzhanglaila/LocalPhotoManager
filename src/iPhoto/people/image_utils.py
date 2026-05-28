@@ -25,6 +25,18 @@ def ensure_pillow_image_plugins() -> None:
 
 def load_image_rgb(image_path: Path) -> Image.Image:
     ensure_pillow_image_plugins()
+    # Try pillow_heif for HEIC files; if it fails despite being installed
+    # the file may be corrupted or in an unsupported variant.
+    suffix = image_path.suffix.lower()
+    if suffix in {".heic", ".heif", ".heifs"}:
+        try:
+            from pillow_heif import open_heif
+            heif_image = open_heif(image_path)
+            return heif_image.to_pillow().convert("RGB")
+        except ImportError:
+            pass
+        except Exception:
+            pass
     with Image.open(image_path) as image:
         corrected = ImageOps.exif_transpose(image)
         return corrected.convert("RGB")

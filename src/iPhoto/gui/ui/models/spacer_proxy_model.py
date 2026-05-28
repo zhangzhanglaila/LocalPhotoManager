@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import (
     QAbstractProxyModel,
     QModelIndex,
@@ -12,6 +14,9 @@ from PySide6.QtCore import (
 
 from .roles import Roles
 
+_LOGGER = logging.getLogger(__name__)
+_LOGGER.debug("SpacerProxyModel v2 loaded — deferred reset, epoch tracking")
+
 
 class SpacerProxyModel(QAbstractProxyModel):
     """Wrap an asset model and expose leading/trailing spacer rows."""
@@ -19,6 +24,8 @@ class SpacerProxyModel(QAbstractProxyModel):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._spacer_size = QSize(0, 0)
+        self._is_resetting = False
+        self._reset_epoch = 0  # incremented on each reset; stale indices have old epoch
 
     # ------------------------------------------------------------------
     # Public API
@@ -32,17 +39,17 @@ class SpacerProxyModel(QAbstractProxyModel):
 
         self._spacer_size.setWidth(width)
 
-        # The leading and trailing spacer rows are the only items whose
-        # geometry depends on this width. Instead of resetting the entire
-        # model (which would force every view to throw away caches and
-        # re-query all data), emit targeted ``dataChanged`` signals so
-        # views simply refresh the two spacer delegates. This keeps
-        # navigation responsive even for very large albums.
+        if self._is_resetting:
+            return
+
         source = self.sourceModel()
         if source is None:
             return
 
-        source_rows = source.rowCount()
+        try:
+            source_rows = source.rowCount()
+        except Exception:
+            return
         if source_rows <= 0:
             return
 
@@ -92,19 +99,31 @@ class SpacerProxyModel(QAbstractProxyModel):
             source_model.dataChanged.connect(self._handle_source_data_changed)
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
-        if parent.isValid():
+        if parent.isValid() or self._is_resetting:
             return 0
         source = self.sourceModel()
         if source is None:
             return 0
-        count = source.rowCount(parent)
+        try:
+            count = source.rowCount(parent)
+        except Exception:
+            return 0
         return count + 2 if count > 0 else 0
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+        if self._is_resetting:
+            return 0
         source = self.sourceModel()
-        return source.columnCount(parent) if source is not None else 0
+        if source is None:
+            return 0
+        try:
+            return source.columnCount(parent)
+        except Exception:
+            return 0
 
     def mapToSource(self, proxy_index: QModelIndex) -> QModelIndex:  # noqa: N802
+        if self._is_resetting:
+            return QModelIndex()
         source = self.sourceModel()
         if source is None or not proxy_index.isValid():
             return QModelIndex()
@@ -116,13 +135,19 @@ class SpacerProxyModel(QAbstractProxyModel):
             return QModelIndex()
 
         row = proxy_index.row()
-        count = source.rowCount()
+        try:
+            count = source.rowCount()
+        except Exception:
+            return QModelIndex()
         if not (1 <= row <= count):
             return QModelIndex()
-        return source.index(row - 1, proxy_index.column())
+        try:
+            return source.index(row - 1, proxy_index.column())
+        except Exception:
+            return QModelIndex()
 
     def mapFromSource(self, source_index: QModelIndex) -> QModelIndex:  # noqa: N802
-        if not source_index.isValid():
+        if self._is_resetting or not source_index.isValid():
             return QModelIndex()
         return self.index(source_index.row() + 1, source_index.column())
 
@@ -137,7 +162,7 @@ class SpacerProxyModel(QAbstractProxyModel):
         return QModelIndex()
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):  # noqa: N802
-        if not index.isValid():
+        if not index.isValid() or self._is_resetting:
             return None
 
         source = self.sourceModel()
@@ -145,7 +170,17 @@ class SpacerProxyModel(QAbstractProxyModel):
             return None
 
         row = index.row()
-        last_row = self.rowCount() - 1
+
+        # Get source row count safely — this can crash at the C++ level
+        # if the source model is in an inconsistent state.
+        try:
+            source_count = source.rowCount()
+        except Exception:
+            return None
+        if source_count < 0:
+            return None
+
+        last_row = source_count + 1  # proxy has source_count + 2 rows
         if row in {0, last_row} and last_row >= 0:
             if role == Roles.IS_SPACER:
                 return True
@@ -155,28 +190,53 @@ class SpacerProxyModel(QAbstractProxyModel):
                 return None
             return None
 
-        source_index = self.mapToSource(index)
+        # Guard against stale indices: revalidate bounds before mapping.
+        if source_count <= 0 or row < 1 or row > source_count:
+            return None
+
+        try:
+            source_index = self.mapToSource(index)
+        except Exception:
+            return None
         if not source_index.isValid():
             return None
-        return source.data(source_index, role)
+        try:
+            return source.data(source_index, role)
+        except Exception:
+            return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlags:  # noqa: N802
-        if not index.isValid():
+        if not index.isValid() or self._is_resetting:
             return Qt.NoItemFlags
-        if bool(self.data(index, Roles.IS_SPACER)):
+        try:
+            if bool(self.data(index, Roles.IS_SPACER)):
+                return Qt.NoItemFlags
+            source_index = self.mapToSource(index)
+            source = self.sourceModel()
+            if source is None or not source_index.isValid():
+                return Qt.NoItemFlags
+            return source.flags(source_index)
+        except Exception:
             return Qt.NoItemFlags
-        source_index = self.mapToSource(index)
-        source = self.sourceModel()
-        if source is None or not source_index.isValid():
-            return Qt.NoItemFlags
-        return source.flags(source_index)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
     def _handle_source_reset(self, *args, **_kwargs) -> None:  # pragma: no cover - Qt signal glue
-        self.beginResetModel()
-        self.endResetModel()
+        self._is_resetting = True
+        self._reset_epoch += 1
+        try:
+            self.beginResetModel()
+            # Clear _is_resetting BEFORE endResetModel so that rowCount()
+            # returns the correct value when the view rebuilds its items.
+            # After beginResetModel() Qt has already discarded all stale
+            # persistent indices, so it is safe to allow proxy→source
+            # mapping again.
+            self._is_resetting = False
+            self.endResetModel()
+        except Exception:
+            _LOGGER.debug("_handle_source_reset failed", exc_info=True)
+            self._is_resetting = False
 
     def _handle_source_data_changed(
         self,
@@ -186,11 +246,14 @@ class SpacerProxyModel(QAbstractProxyModel):
     ) -> None:
         """Forward data changes from the source model to the proxy."""
 
-        if not top_left.isValid() or not bottom_right.isValid():
+        if self._is_resetting or not top_left.isValid() or not bottom_right.isValid():
             return
 
-        proxy_top_left = self.mapFromSource(top_left)
-        proxy_bottom_right = self.mapFromSource(bottom_right)
+        try:
+            proxy_top_left = self.mapFromSource(top_left)
+            proxy_bottom_right = self.mapFromSource(bottom_right)
+        except Exception:
+            return
 
         if not proxy_top_left.isValid() or not proxy_bottom_right.isValid():
             return

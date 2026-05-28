@@ -90,6 +90,7 @@ class PeopleIndexCoordinator(QObject):
         if not detected_batch:
             return None
 
+        # Phase 1: stage under lock (fast).
         with self._lock:
             if self._shutdown_requested:
                 return None
@@ -102,25 +103,32 @@ class PeopleIndexCoordinator(QObject):
                     store.update_face_statuses(retry_ids, FACE_STATUS_RETRY)
             if not done_ids:
                 return None
-
             previous_faces = repository.get_all_faces()
             previous_persons = repository.get_all_person_records()
-            clustered_faces, persons = session.build_runtime_snapshot(
-                repository,
-                distance_threshold=distance_threshold,
-                min_samples=min_samples,
-                existing_faces=previous_faces,
+
+        # Phase 2: cluster outside the lock so the UI can still read
+        # person/face data while clustering runs.
+        clustered_faces, persons = session.build_runtime_snapshot(
+            repository,
+            distance_threshold=distance_threshold,
+            min_samples=min_samples,
+            existing_faces=previous_faces,
+        )
+        done_id_set = set(done_ids)
+        changed_person_ids = tuple(
+            sorted(
+                {
+                    str(face.person_id)
+                    for face in clustered_faces
+                    if face.person_id and face.asset_id in done_id_set
+                }
             )
-            done_id_set = set(done_ids)
-            changed_person_ids = tuple(
-                sorted(
-                    {
-                        str(face.person_id)
-                        for face in clustered_faces
-                        if face.person_id and face.asset_id in done_id_set
-                    }
-                )
-            )
+        )
+
+        # Phase 3: commit and emit under lock (serialises revision numbering).
+        with self._lock:
+            if self._shutdown_requested:
+                return None
             session.commit(
                 repository,
                 distance_threshold=distance_threshold,
@@ -130,8 +138,6 @@ class PeopleIndexCoordinator(QObject):
                 clustered_faces=clustered_faces,
                 persons=persons,
             )
-            # Emit the snapshot (inside the lock to serialise revision numbering)
-            # before releasing so that UI can update while bookkeeping retries.
             event = self._emit_snapshot(
                 changed_asset_ids=tuple(done_ids + retry_ids),
                 changed_person_ids=changed_person_ids,

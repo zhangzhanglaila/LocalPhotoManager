@@ -311,4 +311,7 @@ class FaceScanWorker(QThread):
         store = self._people_service.asset_repository
         if store is None:
             return
-        store.update_face_statuses(asset_ids, status)
+        try:
+            store.update_face_statuses(asset_ids, status)
+        except Exception:
+            LOGGER.warning("Failed to update face statuses to %s", status, exc_info=True)

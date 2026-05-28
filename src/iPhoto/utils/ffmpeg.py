@@ -55,8 +55,19 @@ def _load_cv2() -> Any | None:
     return imported_cv2
 
 
-def _run_command(command: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
-    """Execute *command* and return the completed process."""
+_FFMPEG_COMMAND_TIMEOUT = 30
+
+
+def _run_command(
+    command: Sequence[str],
+    *,
+    timeout: float | None = _FFMPEG_COMMAND_TIMEOUT,
+) -> subprocess.CompletedProcess[bytes]:
+    """Execute *command* and return the completed process.
+
+    A default *timeout* of 30 s prevents ffprobe/ffmpeg from hanging
+    indefinitely on corrupted or unreadable media files.
+    """
 
     # Define startupinfo to hide the window on Windows
     startupinfo = None
@@ -71,9 +82,14 @@ def _run_command(command: Sequence[str]) -> subprocess.CompletedProcess[bytes]:
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            timeout=timeout,
             startupinfo=startupinfo,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise ExternalToolError(
+            f"ffmpeg/ffprobe timed out after {timeout:.0f}s: {' '.join(command[:4])}..."
+        ) from exc
     except FileNotFoundError as exc:  # pragma: no cover - depends on environment
         raise ExternalToolError("ffmpeg executable not found on PATH") from exc
     return process

@@ -282,12 +282,15 @@ class GalleryCollectionStore:
             return None
 
         batch_size = 200
-        for offset in range(0, self._total_count, batch_size):
-            batch = self._fetch_rows(offset, min(self._total_count - 1, offset + batch_size - 1))
-            for row, dto in batch.items():
-                if self._normalize_abs_key(dto.abs_path) == target:
-                    self._row_cache.setdefault(row, dto)
-                    return row
+        try:
+            for offset in range(0, self._total_count, batch_size):
+                batch = self._fetch_rows(offset, min(self._total_count - 1, offset + batch_size - 1))
+                for row, dto in batch.items():
+                    if self._normalize_abs_key(dto.abs_path) == target:
+                        self._row_cache.setdefault(row, dto)
+                        return row
+        except Exception:
+            logging.getLogger(__name__).exception("row_for_path batch fetch failed")
         return None
 
     def count(self) -> int:
@@ -584,7 +587,13 @@ class GalleryCollectionStore:
         # Preserve pinned row if it was in the old cache but not in new results.
         pinned_row = self._pinned_row
         if pinned_row is not None and pinned_row not in row_cache and 0 <= pinned_row < total:
-            pinned_dto = self._fetch_single_row(pinned_row)
+            try:
+                pinned_dto = self._fetch_single_row(pinned_row)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "_fetch_single_row failed for pinned row %s", pinned_row
+                )
+                pinned_dto = None
             if pinned_dto is not None:
                 row_cache[pinned_row] = pinned_dto
 
@@ -684,7 +693,13 @@ class GalleryCollectionStore:
     def _ensure_row_loaded(self, row: int, *, emit_signals: bool) -> None:
         if row in self._row_cache:
             return
-        dto = self._fetch_single_row(row)
+        try:
+            dto = self._fetch_single_row(row)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "_fetch_single_row failed for row %s", row
+            )
+            return
         if dto is None:
             return
         self._row_cache[row] = dto

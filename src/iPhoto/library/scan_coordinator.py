@@ -105,19 +105,35 @@ class ScanCoordinatorMixin:
         self._face_scan_status_message = None
         self.faceScanStatusChanged.emit("")
         face_library_root = self.root() if self.root() is not None else root
-        face_worker = FaceScanWorker(
-            face_library_root,
-            self,
-            people_service=getattr(self, "_people_service", None),
-        )
-        face_worker.statusChanged.connect(self._on_face_scan_status_changed)
-        face_worker.downloadProgress.connect(self._on_face_download_progress)
-        face_worker.finished.connect(self._on_face_scan_finished)
-        self._current_face_scanner = face_worker
+
+        # Skip face scan when disk space is critically low to avoid SQLite crashes.
+        import shutil as _shutil
+        _skip_face = False
+        try:
+            _du = _shutil.disk_usage(str(face_library_root))
+            _skip_face = _du.free < 500 * 1024 * 1024  # 500 MB
+        except OSError:
+            pass
+
+        if _skip_face:
+            self.faceScanStatusChanged.emit("Face scan skipped: disk space low.")
+            self._current_face_scanner = None
+        else:
+            face_worker = FaceScanWorker(
+                face_library_root,
+                self,
+                people_service=getattr(self, "_people_service", None),
+            )
+            face_worker.statusChanged.connect(self._on_face_scan_status_changed)
+            face_worker.downloadProgress.connect(self._on_face_download_progress)
+            face_worker.finished.connect(self._on_face_scan_finished)
+            self._current_face_scanner = face_worker
+
         # Release lock before starting the worker
         del locker
 
-        face_worker.start()
+        if not _skip_face:
+            face_worker.start()
         self._scan_thread_pool.start(worker)
 
     def stop_scanning(self) -> None:

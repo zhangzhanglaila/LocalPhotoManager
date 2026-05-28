@@ -106,6 +106,11 @@ class GalleryGridView(AssetGrid):
         # Let the base class handle the standard visible items first.
         super().paintEvent(event)
 
+        # Skip extra-row pre-rendering during model resets to avoid
+        # dereferencing stale QModelIndex objects at the C++ level.
+        if self._model_resetting:
+            return
+
         cell_h = self.gridSize().height()
         cell_w = self.gridSize().width()
         if cell_h <= 0 or cell_w <= 0:
@@ -114,7 +119,10 @@ class GalleryGridView(AssetGrid):
         model = self.model()
         if model is None:
             return
-        row_count = model.rowCount()
+        try:
+            row_count = model.rowCount()
+        except Exception:
+            return
         if row_count == 0:
             return
 
@@ -123,6 +131,8 @@ class GalleryGridView(AssetGrid):
             return
 
         vp = self.viewport()
+        if vp is None:
+            return
         vp_rect = vp.rect()
 
         # Probe *inside* the viewport to find boundary items, then compute
@@ -131,44 +141,54 @@ class GalleryGridView(AssetGrid):
         # so we determine the row above/below arithmetically instead.
         cols = max(1, vp_rect.width() // cell_w)
 
-        first_visible = self.indexAt(QPoint(vp_rect.left(), vp_rect.top()))
-        bottom_visible = self.indexAt(QPoint(vp_rect.left(), vp_rect.bottom()))
-        if not bottom_visible.isValid():
-            # Last row may be partial; try the right edge.
-            bottom_visible = self.indexAt(QPoint(vp_rect.right(), vp_rect.bottom()))
+        try:
+            first_visible = self.indexAt(QPoint(vp_rect.left(), vp_rect.top()))
+            bottom_visible = self.indexAt(QPoint(vp_rect.left(), vp_rect.bottom()))
+            if not bottom_visible.isValid():
+                # Last row may be partial; try the right edge.
+                bottom_visible = self.indexAt(QPoint(vp_rect.right(), vp_rect.bottom()))
+        except Exception:
+            return
+
+        # Re-check after C++ calls — model reset may have started.
+        if self._model_resetting:
+            return
 
         # Determine the range of model rows for each extra band.
         extra_indices = []
 
-        # --- Extra row ABOVE the viewport ---
-        if first_visible.isValid():
-            vis_row = first_visible.row() // cols
-            if vis_row > 0:
-                above_start = (vis_row - 1) * cols
-                first_above = model.index(above_start, 0)
-                above_rect = self.visualRect(first_above)
-                if above_rect.isValid():
-                    target_y = above_rect.top()
-                    for r in range(above_start, min(above_start + cols, row_count)):
-                        idx = model.index(r, 0)
-                        r_rect = self.visualRect(idx)
-                        if r_rect.isValid() and r_rect.top() == target_y:
-                            extra_indices.append((idx, r_rect))
+        try:
+            # --- Extra row ABOVE the viewport ---
+            if first_visible.isValid():
+                vis_row = first_visible.row() // cols
+                if vis_row > 0:
+                    above_start = (vis_row - 1) * cols
+                    first_above = model.index(above_start, 0)
+                    above_rect = self.visualRect(first_above)
+                    if above_rect.isValid():
+                        target_y = above_rect.top()
+                        for r in range(above_start, min(above_start + cols, row_count)):
+                            idx = model.index(r, 0)
+                            r_rect = self.visualRect(idx)
+                            if r_rect.isValid() and r_rect.top() == target_y:
+                                extra_indices.append((idx, r_rect))
 
-        # --- Extra row BELOW the viewport ---
-        if bottom_visible.isValid():
-            vis_row = bottom_visible.row() // cols
-            below_start = (vis_row + 1) * cols
-            if below_start < row_count:
-                first_below = model.index(below_start, 0)
-                below_rect = self.visualRect(first_below)
-                if below_rect.isValid():
-                    target_y = below_rect.top()
-                    for r in range(below_start, min(below_start + cols, row_count)):
-                        idx = model.index(r, 0)
-                        r_rect = self.visualRect(idx)
-                        if r_rect.isValid() and r_rect.top() == target_y:
-                            extra_indices.append((idx, r_rect))
+            # --- Extra row BELOW the viewport ---
+            if bottom_visible.isValid():
+                vis_row = bottom_visible.row() // cols
+                below_start = (vis_row + 1) * cols
+                if below_start < row_count:
+                    first_below = model.index(below_start, 0)
+                    below_rect = self.visualRect(first_below)
+                    if below_rect.isValid():
+                        target_y = below_rect.top()
+                        for r in range(below_start, min(below_start + cols, row_count)):
+                            idx = model.index(r, 0)
+                            r_rect = self.visualRect(idx)
+                            if r_rect.isValid() and r_rect.top() == target_y:
+                                extra_indices.append((idx, r_rect))
+        except Exception:
+            return
 
         if not extra_indices:
             return

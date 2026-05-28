@@ -57,12 +57,20 @@ class PreviewController(QObject):
 
         if not index or not index.isValid():
             return
+        # Guard against stale indices after model resets.
+        if getattr(view, "_model_resetting", False):
+            return
         is_video = bool(index.data(Roles.IS_VIDEO))
         is_live = bool(index.data(Roles.IS_LIVE))
         is_image = bool(index.data(Roles.IS_IMAGE))
         if not is_video and not is_live and not is_image:
             return
-        rect = view.visualRect(index)
+        try:
+            rect = view.visualRect(index)
+        except Exception:
+            return
+        if not rect.isValid():
+            return
         global_rect = QRect(view.viewport().mapToGlobal(rect.topLeft()), rect.size())
         info = index.data(Roles.INFO)
         aspect_hint = self._extract_aspect_hint(info)

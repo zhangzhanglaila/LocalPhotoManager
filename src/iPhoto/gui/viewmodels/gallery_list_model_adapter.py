@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QSize, Qt, Slot
+from PySide6.QtCore import QAbstractListModel, QModelIndex, QSize, Qt, QTimer, Slot
 
 from iPhoto.application.ports import EditServicePort
+
+_logger = logging.getLogger(__name__)
 from iPhoto.application.dtos import AssetDTO
 from iPhoto.gui.ui.models.roles import Roles, _DictHolder, role_names
 from iPhoto.infrastructure.services.thumbnail_cache_service import ThumbnailCacheService
@@ -72,6 +75,13 @@ class GalleryListModelAdapter(QAbstractListModel):
         return 1
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:  # type: ignore[override]
+        try:
+            return self._data_impl(index, role)
+        except Exception:
+            _logger.debug("data() failed for row=%s role=%s", index.row() if index.isValid() else "?", role, exc_info=True)
+            return None
+
+    def _data_impl(self, index: QModelIndex, role: int) -> Any:
         if not index.isValid():
             return None
 
@@ -301,6 +311,19 @@ class GalleryListModelAdapter(QAbstractListModel):
         return None, None
 
     def _on_source_changed(self) -> None:
+        # GalleryCollectionStore.data_changed is a pure Python signal that may
+        # fire from a background worker thread.  beginResetModel/endResetModel
+        # MUST run on the main thread — calling them from a worker corrupts
+        # Qt's C++ internal state and causes access violations.
+        from PySide6.QtCore import QThread
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            main_thread = app.thread()
+            if main_thread is not None and QThread.currentThread() is not main_thread:
+                QTimer.singleShot(0, self._on_source_changed)
+                return
+
         count = self._store.count()
         generation = self._store.generation
         current_snapshot = (count, generation)
@@ -314,6 +337,16 @@ class GalleryListModelAdapter(QAbstractListModel):
             self._current_row = -1
 
     def _on_window_changed(self, first: int, last: int) -> None:
+        # Same thread-safety guard as _on_source_changed.
+        from PySide6.QtCore import QThread
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            main_thread = app.thread()
+            if main_thread is not None and QThread.currentThread() is not main_thread:
+                QTimer.singleShot(0, lambda: self._on_window_changed(first, last))
+                return
+
         count = self.rowCount()
         if count <= 0:
             return
@@ -333,6 +366,16 @@ class GalleryListModelAdapter(QAbstractListModel):
             self.dataChanged.emit(idx, idx, [Qt.DecorationRole])
 
     def _on_row_changed(self, row: int) -> None:
+        # Same thread-safety guard as _on_source_changed.
+        from PySide6.QtCore import QThread
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is not None:
+            main_thread = app.thread()
+            if main_thread is not None and QThread.currentThread() is not main_thread:
+                QTimer.singleShot(0, lambda: self._on_row_changed(row))
+                return
+
         idx = self.index(row, 0)
         if idx.isValid():
             self.dataChanged.emit(

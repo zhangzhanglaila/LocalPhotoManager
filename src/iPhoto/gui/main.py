@@ -12,6 +12,14 @@ import threading
 from pathlib import Path
 
 faulthandler.enable()
+# Periodically dump all thread tracebacks to stderr for debugging hangs.
+# This is expensive and should only be enabled when investigating a hang.
+if os.environ.get("IPHOTO_FAULT_DUMP_INTERVAL"):
+    try:
+        interval = int(os.environ["IPHOTO_FAULT_DUMP_INTERVAL"])
+    except ValueError:
+        interval = 300
+    faulthandler.dump_traceback_later(timeout=interval, repeat=True, file=sys.stderr)
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor, QPalette, QSurfaceFormat
@@ -188,7 +196,13 @@ def _configure_qt_opengl_defaults() -> None:
 
 
 def _install_global_exception_hook() -> None:
-    """Log unhandled exceptions that would otherwise crash silently."""
+    """Log unhandled exceptions that would otherwise crash silently.
+
+    PySide6 calls ``sys.excepthook`` when a Python exception propagates out of
+    a C++-invoked slot.  Some PySide6 versions then call ``sys.exit(1)``.
+    We override the hook so that exceptions are *logged only* and never trigger
+    a process exit — the application continues running.
+    """
 
     import traceback
 
@@ -196,17 +210,31 @@ def _install_global_exception_hook() -> None:
 
     def _excepthook(exc_type, exc_value, exc_tb):
         _hook_logger.critical(
-            "Unhandled exception:\n%s",
+            "Unhandled exception (app continues):\n%s",
             "".join(traceback.format_exception(exc_type, exc_value, exc_tb)),
         )
-        sys.__excepthook__(exc_type, exc_value, exc_tb)
+        # Write to crash log file as well (survives process death).
+        crash_path = Path.home() / ".iPhoto" / "crash.log"
+        try:
+            crash_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(crash_path, "a", encoding="utf-8") as f:
+                f.write("=== Unhandled exception ===\n")
+                traceback.print_exception(exc_type, exc_value, exc_tb, file=f)
+                f.write("\n")
+        except OSError:
+            pass
+        # Do NOT call sys.__excepthook__ — some PySide6 versions call
+        # sys.exit(1) after excepthook returns.
 
     sys.excepthook = _excepthook
+    # Also replace the internal reference so PySide6's PyErr_Print path
+    # uses our hook instead of the default one.
+    sys.__excepthook__ = _excepthook
 
     # Qt swallows exceptions in slots/signals — install a handler via
     # QThreadPool's exception handling or threading.
     import threading
-    orig_thread_excepthook = threading.excepthook
+    _orig_thread_excepthook = threading.excepthook
 
     def _thread_excepthook(args):
         _hook_logger.critical(
@@ -214,7 +242,7 @@ def _install_global_exception_hook() -> None:
             args.thread,
             "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_tb)),
         )
-        orig_thread_excepthook(args)
+        # Do NOT call original thread excepthook (which may exit).
 
     threading.excepthook = _thread_excepthook
 

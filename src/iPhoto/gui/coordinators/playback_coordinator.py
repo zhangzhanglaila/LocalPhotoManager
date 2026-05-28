@@ -369,7 +369,11 @@ class PlaybackCoordinator(QObject):
         self._player_bar.set_position(max(0, position_ms - self._trim_in_ms))
 
     def play_asset(self, row: int) -> None:
-        if row < 0 or row >= self._asset_model.rowCount():
+        try:
+            if row < 0 or row >= self._asset_model.rowCount():
+                return
+        except Exception:
+            logging.getLogger(__name__).exception("play_asset bounds check failed for row %s", row)
             return
         self._play_profile_started_at = time.perf_counter()
         self._play_profile_row = row
@@ -415,7 +419,12 @@ class PlaybackCoordinator(QObject):
                 row=row,
                 reason=reason,
             )
-        self._detail_vm.show_row(row)
+        try:
+            self._detail_vm.show_row(row)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "show_row failed for row %s (reason=%s)", row, reason
+            )
 
     @Slot(str)
     def _handle_route_requested(self, view: str) -> None:
@@ -838,16 +847,46 @@ class PlaybackCoordinator(QObject):
         if callable(refresh_callback):
             refresh_callback()
 
+    _FILMSTRIP_SYNC_MAX_RETRIES = 5
+    _FILMSTRIP_SYNC_RETRY_MS = 50
+
     def _sync_filmstrip_selection(self, row: int) -> None:
-        idx = self._asset_model.index(row, 0)
-        model = self._filmstrip_view.model()
-        if hasattr(model, "mapFromSource"):
-            idx = model.mapFromSource(idx)
-        if idx.isValid():
+        self._do_sync_filmstrip(row, attempt=0)
+
+    def _do_sync_filmstrip(self, row: int, attempt: int = 0) -> None:
+        try:
+            model = self._filmstrip_view.model()
+            if model is None:
+                return
+            row_count = model.rowCount()
+            if row_count == 0:
+                if attempt < self._FILMSTRIP_SYNC_MAX_RETRIES:
+                    QTimer.singleShot(
+                        self._FILMSTRIP_SYNC_RETRY_MS,
+                        lambda: self._do_sync_filmstrip(row, attempt + 1),
+                    )
+                return
+            idx = self._asset_model.index(row, 0)
+            if hasattr(model, "mapFromSource"):
+                idx = model.mapFromSource(idx)
+            if not idx.isValid():
+                if attempt < self._FILMSTRIP_SYNC_MAX_RETRIES:
+                    QTimer.singleShot(
+                        self._FILMSTRIP_SYNC_RETRY_MS,
+                        lambda: self._do_sync_filmstrip(row, attempt + 1),
+                    )
+                return
+            # Re-validate against current model state to avoid stale indices.
+            if idx.row() < 0 or idx.row() >= row_count:
+                return
             self._filmstrip_view.selectionModel().setCurrentIndex(
                 idx, QItemSelectionModel.ClearAndSelect
             )
             self._filmstrip_view.center_on_index(idx)
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "_do_sync_filmstrip failed for row %s", row, exc_info=True
+            )
 
     def _update_favorite_icon(self, is_favorite: bool) -> None:
         icon_name = "suit.heart.fill.svg" if is_favorite else "suit.heart.svg"

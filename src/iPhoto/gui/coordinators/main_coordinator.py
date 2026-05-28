@@ -889,18 +889,38 @@ class MainCoordinator(QObject):
     def _on_asset_clicked(self, index: QModelIndex):
         if self._selection_controller and self._selection_controller.is_active():
             return
-        self._gallery_vm.open_row(index.row())
+        if not index.isValid():
+            return
+        row = index.row()
+        if row < 0:
+            return
+        try:
+            self._gallery_vm.open_row(row)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "open_row failed for row %s", row
+            )
 
     def _on_favorite_clicked(self, index: QModelIndex):
         self._gallery_vm.toggle_favorite_row(index.row())
 
     def _sync_selection(self, row: int):
         """Syncs grid view selection when playback asset changes."""
-        idx = self._asset_list_vm.index(row, 0)
-        self._window.ui.grid_view.selectionModel().setCurrentIndex(
-            idx, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
-        )
-        self._window.ui.grid_view.scrollTo(idx)
+        try:
+            idx = self._asset_list_vm.index(row, 0)
+            if not idx.isValid():
+                return
+            selection_model = self._window.ui.grid_view.selectionModel()
+            if selection_model is None:
+                return
+            selection_model.setCurrentIndex(
+                idx, QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Rows
+            )
+            self._window.ui.grid_view.scrollTo(idx)
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "_sync_selection failed for row %s", row, exc_info=True
+            )
 
     def _handle_open_album_dialog(self):
         path = self._dialog.open_album_dialog()

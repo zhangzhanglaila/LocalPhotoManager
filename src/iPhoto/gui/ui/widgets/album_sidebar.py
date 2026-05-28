@@ -12,6 +12,7 @@ from PySide6.QtCore import (
     QRect,
     QSize,
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import (
@@ -398,6 +399,13 @@ class AlbumSidebar(QWidget):
 
         self._update_title()
         self._expand_defaults()
+        # Defer selection restoration to the next event loop iteration.
+        # Running it synchronously during endResetModel() can trigger
+        # navigation cascades (open_all_photos → reset_for_gallery → set_image)
+        # while the model/view state is still inconsistent, causing C++ crashes.
+        QTimer.singleShot(0, self._restore_selection_after_reset)
+
+    def _restore_selection_after_reset(self) -> None:
         if self._pending_selection is not None:
             self.select_path(self._pending_selection)
             self._pending_selection = None
@@ -494,7 +502,10 @@ class AlbumSidebar(QWidget):
         if not isinstance(delegate, AlbumSidebarDelegate):
             return
 
-        item_rect = self._tree.visualRect(index)
+        try:
+            item_rect = self._tree.visualRect(index)
+        except Exception:
+            return
         if not item_rect.isValid():
             return
 
@@ -591,7 +602,10 @@ class AlbumSidebar(QWidget):
             if selection_model is not None:
                 selection_model.blockSignals(False)
 
-        self._tree.scrollTo(index)
+        try:
+            self._tree.scrollTo(index)
+        except Exception:
+            pass
 
     def select_pinned_item(self, pinned_item: PinnedSidebarItem, emit_signal: bool = False) -> None:
         """Select the sidebar row associated with *pinned_item* when present."""
@@ -613,7 +627,10 @@ class AlbumSidebar(QWidget):
         finally:
             if selection_model is not None and not emit_signal:
                 selection_model.blockSignals(False)
-        self._tree.scrollTo(index)
+        try:
+            self._tree.scrollTo(index)
+        except Exception:
+            pass
         if emit_signal and already_selected:
             self.pinnedItemSelected.emit(pinned_item)
 
@@ -667,7 +684,10 @@ class AlbumSidebar(QWidget):
             )
             self._on_selection_changed(None, None)
 
-        self._tree.scrollTo(index)
+        try:
+            self._tree.scrollTo(index)
+        except Exception:
+            pass
 
     def _show_context_menu(self, point: QPoint) -> None:
         show_context_menu(
