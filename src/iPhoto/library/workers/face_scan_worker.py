@@ -76,6 +76,16 @@ class FaceScanWorker(QThread):
         self._input_closed = True
 
     def run(self) -> None:  # type: ignore[override]
+        try:
+            self._run_impl()
+        except Exception:
+            LOGGER.exception("FaceScanWorker.run crashed")
+            try:
+                self.statusChanged.emit("Face scanning stopped due to an error.")
+            except Exception:
+                pass
+
+    def _run_impl(self) -> None:
         self._prime_pending_rows()
         if self._cancelled:
             return
@@ -97,11 +107,20 @@ class FaceScanWorker(QThread):
         model_ready = False
 
         while not self._cancelled:
-            self._top_up_pending_rows()
+            try:
+                self._top_up_pending_rows()
+            except Exception:
+                LOGGER.warning("Failed to top up pending rows", exc_info=True)
+                if self._cancelled:
+                    return
+                continue
             batch = self._next_batch()
             if not batch:
                 if self._input_closed:
-                    self._top_up_pending_rows()
+                    try:
+                        self._top_up_pending_rows()
+                    except Exception:
+                        LOGGER.warning("Failed to top up pending rows on drain", exc_info=True)
                     if self._queue.empty():
                         return
                 continue
@@ -126,10 +145,16 @@ class FaceScanWorker(QThread):
                 LOGGER.error("Face scan bookkeeping failed after commit: %s", exc, exc_info=True)
                 for asset_id in [str(row.get("id") or "") for row in batch if row.get("id")]:
                     self._queued_ids.discard(asset_id)
-                self.statusChanged.emit(str(exc))
+                try:
+                    self.statusChanged.emit(str(exc))
+                except Exception:
+                    pass
                 return
             except RuntimeError as exc:
-                self._mark_remaining_failed(batch)
+                try:
+                    self._mark_remaining_failed(batch)
+                except Exception:
+                    LOGGER.warning("Failed to mark remaining failed", exc_info=True)
                 self.statusChanged.emit(str(exc))
                 return
             except Exception as exc:  # pragma: no cover - defensive runtime guard
@@ -138,7 +163,10 @@ class FaceScanWorker(QThread):
                 # store and will be re-detected on the next scan.  We do NOT
                 # extend pending_done_ids here because we cannot guarantee
                 # session.commit() will succeed for partially staged results.
-                self._mark_rows_retry(batch)
+                try:
+                    self._mark_rows_retry(batch)
+                except Exception:
+                    LOGGER.warning("Failed to mark rows as retry", exc_info=True)
                 reason = str(exc).strip() or exc.__class__.__name__
                 self.statusChanged.emit(f"Face scanning paused: {reason}")
                 if self._input_closed:
