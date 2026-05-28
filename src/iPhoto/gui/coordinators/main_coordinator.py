@@ -784,10 +784,13 @@ class MainCoordinator(QObject):
             return
         from PySide6.QtWidgets import QHBoxLayout, QWidget
         from iPhoto.gui.ui.icons import load_icon
+        # Create a native-window header so it renders on top of the GL widget.
         header = QWidget(ui.map_page)
-        header.setObjectName("mapBackHeader")
+        header.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+        header.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        header.setAutoFillBackground(False)
         header.setFixedHeight(36)
-        header.setStyleSheet("background: rgba(0,0,0,60); border: none;")
+        header.setStyleSheet("background: transparent; border: none;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(8, 0, 8, 0)
         header_layout.setSpacing(4)
@@ -797,8 +800,8 @@ class MainCoordinator(QObject):
         back_btn.setFixedSize(28, 28)
         back_btn.setFlat(True)
         back_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; border-radius: 14px; }"
-            "QPushButton:hover { background: rgba(255,255,255,40); }"
+            "QPushButton { background: rgba(0,0,0,80); border: none; border-radius: 14px; }"
+            "QPushButton:hover { background: rgba(0,0,0,140); }"
         )
         back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         back_btn.clicked.connect(self._handle_map_back_clicked)
@@ -807,8 +810,9 @@ class MainCoordinator(QObject):
         map_layout = ui.map_page.layout()
         if map_layout is not None:
             map_layout.insertWidget(0, header)
-        self._map_back_header = header
         header.show()
+        header.raise_()
+        self._map_back_header = header
 
     def _handle_map_back_clicked(self) -> None:
         """Back button on map page: return to the originating photo."""
