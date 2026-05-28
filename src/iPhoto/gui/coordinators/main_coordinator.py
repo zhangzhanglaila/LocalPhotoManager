@@ -805,36 +805,31 @@ class MainCoordinator(QObject):
             )
 
     def _add_header_back_button(self) -> None:
-        """Add a floating back button positioned over the map."""
+        """Add a back button to the main header bar (left of rescan/select)."""
         ui = self._window.ui
-        if not hasattr(ui, "map_page"):
+        if not hasattr(ui, "main_header"):
             return
         btn = getattr(self, "_header_back_btn", None)
         if btn is not None:
             btn.show()
             return
         from PySide6.QtWidgets import QPushButton
-        # Floating tool window that stays above the native GL surface.
-        btn = QPushButton("← Back", None)
-        btn.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.WindowDoesNotAcceptFocus
-        )
-        btn.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        from iPhoto.gui.ui.icons import load_icon
+        btn = QPushButton("← Back", ui.main_header)
+        btn.setFlat(True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
-            "QPushButton { font-size: 13px; padding: 4px 10px; border: none; "
-            "background: rgba(0,0,0,140); color: white; border-radius: 6px; }"
-            "QPushButton:hover { background: rgba(0,0,0,200); }"
+            "QPushButton { font-size: 12px; padding: 2px 8px; border: 1px solid palette(mid); "
+            "border-radius: 4px; background: transparent; }"
+            "QPushButton:hover { background: palette(button); }"
         )
-        btn.adjustSize()
-        # Position at top-left of the map page.
-        pos = ui.map_page.mapToGlobal(QPoint(12, 8))
-        btn.move(pos)
         btn.clicked.connect(self._handle_map_back_clicked)
-        btn.show()
+        header_layout = ui.main_header.layout()
+        if header_layout is not None:
+            # Insert between spacer and rescan button.
+            # Layout order: [menu_bar] [spacer(1)] [rescan(2)] [select(3)]
+            # We insert at index 2 (before rescan).
+            header_layout.insertWidget(2, btn)
         self._header_back_btn = btn
 
     def _handle_map_back_clicked(self) -> None:
