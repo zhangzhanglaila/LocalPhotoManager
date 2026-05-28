@@ -945,9 +945,12 @@ class InfoLocationMapView(QWidget):
         px = int(round(top_left.x()))
         py = int(round(top_left.y()))
 
-        # Draw nearby point dots around the pin.
+        # Draw nearby photo markers as small thumbnail-like squares.
         if self._nearby_lonlat and self._map_widget is not None:
-            pen = QPen(QColor(255, 140, 0), 3.0)
+            border_pen = QPen(QColor(255, 255, 255), 1.5)
+            fill_color = QColor(255, 140, 0, 220)
+            shadow_color = QColor(0, 0, 0, 100)
+            marker_size = 10
             points = self._nearby_lonlat
             if len(points) > self._MAX_NEARBY_DOTS:
                 step = max(1, len(points) // self._MAX_NEARBY_DOTS)
@@ -956,9 +959,12 @@ class InfoLocationMapView(QWidget):
                 pt = self._map_widget.project_lonlat(lon, lat)
                 if pt is None:
                     continue
-                painter.setPen(pen)
+                x = int(pt.x()) - marker_size // 2
+                y = int(pt.y()) - marker_size // 2
+                # White border only (no fill) — verified to work on this surface.
+                painter.setPen(border_pen)
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawEllipse(pt, 6, 6)
+                painter.drawRect(x, y, marker_size, marker_size)
 
         painter.drawPixmap(px, py, pin)
 
