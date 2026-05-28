@@ -67,6 +67,12 @@ class DetailMapPanel(QWidget):
 
         layout.addWidget(header)
 
+        # GPS coordinates label
+        self._coords_label = QLabel("", self)
+        self._coords_label.setStyleSheet("color: #86868b; font-size: 11px;")
+        self._coords_label.hide()
+        layout.addWidget(self._coords_label)
+
         # Map view
         self._map_view = InfoLocationMapView(self, map_runtime=map_runtime)
         layout.addWidget(self._map_view, 1)
@@ -85,12 +91,17 @@ class DetailMapPanel(QWidget):
         self._no_location_label.hide()
         self._map_view.show()
         self._map_view.set_location(latitude, longitude)
+        self._coords_label.setText(
+            f"{latitude:.6f}, {longitude:.6f}"
+        )
+        self._coords_label.show()
 
     def clear_location(self) -> None:
         """Remove the pin and show the 'no location' message."""
         self._map_view.clear_location()
         self._map_view.hide()
         self._no_location_label.show()
+        self._coords_label.hide()
 
     def current_location(self) -> tuple[float | None, float | None]:
         """Return the current pin location (latitude, longitude)."""

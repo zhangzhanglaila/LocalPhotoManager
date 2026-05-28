@@ -759,24 +759,45 @@ class MainCoordinator(QObject):
         panel = ui.map_panel
         if not show_all:
             panel.clear_nearby_photos()
+            panel._show_all_btn.setText("Show All Photos")
             return
         lat, lon = panel.current_location()
         if lat is None or lon is None:
+            self._status_bar.show_message("No GPS data for this photo.", 3000)
+            panel._show_all_btn.setChecked(False)
             return
         root = self._library_root()
         if root is None:
+            self._status_bar.show_message("No library is open.", 3000)
+            panel._show_all_btn.setChecked(False)
             return
         from iPhoto.bootstrap.library_location_service import LibraryLocationService
         svc = LibraryLocationService(root)
-        assets = svc.list_geotagged_assets()
-        # Filter: same library root and within ~0.5 degree (~55km).
+        try:
+            assets = svc.list_geotagged_assets()
+        except Exception:
+            self._logger.exception("Failed to load geotagged assets")
+            self._status_bar.show_message("Failed to load geotagged photos.", 3000)
+            panel._show_all_btn.setChecked(False)
+            return
+        # Filter: within ~1 degree (~110 km).
         nearby = [
             (a.latitude, a.longitude)
             for a in assets
-            if abs(a.latitude - lat) <= 0.5 and abs(a.longitude - lon) <= 0.5
+            if abs(a.latitude - lat) <= 1.0 and abs(a.longitude - lon) <= 1.0
         ]
+        self._logger.info(
+            "Show All Photos: lat=%.6f lon=%.6f total_assets=%d nearby=%d",
+            lat, lon, len(assets), len(nearby),
+        )
         if nearby:
             panel.show_nearby_photos(nearby)
+            panel._show_all_btn.setText(f"Show All Photos ({len(nearby)})")
+        else:
+            panel._show_all_btn.setChecked(False)
+            self._status_bar.show_message(
+                f"No nearby photos found (library has {len(assets)} geotagged).", 3000
+            )
 
     @staticmethod
     def _resolve_map_package_root(map_runtime: object | None) -> Path:

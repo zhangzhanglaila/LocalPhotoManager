@@ -188,6 +188,9 @@ class _PinOverlay(QWidget):
         super().__init__(parent)
         self._owner = owner
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
+        self.setStyleSheet("background: transparent;")
         self._pin = _build_pin_pixmap(_PIN_ICON_WIDTH, _PIN_ICON_HEIGHT)
         self._pin_label = QLabel(self)
         self._pin_label.setPixmap(self._pin)
@@ -209,6 +212,33 @@ class _PinOverlay(QWidget):
 
     def pin_pixmap(self) -> QPixmap:
         return self._pin
+
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        """Draw nearby photo dots when the map backend uses widget overlay."""
+        # Skip default background fill — this overlay must be transparent.
+        map_view = self._owner.map_widget()
+        nearby = getattr(self._owner, "_nearby_lonlat", None)
+        if not nearby or map_view is None:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        dot_color = QColor(66, 133, 244, 180)
+        outline_color = QColor(255, 255, 255, 220)
+        painter.setPen(Qt.PenStyle.NoPen)
+        points = nearby
+        max_dots = getattr(self._owner, "_MAX_NEARBY_DOTS", 200)
+        if len(points) > max_dots:
+            step = max(1, len(points) // max_dots)
+            points = points[::step]
+        for lon, lat in points:
+            pt = map_view.project_lonlat(lon, lat)
+            if pt is None:
+                continue
+            painter.setBrush(outline_color)
+            painter.drawEllipse(pt, 6, 6)
+            painter.setBrush(dot_color)
+            painter.drawEllipse(pt, 4, 4)
+        painter.end()
 
 
 class _RoundedMapClipFrame(QWidget):
@@ -421,12 +451,20 @@ class InfoLocationMapView(QWidget):
     def set_nearby_points(self, points: list[tuple[float, float]]) -> None:
         """Set additional coordinate points to render as small dots."""
         self._nearby_lonlat = list(points)
+        # Zoom out to ensure nearby dots are visible on the mini-map.
+        if self._map_widget is not None:
+            try:
+                self._map_widget.set_zoom(4.0)
+            except Exception:
+                pass
         self._request_pin_repaint()
+        self._overlay.update()  # also repaint widget overlay for dots
 
     def clear_nearby_points(self) -> None:
         """Remove all nearby point dots."""
         self._nearby_lonlat = []
         self._request_pin_repaint()
+        self._overlay.update()
 
     def shutdown(self) -> None:
         self._pin_sync_timer.stop()
@@ -900,22 +938,25 @@ class InfoLocationMapView(QWidget):
         self._pin_paint_callback = None
         self._uses_post_render_pin = False
 
+    _MAX_NEARBY_DOTS = 200
+
     def _paint_pin(self, painter: QPainter) -> None:
         # Draw nearby point dots first (behind the pin).
         if self._nearby_lonlat and self._map_widget is not None:
-            painter.save()
-            dot_color = QColor(66, 133, 244, 180)
-            outline_color = QColor(255, 255, 255, 220)
-            painter.setPen(Qt.PenStyle.NoPen)
-            for lon, lat in self._nearby_lonlat:
+            # Use a brand-new painter path for the dots to avoid state conflicts.
+            dot_color = QColor(30, 136, 229)
+            outline = QPen(QColor(255, 255, 255), 1.0)
+            points = self._nearby_lonlat
+            if len(points) > self._MAX_NEARBY_DOTS:
+                step = max(1, len(points) // self._MAX_NEARBY_DOTS)
+                points = points[::step]
+            for lon, lat in points:
                 pt = self._map_widget.project_lonlat(lon, lat)
                 if pt is None:
                     continue
-                painter.setBrush(outline_color)
-                painter.drawEllipse(pt, 6, 6)
+                painter.setPen(outline)
                 painter.setBrush(dot_color)
-                painter.drawEllipse(pt, 4, 4)
-            painter.restore()
+                painter.drawEllipse(pt, 5, 5)
 
         if self._screen_point is None:
             return
