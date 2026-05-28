@@ -761,20 +761,22 @@ class MainCoordinator(QObject):
             return
         # Remember the current photo so we can return to it.
         self._return_from_map_path = presentation.path
-        # Navigate to Location view and highlight sidebar.
+        # Navigate to Location view.
         self._navigation.open_location_view()
-        self._window.ui.sidebar.select_static_node("Location")
-        # Show a back button on the map page.
-        self._show_map_back_button()
-        # After the map widget is ready, center on the photo's coordinates.
-        QTimer.singleShot(200, lambda: self._focus_map_on(lat, lon))
+        # Defer sidebar and back button to after view transition.
+        def _after_map_ready():
+            self._window.ui.sidebar.select_static_node("Location")
+            self._window.ui.sidebar._tree.viewport().update()
+            self._show_map_back_button()
+            self._focus_map_on(lat, lon)
+        QTimer.singleShot(150, _after_map_ready)
 
     def _show_map_back_button(self) -> None:
         """Add a temporary back button to the map page header."""
         ui = self._window.ui
         if not hasattr(ui, "map_page"):
             return
-        if hasattr(self, "_map_back_button"):
+        if getattr(self, "_map_back_header", None) is not None:
             return
         from PySide6.QtWidgets import QHBoxLayout, QWidget
         from iPhoto.gui.ui.icons import load_icon
@@ -802,7 +804,7 @@ class MainCoordinator(QObject):
         if map_layout is not None:
             map_layout.insertWidget(0, header)
         self._map_back_header = header
-        self._map_back_button = back_btn
+        header.show()
 
     def _handle_map_back_clicked(self) -> None:
         """Back button on map page: return to the originating photo."""
