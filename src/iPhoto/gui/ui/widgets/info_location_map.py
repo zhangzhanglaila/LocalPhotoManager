@@ -20,6 +20,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QImageReader,
     QPainter,
     QPainterPath,
     QPen,
@@ -59,6 +60,14 @@ _PIN_ICON_WIDTH = 90
 _PIN_ICON_HEIGHT = 114
 _PIN_ANCHOR_X_RATIO = 256.0 / 512.0
 _PIN_ANCHOR_Y_RATIO = 418.0 / 512.0
+
+from dataclasses import dataclass as _dataclass
+
+@_dataclass(frozen=True)
+class _NearbyPhoto:
+    path: Path
+    latitude: float
+    longitude: float
 
 
 def create_map_widget(
@@ -215,30 +224,40 @@ class _PinOverlay(QWidget):
         return self._pin
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
-        """Draw nearby photo dots when the map backend uses widget overlay."""
-        # Skip default background fill — this overlay must be transparent.
+        """Draw nearby photo thumbnails when the map backend uses widget overlay."""
         map_view = self._owner.map_widget()
-        nearby = getattr(self._owner, "_nearby_lonlat", None)
-        if not nearby or map_view is None:
+        markers = getattr(self._owner, "_nearby_markers", None)
+        thumb_cache = getattr(self._owner, "_marker_thumb_cache", None)
+        if not markers or map_view is None or thumb_cache is None:
             return
+        max_markers = getattr(self._owner, "_MAX_NEARBY_MARKERS", 50)
+        if len(markers) > max_markers:
+            step = max(1, len(markers) // max_markers)
+            markers = markers[::step]
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        dot_color = QColor(66, 133, 244, 180)
-        outline_color = QColor(255, 255, 255, 220)
-        painter.setPen(Qt.PenStyle.NoPen)
-        points = nearby
-        max_dots = getattr(self._owner, "_MAX_NEARBY_DOTS", 200)
-        if len(points) > max_dots:
-            step = max(1, len(points) // max_dots)
-            points = points[::step]
-        for lon, lat in points:
-            pt = map_view.project_lonlat(lon, lat)
+        thumb_size = 32
+        for photo in markers:
+            pt = map_view.project_lonlat(photo.longitude, photo.latitude)
             if pt is None:
                 continue
-            painter.setBrush(outline_color)
-            painter.drawEllipse(pt, 6, 6)
-            painter.setBrush(dot_color)
-            painter.drawEllipse(pt, 4, 4)
+            path_key = str(photo.path)
+            thumb = thumb_cache.get(path_key)
+            if thumb is None:
+                reader = QImageReader(str(photo.path))
+                reader.setAutoTransform(True)
+                reader.setScaledSize(QSize(thumb_size, thumb_size))
+                qimg = reader.read()
+                if qimg.isNull():
+                    continue
+                thumb = QPixmap.fromImage(qimg)
+                thumb_cache[path_key] = thumb
+            x = int(pt.x()) - thumb.width() // 2
+            y = int(pt.y()) - thumb.height() // 2
+            painter.setPen(QPen(QColor(255, 255, 255), 2.0))
+            painter.setBrush(QColor(255, 255, 255))
+            painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
+            painter.drawPixmap(x, y, thumb)
         painter.end()
 
 
@@ -303,7 +322,8 @@ class InfoLocationMapView(QWidget):
         self._latitude: float | None = None
         self._longitude: float | None = None
         self._screen_point: QPointF | None = None
-        self._nearby_lonlat: list[tuple[float, float]] = []
+        self._nearby_markers: list[_NearbyPhoto] = []
+        self._marker_thumb_cache: dict[str, QPixmap] = {}
         self._requested_zoom = self.DEFAULT_ZOOM
         self._last_set_location: tuple[float, float, float] | None = None
         self._pending_viewport_sync = False
@@ -449,15 +469,17 @@ class InfoLocationMapView(QWidget):
         self._overlay.hide()
         self._request_pin_repaint()
 
-    def set_nearby_points(self, points: list[tuple[float, float]]) -> None:
-        """Set additional coordinate points to render as small dots."""
-        self._nearby_lonlat = list(points)
+    def set_nearby_photos(self, photos: list[_NearbyPhoto]) -> None:
+        """Show photo markers for nearby geotagged assets."""
+        self._nearby_markers = list(photos)
+        self._marker_thumb_cache.clear()
         self._request_pin_repaint()
-        self._overlay.update()  # also repaint widget overlay for dots
+        self._overlay.update()
 
-    def clear_nearby_points(self) -> None:
-        """Remove all nearby point dots."""
-        self._nearby_lonlat = []
+    def clear_nearby_photos(self) -> None:
+        """Remove nearby photo markers."""
+        self._nearby_markers = []
+        self._marker_thumb_cache.clear()
         self._request_pin_repaint()
         self._overlay.update()
 
@@ -933,7 +955,7 @@ class InfoLocationMapView(QWidget):
         self._pin_paint_callback = None
         self._uses_post_render_pin = False
 
-    _MAX_NEARBY_DOTS = 200
+    _MAX_NEARBY_MARKERS = 50
 
     def _paint_pin(self, painter: QPainter) -> None:
         if self._screen_point is None:
@@ -945,26 +967,37 @@ class InfoLocationMapView(QWidget):
         px = int(round(top_left.x()))
         py = int(round(top_left.y()))
 
-        # Draw nearby photo markers as small thumbnail-like squares.
-        if self._nearby_lonlat and self._map_widget is not None:
-            border_pen = QPen(QColor(255, 255, 255), 1.5)
-            fill_color = QColor(255, 140, 0, 220)
-            shadow_color = QColor(0, 0, 0, 100)
-            marker_size = 10
-            points = self._nearby_lonlat
-            if len(points) > self._MAX_NEARBY_DOTS:
-                step = max(1, len(points) // self._MAX_NEARBY_DOTS)
-                points = points[::step]
-            for lon, lat in points:
-                pt = self._map_widget.project_lonlat(lon, lat)
+        # Draw nearby photo thumbnails on the map.
+        if self._nearby_markers and self._map_widget is not None:
+            thumb_size = 32
+            markers = self._nearby_markers
+            if len(markers) > self._MAX_NEARBY_MARKERS:
+                step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
+                markers = markers[::step]
+            for photo in markers:
+                pt = self._map_widget.project_lonlat(photo.longitude, photo.latitude)
                 if pt is None:
                     continue
-                x = int(pt.x()) - marker_size // 2
-                y = int(pt.y()) - marker_size // 2
-                # White border only (no fill) — verified to work on this surface.
-                painter.setPen(border_pen)
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawRect(x, y, marker_size, marker_size)
+                # Load thumbnail, cache it for subsequent frames.
+                path_key = str(photo.path)
+                thumb = self._marker_thumb_cache.get(path_key)
+                if thumb is None:
+                    reader = QImageReader(str(photo.path))
+                    reader.setAutoTransform(True)
+                    reader.setScaledSize(QSize(thumb_size, thumb_size))
+                    qimg = reader.read()
+                    if qimg.isNull():
+                        continue
+                    thumb = QPixmap.fromImage(qimg)
+                    self._marker_thumb_cache[path_key] = thumb
+                x = int(pt.x()) - thumb.width() // 2
+                y = int(pt.y()) - thumb.height() // 2
+                # White border behind thumbnail
+                painter.setPen(QPen(QColor(255, 255, 255), 2.0))
+                painter.setBrush(QColor(255, 255, 255))
+                painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
+                # Thumbnail
+                painter.drawPixmap(x, y, thumb)
 
         painter.drawPixmap(px, py, pin)
 

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .info_location_map import InfoLocationMapView
+from .info_location_map import InfoLocationMapView, _NearbyPhoto
 
 
 class DetailMapPanel(QWidget):
@@ -107,13 +107,13 @@ class DetailMapPanel(QWidget):
         """Return the current pin location (latitude, longitude)."""
         return self._map_view.current_location()
 
-    def show_nearby_photos(self, points: list[tuple[float, float]]) -> None:
-        """Show nearby geotagged photos as dots on the map."""
-        self._map_view.set_nearby_points(points)
+    def show_nearby_photos(self, photos: list[_NearbyPhoto]) -> None:
+        """Show nearby geotagged photos as thumbnails on the map."""
+        self._map_view.set_nearby_photos(photos)
 
     def clear_nearby_photos(self) -> None:
-        """Remove nearby photo dots from the map."""
-        self._map_view.clear_nearby_points()
+        """Remove nearby photo markers from the map."""
+        self._map_view.clear_nearby_photos()
 
     def set_map_runtime(self, map_runtime) -> None:
         self._map_view.set_map_runtime(map_runtime)

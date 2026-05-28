@@ -772,6 +772,7 @@ class MainCoordinator(QObject):
             panel._show_all_btn.setChecked(False)
             return
         from iPhoto.bootstrap.library_location_service import LibraryLocationService
+        from iPhoto.gui.ui.widgets.info_location_map import _NearbyPhoto
         svc = LibraryLocationService(root)
         try:
             assets = svc.list_geotagged_assets()
@@ -782,7 +783,11 @@ class MainCoordinator(QObject):
             return
         # Filter: within ~1 degree (~110 km).
         nearby = [
-            (a.latitude, a.longitude)
+            _NearbyPhoto(
+                path=a.absolute_path,
+                latitude=a.latitude,
+                longitude=a.longitude,
+            )
             for a in assets
             if abs(a.latitude - lat) <= 1.0 and abs(a.longitude - lon) <= 1.0
         ]
