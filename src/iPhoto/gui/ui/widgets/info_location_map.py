@@ -20,6 +20,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
+    QImage,
     QImageReader,
     QPainter,
     QPainterPath,
@@ -63,11 +64,14 @@ _PIN_ANCHOR_Y_RATIO = 418.0 / 512.0
 
 from dataclasses import dataclass as _dataclass
 
+from dataclasses import field as _field
+
 @_dataclass(frozen=True)
 class _NearbyPhoto:
     path: Path
     latitude: float
     longitude: float
+    thumbnail: QPixmap = _field(default_factory=QPixmap, compare=False, hash=False)
 
 
 def create_map_widget(
@@ -481,12 +485,31 @@ class InfoLocationMapView(QWidget):
             markers = markers[::step]
         thumb_size = 28
         for photo in markers:
-            reader = QImageReader(str(photo.path))
+            path_str = str(photo.path)
+            if path_str in self._marker_thumb_cache:
+                continue
+            # Try QImageReader first (fast, native).
+            reader = QImageReader(path_str)
             reader.setAutoTransform(True)
             reader.setScaledSize(QSize(thumb_size, thumb_size))
             qimg = reader.read()
+            # Fall back to PIL for HEIC and other formats.
+            if qimg.isNull():
+                try:
+                    from PIL import Image as PILImage, ImageOps as PILOps
+                    with PILImage.open(path_str) as pil_img:
+                        pil_img = PILOps.exif_transpose(pil_img)
+                        pil_img = pil_img.convert("RGBA")
+                        pil_img.thumbnail((thumb_size, thumb_size))
+                        data = pil_img.tobytes("raw", "RGBA")
+                        qimg = QImage(
+                            data, pil_img.width, pil_img.height,
+                            pil_img.width * 4, QImage.Format.Format_RGBA8888,
+                        )
+                except Exception:
+                    continue
             if not qimg.isNull():
-                self._marker_thumb_cache[str(photo.path)] = QPixmap.fromImage(qimg)
+                self._marker_thumb_cache[path_str] = QPixmap.fromImage(qimg)
 
     def clear_nearby_photos(self) -> None:
         """Remove nearby photo markers."""
@@ -1001,7 +1024,7 @@ class InfoLocationMapView(QWidget):
         self._pin_paint_callback = None
         self._uses_post_render_pin = False
 
-    _MAX_NEARBY_MARKERS = 100
+    _MAX_NEARBY_MARKERS = 30
 
     def _paint_pin(self, painter: QPainter) -> None:
         if self._screen_point is None:
@@ -1013,26 +1036,26 @@ class InfoLocationMapView(QWidget):
         px = int(round(top_left.x()))
         py = int(round(top_left.y()))
 
-        # Draw nearby photo thumbnails.
+        # Draw nearby photo thumbnails (pre-loaded by caller).
         if self._nearby_markers and self._map_widget is not None:
             markers = self._nearby_markers
             if len(markers) > self._MAX_NEARBY_MARKERS:
                 step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
                 markers = markers[::step]
             for photo in markers:
-                thumb = self._marker_thumb_cache.get(str(photo.path))
-                if thumb is None:
+                thumb = photo.thumbnail
+                if thumb.isNull():
+                    thumb = self._marker_thumb_cache.get(str(photo.path))
+                if thumb is None or thumb.isNull():
                     continue
                 pt = self._map_widget.project_lonlat(photo.longitude, photo.latitude)
                 if pt is None:
                     continue
                 x = int(pt.x()) - thumb.width() // 2
                 y = int(pt.y()) - thumb.height() // 2
-                # White border
                 painter.setPen(QPen(QColor(255, 255, 255), 1.0))
                 painter.setBrush(QColor(255, 255, 255))
                 painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
-                # Thumbnail image
                 painter.drawPixmap(x, y, thumb)
 
         painter.drawPixmap(px, py, pin)

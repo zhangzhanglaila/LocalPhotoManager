@@ -15,6 +15,7 @@ from PySide6.QtCore import (
     QItemSelectionModel,
     QModelIndex,
     QObject,
+    QSize,
     Qt,
     QThreadPool,
     QTimer,
@@ -797,6 +798,15 @@ class MainCoordinator(QObject):
             lat, lon, len(assets), len(nearby),
         )
         if nearby:
+            # Pre-load thumbnails from the thumbnail cache.
+            thumb_qsize = QSize(36, 36)
+            for photo in nearby[:30]:
+                if hasattr(self, "_thumbnail_service") and self._thumbnail_service:
+                    thumb = self._thumbnail_service.get_thumbnail(
+                        photo.path, thumb_qsize
+                    )
+                    if thumb is not None and not thumb.isNull():
+                        object.__setattr__(photo, "thumbnail", thumb)
             panel.show_nearby_photos(nearby)
             # Register a fetcher so markers refresh when the user pans.
             panel._map_view.set_nearby_fetcher(
