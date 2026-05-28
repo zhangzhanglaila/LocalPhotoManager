@@ -805,7 +805,7 @@ class MainCoordinator(QObject):
             )
 
     def _add_header_back_button(self) -> None:
-        """Add a back button to the main header bar (left of rescan/select)."""
+        """Add a back button to the main header bar."""
         ui = self._window.ui
         if not hasattr(ui, "main_header"):
             return
@@ -814,21 +814,19 @@ class MainCoordinator(QObject):
             btn.show()
             return
         from PySide6.QtWidgets import QPushButton
-        from iPhoto.gui.ui.icons import load_icon
-        btn = QPushButton("← Back", ui.main_header)
-        btn.setFlat(True)
+        btn = QPushButton("← Photo", ui.main_header)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setToolTip("Return to photo")
         btn.setStyleSheet(
-            "QPushButton { font-size: 12px; padding: 2px 8px; border: 1px solid palette(mid); "
-            "border-radius: 4px; background: transparent; }"
-            "QPushButton:hover { background: palette(button); }"
+            "QPushButton { font-size: 12px; padding: 4px 10px; "
+            "background: rgba(0,120,215,180); color: white; border: none; border-radius: 4px; }"
+            "QPushButton:hover { background: rgba(0,120,215,240); }"
         )
         btn.clicked.connect(self._handle_map_back_clicked)
         header_layout = ui.main_header.layout()
         if header_layout is not None:
-            # Insert between spacer and rescan button.
-            # Layout order: [menu_bar] [spacer(1)] [rescan(2)] [select(3)]
-            # We insert at index 2 (before rescan).
+            # Add between the expanding spacer and rescan button.
+            # Layout: [menu_bar(0)] [spacer(1)] [rescan(2)] [select(3)]
             header_layout.insertWidget(2, btn)
         self._header_back_btn = btn
 
