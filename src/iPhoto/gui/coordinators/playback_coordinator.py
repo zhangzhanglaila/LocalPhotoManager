@@ -430,6 +430,12 @@ class PlaybackCoordinator(QObject):
         self._hide_face_name_overlay(clear_annotations=False)
 
     def _handle_presentation_changed(self, presentation: DetailPresentation) -> None:
+        try:
+            self._handle_presentation_changed_impl(presentation)
+        except Exception:
+            LOGGER.exception("presentation_changed handler failed for row %s", presentation.row)
+
+    def _handle_presentation_changed_impl(self, presentation: DetailPresentation) -> None:
         if (
             getattr(self, "_play_profile_started_at", None) is not None
             and getattr(self, "_play_profile_row", None) == presentation.row

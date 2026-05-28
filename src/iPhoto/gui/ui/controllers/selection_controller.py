@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtCore import QModelIndex, QObject, QCoreApplication, Signal
@@ -108,4 +109,7 @@ class SelectionController(QObject):
             return
         if self._playback is None:
             return
-        self._playback.play_asset(index.row())
+        try:
+            self._playback.play_asset(index.row())
+        except Exception:
+            logging.getLogger(__name__).exception("play_asset failed for row %s", index.row())
