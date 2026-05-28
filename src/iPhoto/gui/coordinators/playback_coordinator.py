@@ -511,6 +511,12 @@ class PlaybackCoordinator(QObject):
         )
 
     def _render_presentation(self, presentation: DetailPresentation) -> None:
+        try:
+            self._render_presentation_impl(presentation)
+        except Exception:
+            LOGGER.exception("render_presentation failed for %s", presentation.path)
+
+    def _render_presentation_impl(self, presentation: DetailPresentation) -> None:
         render_started = time.perf_counter()
         source = presentation.path
         self._active_live_motion = None
