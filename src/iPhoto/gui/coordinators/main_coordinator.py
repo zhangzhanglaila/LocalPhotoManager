@@ -77,6 +77,7 @@ class MainCoordinator(QObject):
         self._facade = context.facade
         self._logger = logging.getLogger(__name__)
         self._media_failure_cleanup_paths: set[str] = set()
+        self._return_from_map_path: Path | None = None
         self._startup_loading = True
         self._map_extension_download = MapExtensionDownloadController(
             window,
@@ -501,6 +502,9 @@ class MainCoordinator(QObject):
         updates.scanFinished.connect(self._gallery_vm.handle_location_scan_finished)
         self._gallery_vm.message_requested.connect(self._status_bar.show_message)
 
+        # Return to detail photo after exploring Location view.
+        self._view_router.galleryViewShown.connect(self._handle_return_from_map)
+
         # Grid interactions — single/double-click opens detail view.
         ui.grid_view.itemClicked.connect(self._on_asset_clicked)
         ui.grid_view.itemDoubleClicked.connect(self._on_asset_clicked)
@@ -754,6 +758,8 @@ class MainCoordinator(QObject):
         lon = gps.get("lon")
         if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
             return
+        # Remember the current photo so we can return to it.
+        self._return_from_map_path = presentation.path
         # Navigate to Location view.
         self._navigation.open_location_view()
         # After the map widget is ready, center on the photo's coordinates.
@@ -777,6 +783,33 @@ class MainCoordinator(QObject):
             map_widget.center_on(lon, lat)
         except Exception:
             self._logger.warning("Failed to focus map on %.6f, %.6f", lat, lon, exc_info=True)
+
+    _RETURN_FROM_MAP_MAX_RETRIES = 8
+
+    def _handle_return_from_map(self) -> None:
+        """If returning from Location view to All Photos, reopen the photo."""
+        path = self._return_from_map_path
+        if path is None:
+            return
+        if not self._view_router.is_gallery_view_active():
+            return
+        # Only auto-return when going back to All Photos, not cluster galleries.
+        section = self._gallery_vm.current_section.value
+        if section not in ("all_photos", "album", "pinned_album"):
+            return
+        self._return_from_map_path = None
+        QTimer.singleShot(50, lambda: self._try_return_to_photo(path, 0))
+
+    def _try_return_to_photo(self, path: Path, attempt: int) -> None:
+        row = self._gallery_store.row_for_path(path)
+        if row is not None:
+            self._gallery_vm.open_row(row)
+            return
+        if attempt < self._RETURN_FROM_MAP_MAX_RETRIES:
+            QTimer.singleShot(
+                100 * (attempt + 1),
+                lambda: self._try_return_to_photo(path, attempt + 1),
+            )
 
     @staticmethod
     def _resolve_map_package_root(map_runtime: object | None) -> Path:
