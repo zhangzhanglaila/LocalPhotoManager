@@ -324,6 +324,9 @@ class InfoLocationMapView(QWidget):
         self._screen_point: QPointF | None = None
         self._nearby_markers: list[_NearbyPhoto] = []
         self._marker_thumb_cache: dict[str, QPixmap] = {}
+        self._nearby_fetcher: Callable[[float, float], list[_NearbyPhoto]] | None = None
+        self._show_all_active = False
+        self._last_fetch_center: tuple[float, float] | None = None
         self._requested_zoom = self.DEFAULT_ZOOM
         self._last_set_location: tuple[float, float, float] | None = None
         self._pending_viewport_sync = False
@@ -473,6 +476,7 @@ class InfoLocationMapView(QWidget):
         """Show photo markers for nearby geotagged assets."""
         self._nearby_markers = list(photos)
         self._marker_thumb_cache.clear()
+        self._show_all_active = True
         self._request_pin_repaint()
         self._overlay.update()
 
@@ -480,8 +484,39 @@ class InfoLocationMapView(QWidget):
         """Remove nearby photo markers."""
         self._nearby_markers = []
         self._marker_thumb_cache.clear()
+        self._show_all_active = False
+        self._last_fetch_center = None
         self._request_pin_repaint()
         self._overlay.update()
+
+    def set_nearby_fetcher(
+        self,
+        fetcher: Callable[[float, float], list[_NearbyPhoto]] | None,
+    ) -> None:
+        """Register a callback to re-fetch nearby photos when the map pans."""
+        self._nearby_fetcher = fetcher
+
+    def _handle_map_panned_for_nearby(self) -> None:
+        """Re-fetch nearby markers when the user finishes dragging the map."""
+        if not self._show_all_active or self._nearby_fetcher is None:
+            return
+        if self._map_widget is None:
+            return
+        try:
+            center_lon, center_lat = self._map_widget.center_lonlat()
+        except Exception:
+            return
+        # Throttle: only re-fetch if center moved significantly.
+        new_center = (round(center_lat, 3), round(center_lon, 3))
+        if self._last_fetch_center == new_center:
+            return
+        self._last_fetch_center = new_center
+        try:
+            markers = self._nearby_fetcher(center_lat, center_lon)
+        except Exception:
+            return
+        if markers:
+            self.set_nearby_photos(markers)
 
     def shutdown(self) -> None:
         self._pin_sync_timer.stop()
@@ -795,6 +830,9 @@ class InfoLocationMapView(QWidget):
         if pan_finished is not None:
             pan_finished.connect(self._handle_map_pan_finished)
 
+        if pan_finished is not None:
+            pan_finished.connect(self._handle_map_panned_for_nearby)
+
     def _project_current_location(self, *, center_fallback: bool) -> QPointF | None:
         if self._map_widget is None or self._latitude is None or self._longitude is None:
             return None
@@ -955,7 +993,7 @@ class InfoLocationMapView(QWidget):
         self._pin_paint_callback = None
         self._uses_post_render_pin = False
 
-    _MAX_NEARBY_MARKERS = 50
+    _MAX_NEARBY_MARKERS = 500
 
     def _paint_pin(self, painter: QPainter) -> None:
         if self._screen_point is None:

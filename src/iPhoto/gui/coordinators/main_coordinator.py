@@ -758,6 +758,7 @@ class MainCoordinator(QObject):
             return
         panel = ui.map_panel
         if not show_all:
+            panel._map_view.set_nearby_fetcher(None)
             panel.clear_nearby_photos()
             panel._show_all_btn.setText("Show All Photos")
             return
@@ -797,6 +798,21 @@ class MainCoordinator(QObject):
         )
         if nearby:
             panel.show_nearby_photos(nearby)
+            # Register a fetcher so markers refresh when the user pans.
+            panel._map_view.set_nearby_fetcher(
+                lambda clat, clon: [
+                    _NearbyPhoto(
+                        path=a.absolute_path,
+                        latitude=a.latitude,
+                        longitude=a.longitude,
+                    )
+                    for a in assets
+                    if abs(a.latitude - clat) <= 1.0
+                    and abs(a.longitude - clon) <= 1.0
+                ]
+            )
+            # Zoom in to the current photo's location.
+            panel._map_view.set_location(lat, lon, zoom=14.0)
             panel._show_all_btn.setText(f"Show All Photos ({len(nearby)})")
         else:
             panel._show_all_btn.setChecked(False)
