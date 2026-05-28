@@ -765,11 +765,15 @@ class MainCoordinator(QObject):
         self._navigation.open_location_view()
         # Defer sidebar and back button to after view transition.
         def _after_map_ready():
-            self._window.ui.sidebar.select_static_node("Location")
-            self._window.ui.sidebar._tree.viewport().update()
+            try:
+                self._window.ui.sidebar.select_static_node("Location")
+                self._window.ui.sidebar._tree.viewport().update()
+            except Exception:
+                pass
             self._show_map_back_button()
-            self._focus_map_on(lat, lon)
-        QTimer.singleShot(150, _after_map_ready)
+            # Center map on photo location — retry until map widget is ready.
+            self._try_focus_map(lat, lon, 0)
+        QTimer.singleShot(200, _after_map_ready)
 
     def _show_map_back_button(self) -> None:
         """Add a temporary back button to the map page header."""
@@ -813,7 +817,9 @@ class MainCoordinator(QObject):
         else:
             self._navigation.open_all_photos()
 
-    def _focus_map_on(self, lat: float, lon: float) -> None:
+    _FOCUS_MAP_MAX_RETRIES = 10
+
+    def _try_focus_map(self, lat: float, lon: float, attempt: int) -> None:
         """Center the Location map on the given coordinates at high zoom."""
         ui = self._window.ui
         if not hasattr(ui, "map_view") or ui.map_view is None:
@@ -821,16 +827,23 @@ class MainCoordinator(QObject):
         try:
             map_widget = ui.map_view.map_widget()
         except RuntimeError:
-            # Map widget not yet initialized; retry once.
-            QTimer.singleShot(500, lambda: self._focus_map_on(lat, lon))
+            self._retry_focus(lat, lon, attempt)
             return
         if map_widget is None:
+            self._retry_focus(lat, lon, attempt)
             return
         try:
             map_widget.set_zoom(17.0)
             map_widget.center_on(lon, lat)
         except Exception:
-            self._logger.warning("Failed to focus map on %.6f, %.6f", lat, lon, exc_info=True)
+            self._retry_focus(lat, lon, attempt)
+
+    def _retry_focus(self, lat: float, lon: float, attempt: int) -> None:
+        if attempt < self._FOCUS_MAP_MAX_RETRIES:
+            QTimer.singleShot(
+                200 * (attempt + 1),
+                lambda: self._try_focus_map(lat, lon, attempt + 1),
+            )
 
     _RETURN_FROM_MAP_MAX_RETRIES = 8
 
