@@ -50,6 +50,7 @@ class NavigationCoordinator(QObject):
 
         self._suppress_tree_refresh = False
         self._tree_refresh_suppression_reason: Optional[Literal["edit", "operation"]] = None
+        self._pending_detail_return: Path | None = None
 
         self._connect_signals()
 
@@ -241,6 +242,9 @@ class NavigationCoordinator(QObject):
         elif normalized == "people":
             self.open_people_view()
         elif normalized == "location":
+            if self._pending_detail_return is not None:
+                self._pending_detail_return = None
+                return
             self.open_location_view()
 
     def _handle_route_requested(self, view: str) -> None:

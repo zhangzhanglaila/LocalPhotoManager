@@ -20,7 +20,6 @@ from PySide6.QtCore import (
     QTimer,
 )
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QPushButton
 
 from iPhoto.application.contracts.runtime_entry_contract import RuntimeEntryContract
 from iPhoto.config import RECENTLY_DELETED_DIR_NAME
@@ -504,7 +503,9 @@ class MainCoordinator(QObject):
         self._gallery_vm.message_requested.connect(self._status_bar.show_message)
 
         # Return to detail photo after exploring Location view.
+        # Click "All Photos" or "Location" again in sidebar to go back.
         ui.sidebar.allPhotosSelected.connect(self._handle_return_from_map)
+        ui.sidebar.staticNodeSelected.connect(self._handle_sidebar_return_from_map)
 
         # Grid interactions — single/double-click opens detail view.
         ui.grid_view.itemClicked.connect(self._on_asset_clicked)
@@ -763,63 +764,16 @@ class MainCoordinator(QObject):
         self._return_from_map_path = presentation.path
         # Navigate to Location view.
         self._navigation.open_location_view()
-        # Defer sidebar and back button to after view transition.
+        # Defer sidebar highlight to after view transition.
         def _after_map_ready():
             try:
                 self._window.ui.sidebar.select_static_node("Location")
                 self._window.ui.sidebar._tree.viewport().update()
             except Exception:
                 pass
-            self._show_map_back_button()
         QTimer.singleShot(100, _after_map_ready)
         # Center map on photo location — long delay for native GL widget init.
         QTimer.singleShot(1500, lambda: self._try_focus_map(lat, lon, 0))
-
-    def _show_map_back_button(self) -> None:
-        """Add a temporary back button to the map page header."""
-        ui = self._window.ui
-        if not hasattr(ui, "map_page"):
-            return
-        if getattr(self, "_map_back_header", None) is not None:
-            return
-        from PySide6.QtWidgets import QHBoxLayout, QWidget
-        from iPhoto.gui.ui.icons import load_icon
-        # Create a native-window header so it renders on top of the GL widget.
-        header = QWidget(ui.map_page)
-        header.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
-        header.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        header.setAutoFillBackground(False)
-        header.setFixedHeight(36)
-        header.setStyleSheet("background: transparent; border: none;")
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(8, 0, 8, 0)
-        header_layout.setSpacing(4)
-        back_btn = QPushButton(header)
-        back_btn.setIcon(load_icon("chevron.left.svg"))
-        back_btn.setIconSize(QSize(20, 20))
-        back_btn.setFixedSize(28, 28)
-        back_btn.setFlat(True)
-        back_btn.setStyleSheet(
-            "QPushButton { background: rgba(0,0,0,80); border: none; border-radius: 14px; }"
-            "QPushButton:hover { background: rgba(0,0,0,140); }"
-        )
-        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        back_btn.clicked.connect(self._handle_map_back_clicked)
-        header_layout.addWidget(back_btn)
-        header_layout.addStretch()
-        map_layout = ui.map_page.layout()
-        if map_layout is not None:
-            map_layout.insertWidget(0, header)
-        header.show()
-        header.raise_()
-        self._map_back_header = header
-
-    def _handle_map_back_clicked(self) -> None:
-        """Back button on map page: return to the originating photo."""
-        if self._return_from_map_path is not None:
-            self._handle_return_from_map()
-        else:
-            self._navigation.open_all_photos()
 
     _FOCUS_MAP_MAX_RETRIES = 10
 
@@ -850,6 +804,23 @@ class MainCoordinator(QObject):
             )
 
     _RETURN_FROM_MAP_MAX_RETRIES = 8
+
+    def _handle_sidebar_return_from_map(self, name: str) -> None:
+        """When clicking 'Location' sidebar while already on map from detail,
+        return to the photo instead of re-navigating."""
+        if name != "Location":
+            return
+        path = self._return_from_map_path
+        if path is None:
+            return
+        if not hasattr(self._window.ui, "map_page"):
+            return
+        self._return_from_map_path = None
+        # Tell NavigationCoordinator to skip re-navigating to Location.
+        self._navigation._pending_detail_return = path
+        # Navigate to All Photos first, then open the photo detail.
+        self._navigation.open_all_photos()
+        QTimer.singleShot(50, lambda: self._try_return_to_photo(path, 0))
 
     def _handle_return_from_map(self) -> None:
         """When clicking All Photos after exploring from detail, reopen the photo."""
