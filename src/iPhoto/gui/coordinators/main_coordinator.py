@@ -771,9 +771,9 @@ class MainCoordinator(QObject):
             except Exception:
                 pass
             self._show_map_back_button()
-            # Center map on photo location — retry until map widget is ready.
-            self._try_focus_map(lat, lon, 0)
-        QTimer.singleShot(200, _after_map_ready)
+        QTimer.singleShot(100, _after_map_ready)
+        # Center map on photo location — long delay for native GL widget init.
+        QTimer.singleShot(1500, lambda: self._try_focus_map(lat, lon, 0))
 
     def _show_map_back_button(self) -> None:
         """Add a temporary back button to the map page header."""
@@ -841,7 +841,7 @@ class MainCoordinator(QObject):
     def _retry_focus(self, lat: float, lon: float, attempt: int) -> None:
         if attempt < self._FOCUS_MAP_MAX_RETRIES:
             QTimer.singleShot(
-                200 * (attempt + 1),
+                400,
                 lambda: self._try_focus_map(lat, lon, attempt + 1),
             )
 
