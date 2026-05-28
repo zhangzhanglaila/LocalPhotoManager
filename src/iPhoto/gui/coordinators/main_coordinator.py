@@ -764,18 +764,13 @@ class MainCoordinator(QObject):
         self._return_from_map_path = presentation.path
         # Navigate to Location view.
         self._navigation.open_location_view()
-        # Defer sidebar and back button to after view transition.
-        def _after_map_ready():
-            try:
-                self._window.ui.sidebar.select_static_node("Location")
-                self._window.ui.sidebar._tree.viewport().update()
-            except Exception:
-                pass
-            try:
-                self._add_header_back_button()
-            except Exception:
-                pass
-        QTimer.singleShot(100, _after_map_ready)
+        # Show back button and highlight sidebar immediately.
+        self._add_header_back_button()
+        try:
+            self._window.ui.sidebar.select_static_node("Location")
+            self._window.ui.sidebar._tree.viewport().update()
+        except Exception:
+            pass
         # Center map on photo location — retry quickly until native GL widget is ready.
         QTimer.singleShot(0, lambda: self._try_focus_map(lat, lon, 0))
 
@@ -809,7 +804,7 @@ class MainCoordinator(QObject):
             )
 
     def _add_header_back_button(self) -> None:
-        """Add a back button to the main header bar (above GL map)."""
+        """Add a back button to the main header bar (left of menu)."""
         ui = self._window.ui
         if not hasattr(ui, "main_header"):
             return
@@ -819,12 +814,14 @@ class MainCoordinator(QObject):
             return
         from PySide6.QtWidgets import QPushButton
         from iPhoto.gui.ui.icons import load_icon
-        btn = QPushButton(ui.main_header)
-        btn.setIcon(load_icon("chevron.left.svg"))
-        btn.setIconSize(QSize(18, 18))
-        btn.setFixedSize(30, 30)
+        btn = QPushButton(" ←")
         btn.setFlat(True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton { font-size: 16px; padding: 2px 6px; border: none; "
+            "background: transparent; color: palette(text); }"
+            "QPushButton:hover { background: rgba(128,128,128,30); border-radius: 4px; }"
+        )
         btn.setToolTip("Return to photo")
         btn.clicked.connect(self._handle_map_back_clicked)
         header_layout = ui.main_header.layout()
