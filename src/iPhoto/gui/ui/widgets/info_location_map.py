@@ -62,14 +62,11 @@ _PIN_ANCHOR_Y_RATIO = 418.0 / 512.0
 
 from dataclasses import dataclass as _dataclass
 
-from dataclasses import field as _field
-
 @_dataclass(frozen=True)
 class _NearbyPhoto:
     path: Path
     latitude: float
     longitude: float
-    thumbnail: QPixmap = _field(default_factory=QPixmap, compare=False, hash=False)
 
 
 def create_map_widget(
@@ -226,7 +223,7 @@ class _PinOverlay(QWidget):
         return self._pin
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
-        """Draw nearby photo thumbnails when the map backend uses widget overlay."""
+        """Draw nearby photo markers when the map backend uses widget overlay."""
         map_view = self._owner.map_widget()
         markers = getattr(self._owner, "_nearby_markers", None)
         if not markers or map_view is None:
@@ -237,19 +234,17 @@ class _PinOverlay(QWidget):
             markers = markers[::step]
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        marker_pen = QPen(QColor(255, 255, 255), 1.0)
+        marker_fill = QColor(255, 140, 0, 220)
         for photo in markers:
-            thumb = photo.thumbnail
-            if thumb.isNull():
-                continue
             pt = map_view.project_lonlat(photo.longitude, photo.latitude)
             if pt is None:
                 continue
-            x = int(pt.x()) - thumb.width() // 2
-            y = int(pt.y()) - thumb.height() // 2
-            painter.setPen(QPen(QColor(255, 255, 255), 1.0))
-            painter.setBrush(QColor(255, 255, 255))
-            painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
-            painter.drawPixmap(x, y, thumb)
+            x = int(pt.x()) - 4
+            y = int(pt.y()) - 4
+            painter.setPen(marker_pen)
+            painter.setBrush(marker_fill)
+            painter.drawRoundedRect(x, y, 8, 8, 2, 2)
         painter.end()
 
 
@@ -950,36 +945,33 @@ class InfoLocationMapView(QWidget):
     _MAX_NEARBY_MARKERS = 30
 
     def _paint_pin(self, painter: QPainter) -> None:
+        # Draw nearby photo markers first.
+        if self._nearby_markers and self._map_widget is not None:
+            marker_pen = QPen(QColor(255, 255, 255), 1.0)
+            marker_fill = QColor(255, 140, 0, 220)
+            markers = self._nearby_markers
+            if len(markers) > self._MAX_NEARBY_MARKERS:
+                step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
+                markers = markers[::step]
+            for photo in markers:
+                pt = self._map_widget.project_lonlat(photo.longitude, photo.latitude)
+                if pt is None:
+                    continue
+                x = int(pt.x()) - 4
+                y = int(pt.y()) - 4
+                painter.setPen(marker_pen)
+                painter.setBrush(marker_fill)
+                painter.drawRoundedRect(x, y, 8, 8, 2, 2)
+
         if self._screen_point is None:
             return
         pin = self._overlay.pin_pixmap()
         if pin.isNull():
             return
         top_left = _pin_top_left(self._screen_point, pin)
-        px = int(round(top_left.x()))
-        py = int(round(top_left.y()))
-
-        # Draw nearby photo thumbnails (pre-loaded by caller).
-        if self._nearby_markers and self._map_widget is not None:
-            markers = self._nearby_markers
-            if len(markers) > self._MAX_NEARBY_MARKERS:
-                step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
-                markers = markers[::step]
-            for photo in markers:
-                thumb = photo.thumbnail
-                if thumb.isNull():
-                    continue
-                pt = self._map_widget.project_lonlat(photo.longitude, photo.latitude)
-                if pt is None:
-                    continue
-                x = int(pt.x()) - thumb.width() // 2
-                y = int(pt.y()) - thumb.height() // 2
-                painter.setPen(QPen(QColor(255, 255, 255), 1.0))
-                painter.setBrush(QColor(255, 255, 255))
-                painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
-                painter.drawPixmap(x, y, thumb)
-
-        painter.drawPixmap(px, py, pin)
+        painter.drawPixmap(
+            int(round(top_left.x())), int(round(top_left.y())), pin
+        )
 
     def _request_pin_repaint(self) -> None:
         if self._map_widget is None:

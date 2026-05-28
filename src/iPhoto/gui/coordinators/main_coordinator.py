@@ -797,17 +797,7 @@ class MainCoordinator(QObject):
             lat, lon, len(assets), len(nearby),
         )
         if nearby:
-            # Pre-load thumbnails from the thumbnail cache.
-            thumb_qsize = QSize(36, 36)
-            for photo in nearby[:30]:
-                if hasattr(self, "_thumbnail_service") and self._thumbnail_service:
-                    thumb = self._thumbnail_service.get_thumbnail(
-                        photo.path, thumb_qsize
-                    )
-                    if thumb is not None and not thumb.isNull():
-                        object.__setattr__(photo, "thumbnail", thumb)
             panel.show_nearby_photos(nearby)
-            panel._map_view.set_location(lat, lon, zoom=17.0)
             panel._show_all_btn.setText(f"Show All Photos ({len(nearby)})")
         else:
             panel._show_all_btn.setChecked(False)
