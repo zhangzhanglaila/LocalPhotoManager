@@ -20,6 +20,7 @@ from PySide6.QtCore import (
     QTimer,
 )
 from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QPushButton
 
 from iPhoto.application.contracts.runtime_entry_contract import RuntimeEntryContract
 from iPhoto.config import RECENTLY_DELETED_DIR_NAME
@@ -760,10 +761,55 @@ class MainCoordinator(QObject):
             return
         # Remember the current photo so we can return to it.
         self._return_from_map_path = presentation.path
-        # Navigate to Location view.
+        # Navigate to Location view and highlight sidebar.
         self._navigation.open_location_view()
+        self._window.ui.sidebar.select_static_node("Location")
+        # Show a back button on the map page.
+        self._show_map_back_button()
         # After the map widget is ready, center on the photo's coordinates.
         QTimer.singleShot(200, lambda: self._focus_map_on(lat, lon))
+
+    def _show_map_back_button(self) -> None:
+        """Add a temporary back button to the map page header."""
+        ui = self._window.ui
+        if not hasattr(ui, "map_page"):
+            return
+        if hasattr(self, "_map_back_button"):
+            return
+        from PySide6.QtWidgets import QHBoxLayout, QWidget
+        from iPhoto.gui.ui.icons import load_icon
+        header = QWidget(ui.map_page)
+        header.setObjectName("mapBackHeader")
+        header.setFixedHeight(36)
+        header.setStyleSheet("background: rgba(0,0,0,60); border: none;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(8, 0, 8, 0)
+        header_layout.setSpacing(4)
+        back_btn = QPushButton(header)
+        back_btn.setIcon(load_icon("chevron.left.svg"))
+        back_btn.setIconSize(QSize(20, 20))
+        back_btn.setFixedSize(28, 28)
+        back_btn.setFlat(True)
+        back_btn.setStyleSheet(
+            "QPushButton { background: transparent; border: none; border-radius: 14px; }"
+            "QPushButton:hover { background: rgba(255,255,255,40); }"
+        )
+        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        back_btn.clicked.connect(self._handle_map_back_clicked)
+        header_layout.addWidget(back_btn)
+        header_layout.addStretch()
+        map_layout = ui.map_page.layout()
+        if map_layout is not None:
+            map_layout.insertWidget(0, header)
+        self._map_back_header = header
+        self._map_back_button = back_btn
+
+    def _handle_map_back_clicked(self) -> None:
+        """Back button on map page: return to the originating photo."""
+        if self._return_from_map_path is not None:
+            self._handle_return_from_map()
+        else:
+            self._navigation.open_all_photos()
 
     def _focus_map_on(self, lat: float, lon: float) -> None:
         """Center the Location map on the given coordinates at high zoom."""
