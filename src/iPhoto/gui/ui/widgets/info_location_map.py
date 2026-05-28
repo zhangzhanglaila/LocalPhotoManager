@@ -947,25 +947,19 @@ class InfoLocationMapView(QWidget):
 
         # Draw nearby point dots around the pin.
         if self._nearby_lonlat and self._map_widget is not None:
-            dot_color = QColor(30, 136, 229)
-            outline = QPen(QColor(255, 255, 255), 1.0)
+            dot_color = QColor(255, 140, 0)
+            outline = QPen(QColor(255, 255, 255), 1.5)
             points = self._nearby_lonlat
             if len(points) > self._MAX_NEARBY_DOTS:
                 step = max(1, len(points) // self._MAX_NEARBY_DOTS)
                 points = points[::step]
-            projected = 0
             for lon, lat in points:
                 pt = self._map_widget.project_lonlat(lon, lat)
                 if pt is None:
                     continue
-                projected += 1
                 painter.setPen(outline)
                 painter.setBrush(dot_color)
-                painter.drawEllipse(pt, 5, 5)
-            if projected > 0:
-                painter.setPen(QPen(QColor(0, 255, 0), 2.0))
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawText(px + 20, py + 20, f"{projected} dots")
+                painter.drawEllipse(pt, 6, 6)
 
         painter.drawPixmap(px, py, pin)
 
