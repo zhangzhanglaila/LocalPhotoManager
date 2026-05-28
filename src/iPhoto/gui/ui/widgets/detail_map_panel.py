@@ -4,26 +4,20 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from .info_location_map import InfoLocationMapView, _NearbyPhoto
+from .info_location_map import InfoLocationMapView
 
 
 class DetailMapPanel(QWidget):
-    """Side panel displaying a map centred on the current photo's GPS location.
-
-    Includes a toggle button to show / hide markers for all library photos.
-    """
-
-    showAllToggled = Signal(bool)
+    """Side panel displaying a mini-map centred on the current photo's GPS location."""
 
     def __init__(
         self,
@@ -53,17 +47,6 @@ class DetailMapPanel(QWidget):
         title.setStyleSheet("font-weight: 600; font-size: 13px;")
         header_layout.addWidget(title)
         header_layout.addStretch(1)
-
-        self._show_all_btn = QPushButton("Show All Photos", header)
-        self._show_all_btn.setCheckable(True)
-        self._show_all_btn.setChecked(False)
-        self._show_all_btn.setStyleSheet(
-            "QPushButton { font-size: 11px; padding: 2px 8px; border-radius: 6px; "
-            "border: 1px solid palette(mid); }"
-            "QPushButton:checked { background-color: palette(highlight); color: palette(highlighted-text); }"
-        )
-        self._show_all_btn.toggled.connect(self.showAllToggled.emit)
-        header_layout.addWidget(self._show_all_btn)
 
         layout.addWidget(header)
 
@@ -106,14 +89,6 @@ class DetailMapPanel(QWidget):
     def current_location(self) -> tuple[float | None, float | None]:
         """Return the current pin location (latitude, longitude)."""
         return self._map_view.current_location()
-
-    def show_nearby_photos(self, photos: list[_NearbyPhoto]) -> None:
-        """Show nearby geotagged photos as thumbnails on the map."""
-        self._map_view.set_nearby_photos(photos)
-
-    def clear_nearby_photos(self) -> None:
-        """Remove nearby photo markers from the map."""
-        self._map_view.clear_nearby_photos()
 
     def set_map_runtime(self, map_runtime) -> None:
         self._map_view.set_map_runtime(map_runtime)

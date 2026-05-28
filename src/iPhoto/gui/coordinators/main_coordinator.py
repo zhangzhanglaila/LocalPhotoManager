@@ -15,7 +15,6 @@ from PySide6.QtCore import (
     QItemSelectionModel,
     QModelIndex,
     QObject,
-    QSize,
     Qt,
     QThreadPool,
     QTimer,
@@ -235,10 +234,9 @@ class MainCoordinator(QObject):
                 self._map_interaction_service()
             )
 
-        # Detail map panel
+        # Detail map panel (kept for GPS coordinates display only).
         if hasattr(window.ui, "map_panel"):
             self._playback.set_detail_map_panel(window.ui.map_panel)
-            window.ui.map_panel.showAllToggled.connect(self._handle_detail_map_show_all)
 
         # 4. Theme Controller
         self._theme_controller = WindowThemeController(window.ui, window, context.theme)
@@ -745,65 +743,40 @@ class MainCoordinator(QObject):
         return getattr(self._context.library, "map_interaction_service", None)
 
     def _toggle_detail_map(self) -> None:
-        """Show or hide the detail map panel."""
-        ui = self._window.ui
-        if not hasattr(ui, "map_panel"):
+        """Navigate to the Location view focused on the current photo."""
+        presentation = self._detail_vm.presentation.value
+        if presentation is None:
             return
-        panel = ui.map_panel
-        panel.setVisible(not panel.isVisible())
+        gps = presentation.info.get("gps")
+        if not isinstance(gps, dict):
+            return
+        lat = gps.get("lat")
+        lon = gps.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            return
+        # Navigate to Location view.
+        self._navigation.open_location_view()
+        # After the map widget is ready, center on the photo's coordinates.
+        QTimer.singleShot(200, lambda: self._focus_map_on(lat, lon))
 
-    def _handle_detail_map_show_all(self, show_all: bool) -> None:
-        """Handle the 'Show All Photos' toggle in the detail map panel."""
+    def _focus_map_on(self, lat: float, lon: float) -> None:
+        """Center the Location map on the given coordinates at high zoom."""
         ui = self._window.ui
-        if not hasattr(ui, "map_panel"):
+        if not hasattr(ui, "map_view") or ui.map_view is None:
             return
-        panel = ui.map_panel
-        if not show_all:
-            panel.clear_nearby_photos()
-            panel._show_all_btn.setText("Show All Photos")
-            return
-        lat, lon = panel.current_location()
-        if lat is None or lon is None:
-            self._status_bar.show_message("No GPS data for this photo.", 3000)
-            panel._show_all_btn.setChecked(False)
-            return
-        root = self._library_root()
-        if root is None:
-            self._status_bar.show_message("No library is open.", 3000)
-            panel._show_all_btn.setChecked(False)
-            return
-        from iPhoto.bootstrap.library_location_service import LibraryLocationService
-        from iPhoto.gui.ui.widgets.info_location_map import _NearbyPhoto
-        svc = LibraryLocationService(root)
         try:
-            assets = svc.list_geotagged_assets()
-        except Exception:
-            self._logger.exception("Failed to load geotagged assets")
-            self._status_bar.show_message("Failed to load geotagged photos.", 3000)
-            panel._show_all_btn.setChecked(False)
+            map_widget = ui.map_view.map_widget()
+        except RuntimeError:
+            # Map widget not yet initialized; retry once.
+            QTimer.singleShot(500, lambda: self._focus_map_on(lat, lon))
             return
-        # Filter: within ~1 degree (~110 km).
-        nearby = [
-            _NearbyPhoto(
-                path=a.absolute_path,
-                latitude=a.latitude,
-                longitude=a.longitude,
-            )
-            for a in assets
-            if abs(a.latitude - lat) <= 1.0 and abs(a.longitude - lon) <= 1.0
-        ]
-        self._logger.info(
-            "Show All Photos: lat=%.6f lon=%.6f total_assets=%d nearby=%d",
-            lat, lon, len(assets), len(nearby),
-        )
-        if nearby:
-            panel.show_nearby_photos(nearby)
-            panel._show_all_btn.setText(f"Show All Photos ({len(nearby)})")
-        else:
-            panel._show_all_btn.setChecked(False)
-            self._status_bar.show_message(
-                f"No nearby photos found (library has {len(assets)} geotagged).", 3000
-            )
+        if map_widget is None:
+            return
+        try:
+            map_widget.set_zoom(17.0)
+            map_widget.center_on(lon, lat)
+        except Exception:
+            self._logger.warning("Failed to focus map on %.6f, %.6f", lat, lon, exc_info=True)
 
     @staticmethod
     def _resolve_map_package_root(map_runtime: object | None) -> Path:

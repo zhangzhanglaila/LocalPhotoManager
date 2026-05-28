@@ -60,14 +60,6 @@ _PIN_ICON_HEIGHT = 114
 _PIN_ANCHOR_X_RATIO = 256.0 / 512.0
 _PIN_ANCHOR_Y_RATIO = 418.0 / 512.0
 
-from dataclasses import dataclass as _dataclass
-
-@_dataclass(frozen=True)
-class _NearbyPhoto:
-    path: Path
-    latitude: float
-    longitude: float
-
 
 def create_map_widget(
     parent: QWidget,
@@ -223,29 +215,7 @@ class _PinOverlay(QWidget):
         return self._pin
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
-        """Draw nearby photo markers when the map backend uses widget overlay."""
-        map_view = self._owner.map_widget()
-        markers = getattr(self._owner, "_nearby_markers", None)
-        if not markers or map_view is None:
-            return
-        max_markers = getattr(self._owner, "_MAX_NEARBY_MARKERS", 50)
-        if len(markers) > max_markers:
-            step = max(1, len(markers) // max_markers)
-            markers = markers[::step]
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        marker_pen = QPen(QColor(255, 255, 255), 1.0)
-        marker_fill = QColor(255, 140, 0, 220)
-        for photo in markers:
-            pt = map_view.project_lonlat(photo.longitude, photo.latitude)
-            if pt is None:
-                continue
-            x = int(pt.x()) - 4
-            y = int(pt.y()) - 4
-            painter.setPen(marker_pen)
-            painter.setBrush(marker_fill)
-            painter.drawRoundedRect(x, y, 8, 8, 2, 2)
-        painter.end()
+        pass
 
 
 class _RoundedMapClipFrame(QWidget):
@@ -309,8 +279,6 @@ class InfoLocationMapView(QWidget):
         self._latitude: float | None = None
         self._longitude: float | None = None
         self._screen_point: QPointF | None = None
-        self._nearby_markers: list[_NearbyPhoto] = []
-        self._show_all_active = False
         self._requested_zoom = self.DEFAULT_ZOOM
         self._last_set_location: tuple[float, float, float] | None = None
         self._pending_viewport_sync = False
@@ -455,20 +423,6 @@ class InfoLocationMapView(QWidget):
         self._overlay.set_screen_point(None)
         self._overlay.hide()
         self._request_pin_repaint()
-
-    def set_nearby_photos(self, photos: list[_NearbyPhoto]) -> None:
-        """Show photo markers for nearby geotagged assets."""
-        self._nearby_markers = list(photos)
-        self._show_all_active = True
-        self._request_pin_repaint()
-        self._overlay.update()
-
-    def clear_nearby_photos(self) -> None:
-        """Remove nearby photo markers."""
-        self._nearby_markers = []
-        self._show_all_active = False
-        self._request_pin_repaint()
-        self._overlay.update()
 
     def shutdown(self) -> None:
         self._pin_sync_timer.stop()
@@ -942,27 +896,8 @@ class InfoLocationMapView(QWidget):
         self._pin_paint_callback = None
         self._uses_post_render_pin = False
 
-    _MAX_NEARBY_MARKERS = 30
 
     def _paint_pin(self, painter: QPainter) -> None:
-        # Draw nearby photo markers first.
-        if self._nearby_markers and self._map_widget is not None:
-            marker_pen = QPen(QColor(255, 255, 255), 1.0)
-            marker_fill = QColor(255, 140, 0, 220)
-            markers = self._nearby_markers
-            if len(markers) > self._MAX_NEARBY_MARKERS:
-                step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
-                markers = markers[::step]
-            for photo in markers:
-                pt = self._map_widget.project_lonlat(photo.longitude, photo.latitude)
-                if pt is None:
-                    continue
-                x = int(pt.x()) - 4
-                y = int(pt.y()) - 4
-                painter.setPen(marker_pen)
-                painter.setBrush(marker_fill)
-                painter.drawRoundedRect(x, y, 8, 8, 2, 2)
-
         if self._screen_point is None:
             return
         pin = self._overlay.pin_pixmap()
