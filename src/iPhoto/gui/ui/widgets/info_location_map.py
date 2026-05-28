@@ -20,8 +20,6 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QColor,
-    QImage,
-    QImageReader,
     QPainter,
     QPainterPath,
     QPen,
@@ -231,8 +229,7 @@ class _PinOverlay(QWidget):
         """Draw nearby photo thumbnails when the map backend uses widget overlay."""
         map_view = self._owner.map_widget()
         markers = getattr(self._owner, "_nearby_markers", None)
-        thumb_cache = getattr(self._owner, "_marker_thumb_cache", None)
-        if not markers or map_view is None or thumb_cache is None:
+        if not markers or map_view is None:
             return
         max_markers = getattr(self._owner, "_MAX_NEARBY_MARKERS", 50)
         if len(markers) > max_markers:
@@ -241,8 +238,8 @@ class _PinOverlay(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         for photo in markers:
-            thumb = thumb_cache.get(str(photo.path))
-            if thumb is None:
+            thumb = photo.thumbnail
+            if thumb.isNull():
                 continue
             pt = map_view.project_lonlat(photo.longitude, photo.latitude)
             if pt is None:
@@ -318,10 +315,7 @@ class InfoLocationMapView(QWidget):
         self._longitude: float | None = None
         self._screen_point: QPointF | None = None
         self._nearby_markers: list[_NearbyPhoto] = []
-        self._marker_thumb_cache: dict[str, QPixmap] = {}
-        self._nearby_fetcher: Callable[[float, float], list[_NearbyPhoto]] | None = None
         self._show_all_active = False
-        self._last_fetch_center: tuple[float, float] | None = None
         self._requested_zoom = self.DEFAULT_ZOOM
         self._last_set_location: tuple[float, float, float] | None = None
         self._pending_viewport_sync = False
@@ -470,84 +464,16 @@ class InfoLocationMapView(QWidget):
     def set_nearby_photos(self, photos: list[_NearbyPhoto]) -> None:
         """Show photo markers for nearby geotagged assets."""
         self._nearby_markers = list(photos)
-        self._marker_thumb_cache.clear()
         self._show_all_active = True
-        # Pre-load thumbnails now (synchronous, but only ~50).
-        self._preload_thumbnails(photos)
         self._request_pin_repaint()
         self._overlay.update()
-
-    def _preload_thumbnails(self, photos: list[_NearbyPhoto]) -> None:
-        """Load small thumbnails for the sampled markers."""
-        markers = photos
-        if len(markers) > self._MAX_NEARBY_MARKERS:
-            step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
-            markers = markers[::step]
-        thumb_size = 28
-        for photo in markers:
-            path_str = str(photo.path)
-            if path_str in self._marker_thumb_cache:
-                continue
-            # Try QImageReader first (fast, native).
-            reader = QImageReader(path_str)
-            reader.setAutoTransform(True)
-            reader.setScaledSize(QSize(thumb_size, thumb_size))
-            qimg = reader.read()
-            # Fall back to PIL for HEIC and other formats.
-            if qimg.isNull():
-                try:
-                    from PIL import Image as PILImage, ImageOps as PILOps
-                    with PILImage.open(path_str) as pil_img:
-                        pil_img = PILOps.exif_transpose(pil_img)
-                        pil_img = pil_img.convert("RGBA")
-                        pil_img.thumbnail((thumb_size, thumb_size))
-                        data = pil_img.tobytes("raw", "RGBA")
-                        qimg = QImage(
-                            data, pil_img.width, pil_img.height,
-                            pil_img.width * 4, QImage.Format.Format_RGBA8888,
-                        )
-                except Exception:
-                    continue
-            if not qimg.isNull():
-                self._marker_thumb_cache[path_str] = QPixmap.fromImage(qimg)
 
     def clear_nearby_photos(self) -> None:
         """Remove nearby photo markers."""
         self._nearby_markers = []
-        self._marker_thumb_cache.clear()
         self._show_all_active = False
-        self._last_fetch_center = None
         self._request_pin_repaint()
         self._overlay.update()
-
-    def set_nearby_fetcher(
-        self,
-        fetcher: Callable[[float, float], list[_NearbyPhoto]] | None,
-    ) -> None:
-        """Register a callback to re-fetch nearby photos when the map pans."""
-        self._nearby_fetcher = fetcher
-
-    def _handle_map_panned_for_nearby(self) -> None:
-        """Re-fetch nearby markers when the user finishes dragging the map."""
-        if not self._show_all_active or self._nearby_fetcher is None:
-            return
-        if self._map_widget is None:
-            return
-        try:
-            center_lon, center_lat = self._map_widget.center_lonlat()
-        except Exception:
-            return
-        # Throttle: only re-fetch if center moved significantly.
-        new_center = (round(center_lat, 3), round(center_lon, 3))
-        if self._last_fetch_center == new_center:
-            return
-        self._last_fetch_center = new_center
-        try:
-            markers = self._nearby_fetcher(center_lat, center_lon)
-        except Exception:
-            return
-        if markers:
-            self.set_nearby_photos(markers)
 
     def shutdown(self) -> None:
         self._pin_sync_timer.stop()
@@ -861,9 +787,6 @@ class InfoLocationMapView(QWidget):
         if pan_finished is not None:
             pan_finished.connect(self._handle_map_pan_finished)
 
-        if pan_finished is not None:
-            pan_finished.connect(self._handle_map_panned_for_nearby)
-
     def _project_current_location(self, *, center_fallback: bool) -> QPointF | None:
         if self._map_widget is None or self._latitude is None or self._longitude is None:
             return None
@@ -1045,8 +968,6 @@ class InfoLocationMapView(QWidget):
             for photo in markers:
                 thumb = photo.thumbnail
                 if thumb.isNull():
-                    thumb = self._marker_thumb_cache.get(str(photo.path))
-                if thumb is None or thumb.isNull():
                     continue
                 pt = self._map_widget.project_lonlat(photo.longitude, photo.latitude)
                 if pt is None:
