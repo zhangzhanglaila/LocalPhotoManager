@@ -764,6 +764,8 @@ class MainCoordinator(QObject):
         self._return_from_map_path = presentation.path
         # Navigate to Location view.
         self._navigation.open_location_view()
+        # Show back button in header immediately.
+        self._add_header_back_button()
         # Highlight sidebar immediately.
         try:
             self._window.ui.sidebar.select_static_node("Location")
@@ -789,8 +791,6 @@ class MainCoordinator(QObject):
         if map_widget is None:
             self._retry_focus(lat, lon, attempt)
             return
-        # Add back button on the marker overlay (renders above GL layer).
-        self._add_header_back_button()
         try:
             map_widget.set_zoom(17.0)
             map_widget.center_on(lon, lat)
@@ -825,9 +825,7 @@ class MainCoordinator(QObject):
         btn.clicked.connect(self._handle_map_back_clicked)
         header_layout = ui.main_header.layout()
         if header_layout is not None:
-            # Add between the expanding spacer and rescan button.
-            # Layout: [menu_bar(0)] [spacer(1)] [rescan(2)] [select(3)]
-            header_layout.insertWidget(2, btn)
+            header_layout.addWidget(btn)
         self._header_back_btn = btn
 
     def _handle_map_back_clicked(self) -> None:
