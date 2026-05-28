@@ -236,25 +236,16 @@ class _PinOverlay(QWidget):
             markers = markers[::step]
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        thumb_size = 32
         for photo in markers:
+            thumb = thumb_cache.get(str(photo.path))
+            if thumb is None:
+                continue
             pt = map_view.project_lonlat(photo.longitude, photo.latitude)
             if pt is None:
                 continue
-            path_key = str(photo.path)
-            thumb = thumb_cache.get(path_key)
-            if thumb is None:
-                reader = QImageReader(str(photo.path))
-                reader.setAutoTransform(True)
-                reader.setScaledSize(QSize(thumb_size, thumb_size))
-                qimg = reader.read()
-                if qimg.isNull():
-                    continue
-                thumb = QPixmap.fromImage(qimg)
-                thumb_cache[path_key] = thumb
             x = int(pt.x()) - thumb.width() // 2
             y = int(pt.y()) - thumb.height() // 2
-            painter.setPen(QPen(QColor(255, 255, 255), 2.0))
+            painter.setPen(QPen(QColor(255, 255, 255), 1.0))
             painter.setBrush(QColor(255, 255, 255))
             painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
             painter.drawPixmap(x, y, thumb)
@@ -477,52 +468,25 @@ class InfoLocationMapView(QWidget):
         self._nearby_markers = list(photos)
         self._marker_thumb_cache.clear()
         self._show_all_active = True
+        # Pre-load thumbnails now (synchronous, but only ~50).
+        self._preload_thumbnails(photos)
         self._request_pin_repaint()
         self._overlay.update()
-        # Load thumbnails asynchronously so the UI stays responsive.
-        self._preload_thumbnails_async(photos)
 
-    def _preload_thumbnails_async(self, photos: list[_NearbyPhoto]) -> None:
-        """Load marker thumbnails in a background thread."""
+    def _preload_thumbnails(self, photos: list[_NearbyPhoto]) -> None:
+        """Load small thumbnails for the sampled markers."""
         markers = photos
         if len(markers) > self._MAX_NEARBY_MARKERS:
             step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
             markers = markers[::step]
-        paths = [(p.path, str(p.path)) for p in markers]
-        thumb_size = 32
-        from PySide6.QtCore import QThreadPool
-
-        class _Signals(QObject):
-            done = Signal(dict)
-
-        class _ThumbLoader(QRunnable):
-            def __init__(self, paths, size):
-                super().__init__()
-                self._paths = paths
-                self._size = size
-                self.signals = _Signals()
-
-            def run(self):
-                cache: dict[str, QPixmap] = {}
-                for path, key in self._paths:
-                    reader = QImageReader(str(path))
-                    reader.setAutoTransform(True)
-                    reader.setScaledSize(QSize(self._size, self._size))
-                    qimg = reader.read()
-                    if not qimg.isNull():
-                        cache[key] = QPixmap.fromImage(qimg)
-                if cache:
-                    self.signals.done.emit(cache)
-
-        worker = _ThumbLoader(paths, thumb_size)
-        worker.signals.done.connect(self._on_thumbnails_loaded)
-        QThreadPool.globalInstance().start(worker)
-
-    def _on_thumbnails_loaded(self, cache: dict) -> None:
-        """Called from main thread when background thumbnail loading completes."""
-        self._marker_thumb_cache.update(cache)
-        self._request_pin_repaint()
-        self._overlay.update()
+        thumb_size = 28
+        for photo in markers:
+            reader = QImageReader(str(photo.path))
+            reader.setAutoTransform(True)
+            reader.setScaledSize(QSize(thumb_size, thumb_size))
+            qimg = reader.read()
+            if not qimg.isNull():
+                self._marker_thumb_cache[str(photo.path)] = QPixmap.fromImage(qimg)
 
     def clear_nearby_photos(self) -> None:
         """Remove nearby photo markers."""
@@ -1049,35 +1013,27 @@ class InfoLocationMapView(QWidget):
         px = int(round(top_left.x()))
         py = int(round(top_left.y()))
 
-        # Draw nearby photo markers on the map.
+        # Draw nearby photo thumbnails.
         if self._nearby_markers and self._map_widget is not None:
-            marker_size = 8
-            border_pen = QPen(QColor(255, 255, 255), 1.0)
-            fill = QColor(255, 140, 0, 220)
             markers = self._nearby_markers
             if len(markers) > self._MAX_NEARBY_MARKERS:
                 step = max(1, len(markers) // self._MAX_NEARBY_MARKERS)
                 markers = markers[::step]
             for photo in markers:
+                thumb = self._marker_thumb_cache.get(str(photo.path))
+                if thumb is None:
+                    continue
                 pt = self._map_widget.project_lonlat(photo.longitude, photo.latitude)
                 if pt is None:
                     continue
-                path_key = str(photo.path)
-                thumb = self._marker_thumb_cache.get(path_key)
-                if thumb is not None:
-                    x = int(pt.x()) - thumb.width() // 2
-                    y = int(pt.y()) - thumb.height() // 2
-                    painter.setPen(QPen(QColor(255, 255, 255), 1.0))
-                    painter.setBrush(QColor(255, 255, 255))
-                    painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
-                    painter.drawPixmap(x, y, thumb)
-                else:
-                    # Placeholder orange square while thumbnail loads.
-                    x = int(pt.x()) - marker_size // 2
-                    y = int(pt.y()) - marker_size // 2
-                    painter.setPen(border_pen)
-                    painter.setBrush(fill)
-                    painter.drawRoundedRect(x, y, marker_size, marker_size, 2, 2)
+                x = int(pt.x()) - thumb.width() // 2
+                y = int(pt.y()) - thumb.height() // 2
+                # White border
+                painter.setPen(QPen(QColor(255, 255, 255), 1.0))
+                painter.setBrush(QColor(255, 255, 255))
+                painter.drawRect(x - 1, y - 1, thumb.width() + 2, thumb.height() + 2)
+                # Thumbnail image
+                painter.drawPixmap(x, y, thumb)
 
         painter.drawPixmap(px, py, pin)
 
