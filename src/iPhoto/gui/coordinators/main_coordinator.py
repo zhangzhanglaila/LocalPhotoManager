@@ -764,8 +764,7 @@ class MainCoordinator(QObject):
         self._return_from_map_path = presentation.path
         # Navigate to Location view.
         self._navigation.open_location_view()
-        # Show back button and highlight sidebar immediately.
-        self._add_header_back_button()
+        # Highlight sidebar immediately.
         try:
             self._window.ui.sidebar.select_static_node("Location")
             self._window.ui.sidebar._tree.viewport().update()
@@ -790,6 +789,8 @@ class MainCoordinator(QObject):
         if map_widget is None:
             self._retry_focus(lat, lon, attempt)
             return
+        # Add back button on the marker overlay (renders above GL layer).
+        self._add_header_back_button()
         try:
             map_widget.set_zoom(17.0)
             map_widget.center_on(lon, lat)
@@ -804,29 +805,34 @@ class MainCoordinator(QObject):
             )
 
     def _add_header_back_button(self) -> None:
-        """Add a back button to the main header bar (left of menu)."""
+        """Add a back button overlaid on the map (top-left corner)."""
         ui = self._window.ui
-        if not hasattr(ui, "main_header"):
+        if not hasattr(ui, "map_view") or ui.map_view is None:
             return
         btn = getattr(self, "_header_back_btn", None)
         if btn is not None:
             btn.show()
             return
+        # Find the marker overlay widget that sits on top of the GL layer.
+        try:
+            map_widget = ui.map_view.map_widget()
+        except RuntimeError:
+            return
+        overlay = getattr(map_widget, "_overlay_window", None)
+        if overlay is None:
+            overlay = ui.map_page
         from PySide6.QtWidgets import QPushButton
-        from iPhoto.gui.ui.icons import load_icon
-        btn = QPushButton(" ←")
+        btn = QPushButton("← Back", overlay)
         btn.setFlat(True)
+        btn.move(8, 4)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
-            "QPushButton { font-size: 16px; padding: 2px 6px; border: none; "
-            "background: transparent; color: palette(text); }"
-            "QPushButton:hover { background: rgba(128,128,128,30); border-radius: 4px; }"
+            "QPushButton { font-size: 13px; padding: 4px 10px; border: none; "
+            "background: rgba(0,0,0,100); color: white; border-radius: 6px; }"
+            "QPushButton:hover { background: rgba(0,0,0,160); }"
         )
-        btn.setToolTip("Return to photo")
         btn.clicked.connect(self._handle_map_back_clicked)
-        header_layout = ui.main_header.layout()
-        if header_layout is not None:
-            header_layout.insertWidget(0, btn)
+        btn.show()
         self._header_back_btn = btn
 
     def _handle_map_back_clicked(self) -> None:
