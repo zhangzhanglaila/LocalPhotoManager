@@ -764,8 +764,6 @@ class MainCoordinator(QObject):
         self._return_from_map_path = presentation.path
         # Navigate to Location view.
         self._navigation.open_location_view()
-        # Add back button to the main header (not map page, which has GL overlay).
-        self._show_main_header_back_button()
         # Defer sidebar highlight to after view transition.
         def _after_map_ready():
             try:
@@ -776,44 +774,6 @@ class MainCoordinator(QObject):
         QTimer.singleShot(100, _after_map_ready)
         # Center map on photo location — long delay for native GL widget init.
         QTimer.singleShot(1500, lambda: self._try_focus_map(lat, lon, 0))
-
-    def _show_main_header_back_button(self) -> None:
-        """Insert a back button into the main header bar (above the GL map)."""
-        ui = self._window.ui
-        if not hasattr(ui, "main_header"):
-            return
-        if getattr(self, "_header_back_btn", None) is not None:
-            self._header_back_btn.show()
-            return
-        from PySide6.QtWidgets import QPushButton
-        from iPhoto.gui.ui.icons import load_icon
-        btn = QPushButton(ui.main_header)
-        btn.setIcon(load_icon("chevron.left.svg"))
-        btn.setIconSize(QSize(20, 20))
-        btn.setFixedSize(32, 32)
-        btn.setFlat(True)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.clicked.connect(self._handle_map_back_clicked)
-        btn.setToolTip("Return to photo")
-        # Insert at the beginning of the main header layout (left of menu).
-        header_layout = ui.main_header.layout()
-        if header_layout is not None:
-            header_layout.insertWidget(0, btn)
-        self._header_back_btn = btn
-
-    def _hide_main_header_back_button(self) -> None:
-        """Hide the back button when leaving the map view."""
-        btn = getattr(self, "_header_back_btn", None)
-        if btn is not None:
-            btn.hide()
-
-    def _handle_map_back_clicked(self) -> None:
-        """Back button: return to the originating photo."""
-        self._hide_main_header_back_button()
-        if self._return_from_map_path is not None:
-            self._handle_return_from_map()
-        else:
-            self._navigation.open_all_photos()
 
     _FOCUS_MAP_MAX_RETRIES = 10
 
@@ -856,7 +816,6 @@ class MainCoordinator(QObject):
         if not hasattr(self._window.ui, "map_page"):
             return
         self._return_from_map_path = None
-        self._hide_main_header_back_button()
         # Tell NavigationCoordinator to skip re-navigating to Location.
         self._navigation._pending_detail_return = path
         # Navigate to All Photos first, then open the photo detail.
@@ -869,7 +828,6 @@ class MainCoordinator(QObject):
         if path is None:
             return
         self._return_from_map_path = None
-        self._hide_main_header_back_button()
         QTimer.singleShot(100, lambda: self._try_return_to_photo(path, 0))
 
     def _try_return_to_photo(self, path: Path, attempt: int) -> None:
