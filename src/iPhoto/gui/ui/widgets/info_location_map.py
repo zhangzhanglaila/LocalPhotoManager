@@ -936,7 +936,16 @@ class InfoLocationMapView(QWidget):
     _MAX_NEARBY_DOTS = 200
 
     def _paint_pin(self, painter: QPainter) -> None:
-        # Draw nearby point dots first (behind the pin).
+        if self._screen_point is None:
+            return
+        pin = self._overlay.pin_pixmap()
+        if pin.isNull():
+            return
+        top_left = _pin_top_left(self._screen_point, pin)
+        px = int(round(top_left.x()))
+        py = int(round(top_left.y()))
+
+        # Draw nearby point dots around the pin.
         if self._nearby_lonlat and self._map_widget is not None:
             dot_color = QColor(30, 136, 229)
             outline = QPen(QColor(255, 255, 255), 1.0)
@@ -944,31 +953,21 @@ class InfoLocationMapView(QWidget):
             if len(points) > self._MAX_NEARBY_DOTS:
                 step = max(1, len(points) // self._MAX_NEARBY_DOTS)
                 points = points[::step]
+            projected = 0
             for lon, lat in points:
                 pt = self._map_widget.project_lonlat(lon, lat)
                 if pt is None:
                     continue
+                projected += 1
                 painter.setPen(outline)
                 painter.setBrush(dot_color)
                 painter.drawEllipse(pt, 5, 5)
+            if projected > 0:
+                painter.setPen(QPen(QColor(0, 255, 0), 2.0))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawText(px + 20, py + 20, f"{projected} dots")
 
-        if self._screen_point is None:
-            return
-        pin = self._overlay.pin_pixmap()
-        if pin.isNull():
-            return
-        top_left = _pin_top_left(self._screen_point, pin)
-        painter.drawPixmap(int(round(top_left.x())), int(round(top_left.y())), pin)
-
-        # DEBUG: draw a test rectangle around the pin to verify rendering works
-        painter.setPen(QPen(QColor(255, 0, 0), 3.0))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(
-            int(round(top_left.x())) - 20,
-            int(round(top_left.y())) - 20,
-            pin.width() + 40,
-            pin.height() + 40,
-        )
+        painter.drawPixmap(px, py, pin)
 
     def _request_pin_repaint(self) -> None:
         if self._map_widget is None:
