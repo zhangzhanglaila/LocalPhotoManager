@@ -805,32 +805,34 @@ class MainCoordinator(QObject):
             )
 
     def _add_header_back_button(self) -> None:
-        """Add a back button overlaid on the map (top-left corner)."""
+        """Add a floating back button positioned over the map."""
         ui = self._window.ui
-        if not hasattr(ui, "map_view") or ui.map_view is None:
+        if not hasattr(ui, "map_page"):
             return
         btn = getattr(self, "_header_back_btn", None)
         if btn is not None:
             btn.show()
             return
-        # Find the marker overlay widget that sits on top of the GL layer.
-        try:
-            map_widget = ui.map_view.map_widget()
-        except RuntimeError:
-            return
-        overlay = getattr(map_widget, "_overlay_window", None)
-        if overlay is None:
-            overlay = ui.map_page
         from PySide6.QtWidgets import QPushButton
-        btn = QPushButton("← Back", overlay)
-        btn.setFlat(True)
-        btn.move(8, 4)
+        # Floating tool window that stays above the native GL surface.
+        btn = QPushButton("← Back", None)
+        btn.setWindowFlags(
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowDoesNotAcceptFocus
+        )
+        btn.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
             "QPushButton { font-size: 13px; padding: 4px 10px; border: none; "
-            "background: rgba(0,0,0,100); color: white; border-radius: 6px; }"
-            "QPushButton:hover { background: rgba(0,0,0,160); }"
+            "background: rgba(0,0,0,140); color: white; border-radius: 6px; }"
+            "QPushButton:hover { background: rgba(0,0,0,200); }"
         )
+        btn.adjustSize()
+        # Position at top-left of the map page.
+        pos = ui.map_page.mapToGlobal(QPoint(12, 8))
+        btn.move(pos)
         btn.clicked.connect(self._handle_map_back_clicked)
         btn.show()
         self._header_back_btn = btn
