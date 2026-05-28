@@ -232,12 +232,11 @@ class FaceScanWorker(QThread):
             return False
 
         retry_items = [item for item in detected if item.asset_id and item.error]
-        for item in retry_items:
+        if retry_items:
             LOGGER.warning(
-                "Face scan failed for asset %s (%s): %s",
-                item.asset_id,
-                item.asset_rel,
-                item.error,
+                "Face scan: %d asset(s) could not be processed (first: %s)",
+                len(retry_items),
+                retry_items[0].asset_rel,
             )
         retry_id_set = {str(item.asset_id) for item in retry_items}
         retry_source_ids = {

@@ -85,10 +85,10 @@ class AssetGrid(QListView):
         was_long_press = self._long_press_active
         index = self._pressed_index
         self._cancel_pending_long_press()
-        if event.button() == Qt.MouseButton.LeftButton and index is not None and not self._model_resetting:
+        if event.button() == Qt.MouseButton.LeftButton:
             if was_long_press:
                 self.previewReleased.emit()
-            elif index.isValid():
+            elif index is not None and index.isValid() and not self._model_resetting:
                 self.itemClicked.emit(index)
         super().mouseReleaseEvent(event)
 
@@ -285,11 +285,13 @@ class AssetGrid(QListView):
     def _on_model_about_to_reset(self) -> None:
         self._model_resetting = True
         self._update_timer.stop()
-        # Clear stale press state — the QModelIndex becomes invalid after reset.
+        # Cancel the timer so we don't start a new preview during the reset.
         self._press_timer.stop()
+        # The QModelIndex becomes invalid after reset, clear it.
         self._pressed_index = None
         self._press_pos = None
-        self._long_press_active = False
+        # Keep _long_press_active intact — mouseReleaseEvent needs it to
+        # emit previewReleased so the preview popup can close.
 
     def _on_model_reset_done(self) -> None:
         # Defer clearing the flag so views finish processing the reset
