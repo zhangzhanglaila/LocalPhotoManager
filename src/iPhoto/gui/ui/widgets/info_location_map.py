@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QColor,
     QPainter,
     QPainterPath,
+    QPen,
     QPixmap,
     QRegion,
     QResizeEvent,
