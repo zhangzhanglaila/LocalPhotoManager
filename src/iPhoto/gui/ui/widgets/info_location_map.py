@@ -452,12 +452,6 @@ class InfoLocationMapView(QWidget):
     def set_nearby_points(self, points: list[tuple[float, float]]) -> None:
         """Set additional coordinate points to render as small dots."""
         self._nearby_lonlat = list(points)
-        # Zoom out to ensure nearby dots are visible on the mini-map.
-        if self._map_widget is not None:
-            try:
-                self._map_widget.set_zoom(4.0)
-            except Exception:
-                pass
         self._request_pin_repaint()
         self._overlay.update()  # also repaint widget overlay for dots
 
@@ -944,7 +938,6 @@ class InfoLocationMapView(QWidget):
     def _paint_pin(self, painter: QPainter) -> None:
         # Draw nearby point dots first (behind the pin).
         if self._nearby_lonlat and self._map_widget is not None:
-            # Use a brand-new painter path for the dots to avoid state conflicts.
             dot_color = QColor(30, 136, 229)
             outline = QPen(QColor(255, 255, 255), 1.0)
             points = self._nearby_lonlat
@@ -966,6 +959,16 @@ class InfoLocationMapView(QWidget):
             return
         top_left = _pin_top_left(self._screen_point, pin)
         painter.drawPixmap(int(round(top_left.x())), int(round(top_left.y())), pin)
+
+        # DEBUG: draw a test rectangle around the pin to verify rendering works
+        painter.setPen(QPen(QColor(255, 0, 0), 3.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(
+            int(round(top_left.x())) - 20,
+            int(round(top_left.y())) - 20,
+            pin.width() + 40,
+            pin.height() + 40,
+        )
 
     def _request_pin_repaint(self) -> None:
         if self._map_widget is None:
