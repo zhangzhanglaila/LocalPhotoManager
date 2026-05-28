@@ -6,7 +6,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import Dict, Iterable, Optional, cast
 
-from PySide6.QtCore import QObject, QRectF, Qt, QEvent, Signal, Slot
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QEvent, Signal, Slot
 from ....i18n import tr
 from PySide6.QtGui import (
     QColor,
@@ -340,6 +340,8 @@ class PhotoMapView(QWidget):
                 # popup itself.
                 filter_candidate.ignore_object(self._tooltip)
         self._last_tooltip_text = ""
+        self._pending_click_cluster = None  # _MarkerCluster | None
+        self._pending_click_pos = QPointF()
         self._thumbnail_loader = ThumbnailLoader(self)
         self._map_widget_built = False
         self._placeholder_label = QLabel(tr("map.loading"), self)
@@ -479,48 +481,47 @@ class PhotoMapView(QWidget):
         if watched is self._map_event_target:
             if event.type() == QEvent.Type.MouseMove:
                 mouse_event = cast(QMouseEvent, event)
+                # If the user drags after pressing, cancel any pending click.
+                if self._pending_click_cluster is not None:
+                    delta = mouse_event.position() - self._pending_click_pos
+                    if delta.manhattanLength() > 6:
+                        self._pending_click_cluster = None
                 label = self._map_widget.city_at(mouse_event.position())
                 if label:
                     global_pos = self._map_event_target.mapToGlobal(mouse_event.position().toPoint())
                     if label != self._last_tooltip_text:
-                        # Refresh the popup only when the label changes to avoid
-                        # flicker from repeatedly hiding and showing the widget
-                        # as the cursor moves within the same city hit area.
                         self._tooltip.show_text(global_pos, label)
                         self._last_tooltip_text = label
                     else:
-                        # The tooltip may need to be nudged when the cursor
-                        # approaches the screen edge even if the underlying
-                        # label stays the same, so keep it in sync with the
-                        # current pointer location.
                         self._tooltip.show_text(global_pos, label)
                 else:
                     if self._last_tooltip_text:
                         self._tooltip.hide_tooltip()
                         self._last_tooltip_text = ""
             elif event.type() == QEvent.Type.Leave:
+                self._pending_click_cluster = None
                 if self._last_tooltip_text:
                     self._tooltip.hide_tooltip()
                     self._last_tooltip_text = ""
-            elif event.type() in (
-                QEvent.Type.MouseButtonPress,
-                QEvent.Type.MouseButtonDblClick,
-            ):
+            elif event.type() == QEvent.Type.MouseButtonPress:
                 mouse_event = cast(QMouseEvent, event)
                 if self._last_tooltip_text:
                     self._tooltip.hide_tooltip()
                     self._last_tooltip_text = ""
-                handle_pointer_press = getattr(
-                    self._marker_controller,
-                    "handle_pointer_press",
-                    None,
-                )
-                if callable(handle_pointer_press):
-                    if handle_pointer_press(mouse_event.position()):
-                        return True
-                else:
-                    cluster = self._marker_controller.cluster_at(mouse_event.position())
-                    if cluster is not None:
+                # Record the press — activate on release if no drag occurs.
+                cluster = self._marker_controller.cluster_at(mouse_event.position())
+                self._pending_click_cluster = cluster
+                self._pending_click_pos = mouse_event.position()
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                mouse_event = cast(QMouseEvent, event)
+                cluster = self._pending_click_cluster
+                self._pending_click_cluster = None
+                if cluster is not None:
+                    # Verify the mouse is still over the same cluster.
+                    current = self._marker_controller.cluster_at(
+                        mouse_event.position()
+                    )
+                    if current is not None and current.representative.asset_id == cluster.representative.asset_id:
                         self._marker_controller.handle_marker_click(cluster)
                         return True
         return super().eventFilter(watched, event)
