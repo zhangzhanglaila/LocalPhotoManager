@@ -857,6 +857,23 @@ class VideoRendererWidget(QRhiWidget):
                 _log.debug("Frame has invalid dimensions: %dx%d", w, h)
                 return False
 
+            # Detect pre-rotated frames: when the Qt FFmpeg backend delivers
+            # decoded pixels already rotated (e.g. 1080×1920 for a portrait
+            # iPhone MOV) but the surface format still reports the coded
+            # dimensions (1920×1080), the stride will be close to the
+            # *height* rather than the *width*.  Fall back to the RGBA path
+            # which has explicit dimension-swap detection.
+            y_bpl = frame.bytesPerLine(0)
+            if y_bpl > 0 and w > 0 and h > 0 and w != h:
+                expected_stride = w  # NV12 Y plane: 1 byte per pixel
+                if abs(y_bpl - h) < abs(y_bpl - expected_stride):
+                    _log.debug(
+                        "NV12 stride %d closer to height %d than width %d – "
+                        "falling back to RGBA for pre-rotated frame",
+                        y_bpl, h, w,
+                    )
+                    return False
+
             # Validate that we have at least 2 planes (Y + UV)
             plane_count = frame.planeCount()
             if plane_count < 2:

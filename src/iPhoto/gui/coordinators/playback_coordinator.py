@@ -603,18 +603,14 @@ class PlaybackCoordinator(QObject):
             else:
                 self._player_view.hide_live_badge()
                 self._player_view.set_live_replay_enabled(False)
-                self._refresh_face_name_overlay_for_presentation(presentation)
 
         self._is_playing = False
         self._player_bar.set_playback_state(False)
         self._player_bar.set_position(0)
 
-        if self._info_panel and presentation.info_panel_visible:
-            self._refresh_info_panel(presentation.info)
-            self._info_panel.show()
-        elif self._info_panel and self._info_panel.isVisible() and not presentation.info_panel_visible:
-            self._info_panel.close()
-        self._update_detail_map(presentation.info)
+        # Defer expensive metadata/overlay work so the image surface appears
+        # without blocking on face-annotation DB queries or info-panel refresh.
+        QTimer.singleShot(0, lambda p=presentation: self._deferred_post_render(p))
         log_detail_profile(
             "playback",
             "render_presentation.total",
@@ -623,6 +619,19 @@ class PlaybackCoordinator(QObject):
             is_video=presentation.is_video,
         )
         self._clear_play_profile(presentation.row)
+
+    def _deferred_post_render(self, presentation: DetailPresentation) -> None:
+        """Run expensive metadata/overlay work after the image surface is visible."""
+
+        if not presentation.is_video:
+            self._refresh_face_name_overlay_for_presentation(presentation)
+
+        if self._info_panel and presentation.info_panel_visible:
+            self._refresh_info_panel(presentation.info)
+            self._info_panel.show()
+        elif self._info_panel and self._info_panel.isVisible() and not presentation.info_panel_visible:
+            self._info_panel.close()
+        self._update_detail_map(presentation.info)
 
     def _autoplay_live_motion(self, presentation: DetailPresentation) -> None:
         motion_path = presentation.live_motion_abs

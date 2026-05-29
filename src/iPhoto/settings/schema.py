@@ -109,7 +109,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "show_face_names_in_detail": False,
         "show_hidden_people": False,
         "show_map_extension_startup_prompt": True,
-        "wheel_action": "navigate",
+        "wheel_action": "zoom",
         "language": "zh",
     },
     "last_open_albums": [],

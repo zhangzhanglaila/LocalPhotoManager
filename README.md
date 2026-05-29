@@ -34,6 +34,16 @@
 
 ## 安装
 
+### 前置条件
+
+- **Python 3.12+**
+- **ExifTool**（必须，用于读取照片 EXIF/GPS 元数据）
+  - Windows: `choco install exiftool` 或从 https://exiftool.org 下载
+  - macOS: `brew install exiftool`
+  - Linux: `sudo apt install libimage-exiftool-perl` 或 `sudo dnf install perl-Image-ExifTool`
+
+### 安装步骤
+
 ```bash
 # 1. 克隆项目
 git clone https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager.git
@@ -47,9 +57,18 @@ python -m venv .venv
 # 3. 安装依赖
 pip install -e .
 
-# 4. (可选) 安装人脸检测依赖
+# 4. 安装人脸检测依赖（如需"人物识别"功能）
 pip install insightface onnxruntime
 ```
+
+> **关于自动下载：**
+>
+> | 资源 | 大小 | 触发条件 | 说明 |
+> |------|------|---------|------|
+> | 人脸模型 | ~300MB | 安装了 insightface 后，首次使用"人物识别" | 自动下载，界面显示进度；失败可手动放到 `src/extension/models/` |
+> | 地图扩展 | ~975MB | 首次启动时弹窗提示 | 可跳过，自动降级为基础地图 |
+>
+> **注意：** 第 4 步不装的话，人脸功能完全不可用（不会自动下载模型）。
 
 ## 启动
 
@@ -68,7 +87,9 @@ iphoto-gui /photos/LondonTrip
 | 变量名 | 说明 |
 |--------|------|
 | `IPHOTO_EXIFTOOL_PATH` | 指定 ExifTool 可执行文件路径 |
+| `IPHOTO_FACE_MODEL_DIR` | 指定人脸模型目录（默认 `src/extension/models/`） |
 | `IPHOTO_PREFER_OSMAND_NATIVE_WIDGET` | 设为 `0` 可禁用 OsmAnd 原生地图组件 |
+| `IPHOTO_OSMAND_EXTENSION_ROOT` | 指定 OsmAnd 地图扩展目录 |
 
 ---
 

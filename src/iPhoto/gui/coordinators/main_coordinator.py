@@ -357,6 +357,8 @@ class MainCoordinator(QObject):
             self._view_router,
             toggle_favorite_cb=self._detail_vm.toggle_favorite,
             exit_fullscreen_cb=window.exit_fullscreen,
+            prev_photo_cb=self._playback.select_previous,
+            next_photo_cb=self._playback.select_next,
             parent=self,
         )
         self._shortcut_manager.set_video_area(window.ui.video_area)
@@ -528,6 +530,11 @@ class MainCoordinator(QObject):
         ui.image_viewer.prevItemRequested.connect(self._playback.select_previous)
         ui.video_area.nextItemRequested.connect(self._playback.select_next)
         ui.video_area.prevItemRequested.connect(self._playback.select_previous)
+
+        # Prev / Next overlay buttons
+        if hasattr(ui.detail_page, "prev_button"):
+            ui.detail_page.prev_button.clicked.connect(self._playback.select_previous)
+            ui.detail_page.next_button.clicked.connect(self._playback.select_next)
 
         # Map view cluster interactions
         if hasattr(ui, "map_view") and ui.map_view is not None:

@@ -79,6 +79,8 @@ class DetailViewModel(BaseViewModel):
         self._presentation_reload_token = 0
         self._pending_restore_requests: dict[Path, MediaRestoreRequest] = {}
         self._video_presentation_cache: dict | None = None
+        # Lazy index: live_photo_group_id → (rel_path, abs_path) for videos.
+        self._live_group_index: dict[str, tuple[Path, Path | None]] | None = None
         self._store.data_changed.connect(self._handle_store_changed)
         self._store.row_changed.connect(self._handle_row_changed)
         restore_signal = getattr(self._media_session, "restoreRequested", None)
@@ -219,6 +221,7 @@ class DetailViewModel(BaseViewModel):
         self.presentation_changed.emit(presentation)
 
     def _handle_store_changed(self) -> None:
+        self._live_group_index = None
         current_row = self._media_session.current_row()
         current_path = self._media_session.current_source()
         if current_row < 0 or not isinstance(current_path, Path):
@@ -390,11 +393,30 @@ class DetailViewModel(BaseViewModel):
         group_id = metadata.get("live_photo_group_id")
         if not group_id:
             return None, None
-        for candidate_row in range(self._store.count()):
-            candidate = self._store.asset_at(candidate_row)
-            if candidate is None or not candidate.is_video:
-                continue
-            candidate_group = (candidate.metadata or {}).get("live_photo_group_id")
-            if candidate_group == group_id:
-                return candidate.rel_path, candidate.abs_path
+
+        # Use the O(1) index instead of O(N) scan.
+        index = self._get_live_group_index()
+        result = index.get(group_id)
+        if result is not None:
+            return result
         return None, None
+
+    def _get_live_group_index(self) -> dict[str, tuple[Path, Path | None]]:
+        """Build a lazy index of live_photo_group_id → video asset path."""
+
+        if self._live_group_index is not None:
+            return self._live_group_index
+        index: dict[str, tuple[Path, Path | None]] = {}
+        library_root = self._store.library_root()
+        for row in range(self._store.count()):
+            dto = self._store.asset_at(row)
+            if dto is None or not dto.is_video:
+                continue
+            gid = (dto.metadata or {}).get("live_photo_group_id")
+            if gid:
+                abs_path = dto.abs_path
+                if abs_path is None and library_root is not None:
+                    abs_path = (library_root / dto.rel_path).resolve()
+                index[gid] = (dto.rel_path, abs_path)
+        self._live_group_index = index
+        return index

@@ -416,6 +416,30 @@ class DetailPageWidget(QWidget):
         self.badge_host = player_container
         self.live_badge.raise_()
 
+        # Prev / Next navigation buttons (floating on the page edges).
+        nav_btn_style = (
+            "QToolButton { background: rgba(0,0,0,100); border: none; "
+            "border-radius: 6px; }"
+            "QToolButton:hover { background: rgba(0,0,0,160); }"
+        )
+        self.prev_button = QToolButton(self)
+        self.prev_button.setIcon(load_icon("chevron.left.svg"))
+        self.prev_button.setIconSize(QSize(28, 28))
+        self.prev_button.setFixedSize(40, 80)
+        self.prev_button.setAutoRaise(True)
+        self.prev_button.setStyleSheet(nav_btn_style)
+        self.prev_button.setToolTip("Previous photo")
+        self.prev_button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.next_button = QToolButton(self)
+        self.next_button.setIcon(load_icon("chevron.right.svg"))
+        self.next_button.setIconSize(QSize(28, 28))
+        self.next_button.setFixedSize(40, 80)
+        self.next_button.setAutoRaise(True)
+        self.next_button.setStyleSheet(nav_btn_style)
+        self.next_button.setToolTip("Next photo")
+        self.next_button.setCursor(Qt.CursorShape.PointingHandCursor)
+
     def _build_edit_container(self, main_window: QWidget, parent_layout: QVBoxLayout) -> None:
         """Wrap the shared viewer with the edit header and sidebar."""
 
@@ -579,6 +603,22 @@ class DetailPageWidget(QWidget):
             self._rhi_init_cover = None
         self.face_name_overlay.raise_()
         self.live_badge.raise_()
+
+    def _position_nav_buttons(self) -> None:
+        """Place the prev/next buttons centred on the left/right page edges."""
+        page_w = self.width()
+        page_h = self.height()
+        bw = self.prev_button.width()
+        bh = self.prev_button.height()
+        y = (page_h - bh) // 2
+        self.prev_button.move(4, y)
+        self.next_button.move(page_w - bw - 4, y)
+        self.prev_button.raise_()
+        self.next_button.raise_()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._position_nav_buttons()
 
     def show_rhi_init_cover(self) -> None:
         """Re-create and show the opaque init cover.

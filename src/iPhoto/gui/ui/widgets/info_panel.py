@@ -600,7 +600,10 @@ class InfoPanel(QWidget):
             )
             self._exposure_label.setText(fallback)
         self._apply_location_metadata(metadata, previous_rel=previous_rel)
-        self._refresh_or_schedule_panel_geometry()
+        # Skip geometry refresh while metadata is still loading to avoid
+        # a visible layout jump between the placeholder and final content.
+        if not metadata.get("_metadata_loading"):
+            self._refresh_or_schedule_panel_geometry()
 
     def set_asset_faces(self, annotations: list[AssetFaceAnnotation]) -> None:
         self._asset_faces = list(annotations)
@@ -1208,7 +1211,7 @@ class InfoPanel(QWidget):
         first_show = not self._centered
         if first_show:
             self._centered = True
-        self._refresh_panel_geometry(recenter=first_show)
+        # Use only the deferred reflow to avoid a double layout pass.
         self._schedule_post_show_reflow(recenter=first_show)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]

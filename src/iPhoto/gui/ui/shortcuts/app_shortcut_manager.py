@@ -65,6 +65,8 @@ class AppShortcutManager(QObject):
         *,
         toggle_favorite_cb: Callable[[], None],
         exit_fullscreen_cb: Callable[[], None],
+        prev_photo_cb: Callable[[], None] | None = None,
+        next_photo_cb: Callable[[], None] | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -72,6 +74,8 @@ class AppShortcutManager(QObject):
         self._router = router
         self._toggle_favorite_cb = toggle_favorite_cb
         self._exit_fullscreen_cb = exit_fullscreen_cb
+        self._prev_photo_cb = prev_photo_cb
+        self._next_photo_cb = next_photo_cb
 
         # Late-bound dependencies (set after construction via setters)
         self._video_area: VideoArea | None = None
@@ -187,12 +191,16 @@ class AppShortcutManager(QObject):
     # ------------------------------------------------------------------
 
     def _on_prev_frame(self) -> None:
-        if self._edit is not None:
+        if self._edit_video_transport_active():
             self._edit.step_video_frame(-1)
+        elif self._prev_photo_cb is not None:
+            self._prev_photo_cb()
 
     def _on_next_frame(self) -> None:
-        if self._edit is not None:
+        if self._edit_video_transport_active():
             self._edit.step_video_frame(1)
+        elif self._next_photo_cb is not None:
+            self._next_photo_cb()
 
     # ------------------------------------------------------------------
     # Application handlers
