@@ -29,6 +29,33 @@ class _AdjustedImageSignals(QObject):
     """Emitted when loading or processing the image fails."""
 
 
+class _PreloadSignals(QObject):
+    """Signals for image preloading workers."""
+
+    ready = Signal(Path, QImage)
+    failed = Signal(Path)
+
+
+class _ImagePreloadWorker(QRunnable):
+    """Decode an image on a background thread for preloading."""
+
+    def __init__(self, source: Path, signals: _PreloadSignals) -> None:
+        super().__init__()
+        self.setAutoDelete(False)
+        self._source = source
+        self._signals = signals
+
+    def run(self) -> None:
+        try:
+            image = image_loader.load_qimage(self._source, None)
+            if not image.isNull():
+                self._signals.ready.emit(self._source, image)
+            else:
+                self._signals.failed.emit(self._source)
+        except Exception:
+            self._signals.failed.emit(self._source)
+
+
 class _AdjustedImageWorker(QRunnable):
     """Load and tone-map an image on a background thread."""
 
@@ -142,6 +169,13 @@ class PlayerViewController(QObject):
         self._defer_still_updates = False
         self._pending_still: Optional[tuple[Path, QImage, dict]] = None
 
+        # Image preload cache: path → decoded QImage.
+        self._image_preload_cache: dict[Path, QImage] = {}
+        self._preload_signals = _PreloadSignals(self)
+        self._preload_signals.ready.connect(self._on_preload_ready)
+        self._preload_signals.failed.connect(self._on_preload_failed)
+        self._active_preloads: set[Path] = set()
+
         # Per-widget first-render tracking.  QRhiWidget backing textures are
         # uninitialised (transparent) until the first ``render()`` call fills
         # them.  An opaque *init cover* in the DetailPageWidget hides this
@@ -192,6 +226,35 @@ class PlayerViewController(QObject):
                 widget.show_rhi_init_cover()
                 break
             widget = widget.parent()
+
+    # ------------------------------------------------------------------
+    # Image preloading
+    # ------------------------------------------------------------------
+
+    def preload_image(self, source: Path) -> None:
+        """Decode *source* on a background thread and cache the result."""
+
+        if source in self._image_preload_cache or source in self._active_preloads:
+            return
+        self._active_preloads.add(source)
+        worker = _ImagePreloadWorker(source, self._preload_signals)
+        self._pool.start(worker)
+
+    def _on_preload_ready(self, source: Path, image: QImage) -> None:
+        self._active_preloads.discard(source)
+        # Keep at most 2 preloaded images to limit memory usage.
+        if len(self._image_preload_cache) >= 2:
+            oldest = next(iter(self._image_preload_cache))
+            del self._image_preload_cache[oldest]
+        self._image_preload_cache[source] = image
+
+    def _on_preload_failed(self, source: Path) -> None:
+        self._active_preloads.discard(source)
+
+    def get_preloaded_image(self, source: Path) -> QImage | None:
+        """Return a pre-decoded image if available, or ``None``."""
+
+        return self._image_preload_cache.pop(source, None)
 
     def show_placeholder(self) -> None:
         """Display the placeholder widget and clear any previous image."""
@@ -269,6 +332,18 @@ class PlayerViewController(QObject):
     # ------------------------------------------------------------------
     def display_image(self, source: Path, *, placeholder: Optional[QPixmap] = None) -> bool:
         """Begin loading ``source`` asynchronously, returning scheduling success."""
+
+        # Fast path: use pre-decoded image if available.
+        preloaded = self.get_preloaded_image(source)
+        if preloaded is not None:
+            self._loading_source = source
+            self._loading_started_at = time.perf_counter()
+            self.show_image_surface()
+            self._image_viewer.set_image(preloaded, {})
+            self._loading_source = None
+            self._loading_started_at = None
+            return True
+
         self._loading_source = source
         self._loading_started_at = time.perf_counter()
 

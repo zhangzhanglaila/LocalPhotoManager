@@ -636,6 +636,22 @@ class PlaybackCoordinator(QObject):
         # Preload nearby rows so the next filmstrip click is instant.
         self._detail_vm.preload_nearby(radius=15)
 
+        # Pre-decode next/previous images so arrow-key / filmstrip nav is instant.
+        if not presentation.is_video:
+            self._preload_adjacent_images(presentation.row)
+
+    def _preload_adjacent_images(self, current_row: int) -> None:
+        """Pre-decode the next and previous images on background threads."""
+
+        for offset in (-1, 1):
+            row = current_row + offset
+            if row < 0:
+                continue
+            dto = self._detail_vm._store.asset_at(row)
+            if dto is None or dto.is_video or dto.abs_path is None:
+                continue
+            self._player_view.preload_image(dto.abs_path)
+
     def _autoplay_live_motion(self, presentation: DetailPresentation) -> None:
         motion_path = presentation.live_motion_abs
         if motion_path is None:
