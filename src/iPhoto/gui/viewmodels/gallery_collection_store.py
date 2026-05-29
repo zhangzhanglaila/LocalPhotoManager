@@ -706,6 +706,41 @@ class GalleryCollectionStore:
         if emit_signals:
             self.window_changed.emit(row, row)
 
+    def preload_rows_around(self, center: int, radius: int = 10) -> None:
+        """Preload rows in [center-radius, center+radius] into the cache.
+
+        Loads uncached rows one at a time via ``QTimer.singleShot`` so the
+        GUI thread is never blocked for more than one DB query per tick.
+        """
+
+        first = max(0, center - radius)
+        last = min(self._total_count - 1, center + radius)
+        if first > last:
+            return
+        uncached = [r for r in range(first, last + 1) if r not in self._row_cache]
+        if not uncached:
+            return
+        self._preload_queue = uncached
+        self._preload_next()
+
+    def _preload_next(self) -> None:
+        queue = getattr(self, "_preload_queue", None)
+        if not queue:
+            return
+        row = queue.pop(0)
+        if row not in self._row_cache:
+            try:
+                dto = self._fetch_single_row(row)
+            except Exception:
+                dto = None
+            if dto is not None:
+                self._row_cache[row] = dto
+        if queue:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self._preload_next)
+        else:
+            self._preload_queue = None
+
     def _map_scan_rows_to_active_entries(self, scan_root: Path, chunk: List[dict]) -> list[tuple[str, dict]]:
         if self._active_root is None:
             return []

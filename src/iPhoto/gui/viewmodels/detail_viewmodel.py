@@ -136,6 +136,13 @@ class DetailViewModel(BaseViewModel):
         if row is not None:
             self.show_row(row)
 
+    def preload_nearby(self, radius: int = 10) -> None:
+        """Preload rows around the current position into the cache."""
+
+        row = self.current_row.value
+        if row is not None and row >= 0:
+            self._store.preload_rows_around(row, radius)
+
     def toggle_favorite(self) -> None:
         row = self.current_row.value
         if row is None or row < 0 or self._asset_state_service is None:

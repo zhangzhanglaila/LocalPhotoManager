@@ -633,6 +633,9 @@ class PlaybackCoordinator(QObject):
             self._info_panel.close()
         self._update_detail_map(presentation.info)
 
+        # Preload nearby rows so the next filmstrip click is instant.
+        self._detail_vm.preload_nearby(radius=15)
+
     def _autoplay_live_motion(self, presentation: DetailPresentation) -> None:
         motion_path = presentation.live_motion_abs
         if motion_path is None:
