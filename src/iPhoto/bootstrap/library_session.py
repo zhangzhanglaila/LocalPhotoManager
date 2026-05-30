@@ -184,10 +184,10 @@ class LibrarySession:
             )
             msg.setInformativeText(
                 "下载后可以使用以下功能：\n"
-                "• 语义搜索（如搜索"黄鹤楼"、"海边"等）\n"
-                "• 以图搜图\n"
-                "• 查找重复照片\n"
-                "• 智能相册创建"
+                "- 语义搜索（如搜索黄鹤楼、海边等）\n"
+                "- 以图搜图\n"
+                "- 查找重复照片\n"
+                "- 智能相册创建"
             )
             msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             msg.setDefaultButton(QMessageBox.StandardButton.Yes)
