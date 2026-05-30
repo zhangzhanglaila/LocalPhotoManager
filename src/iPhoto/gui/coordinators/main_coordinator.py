@@ -1101,23 +1101,16 @@ class MainCoordinator(QObject):
 
         # Check if semantic search is enabled
         if not self._context.settings.get("agent.semantic_search_enabled", False):
-            from iPhoto.gui.ui.widgets.api_config_helper import show_api_config_required
-            show_api_config_required(self._window, "语义搜索")
-            return
+            # Auto-enable semantic search
+            self._context.settings.set("agent.semantic_search_enabled", True)
+            ui = self._window.ui
+            if hasattr(ui, "main_header") and hasattr(ui.main_header, "toggle_semantic_search_action"):
+                ui.main_header.toggle_semantic_search_action.setChecked(True)
 
         # Get the search service from the library session
         library_session = getattr(self._context, "library_session", None)
         if library_session is None:
             self._status_bar.show_message(tr("search.no_session", default="No library session"))
-            return
-
-        # Check if API is configured
-        if not hasattr(self, "_llm_config_manager"):
-            from iPhoto.agent.config.llm_config import LLMConfigManager
-            self._llm_config_manager = LLMConfigManager()
-
-        from iPhoto.gui.ui.widgets.api_config_helper import check_and_prompt_api_config
-        if not check_and_prompt_api_config(self._window, self._llm_config_manager, "语义搜索"):
             return
 
         search_service = library_session.get_search_service()
@@ -1189,20 +1182,6 @@ class MainCoordinator(QObject):
         enabled : bool
             Whether semantic search is enabled.
         """
-        if enabled:
-            # Check if API is configured
-            if not hasattr(self, "_llm_config_manager"):
-                from iPhoto.agent.config.llm_config import LLMConfigManager
-                self._llm_config_manager = LLMConfigManager()
-
-            from iPhoto.gui.ui.widgets.api_config_helper import check_and_prompt_api_config
-            if not check_and_prompt_api_config(self._window, self._llm_config_manager, "语义搜索"):
-                # User cancelled, uncheck the toggle
-                ui = self._window.ui
-                if hasattr(ui, "main_header") and hasattr(ui.main_header, "toggle_semantic_search_action"):
-                    ui.main_header.toggle_semantic_search_action.setChecked(False)
-                return
-
         self._context.settings.set("agent.semantic_search_enabled", enabled)
 
         if enabled:
