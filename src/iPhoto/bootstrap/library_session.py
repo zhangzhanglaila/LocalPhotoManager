@@ -139,6 +139,8 @@ class LibrarySession:
             embedding_service = CLIPEmbeddingService(model_dir=model_dir)
             if not embedding_service.is_loaded():
                 logger.warning("CLIP model not available. Semantic search disabled.")
+                # Show dialog to user
+                self._show_model_download_dialog(model_dir)
                 return None
 
             # Get embedding repository
@@ -161,6 +163,91 @@ class LibrarySession:
         except Exception as e:
             logger.warning("Failed to initialize search service: %s", e)
             return None
+
+    def _show_model_download_dialog(self, model_dir: Path) -> None:
+        """Show dialog to user about missing CLIP model.
+
+        Parameters
+        ----------
+        model_dir : Path
+            Expected model directory.
+        """
+        try:
+            from PySide6.QtWidgets import QMessageBox, QPushButton
+
+            msg = QMessageBox()
+            msg.setWindowTitle("语义搜索需要下载模型")
+            msg.setText(
+                "语义搜索功能需要下载 CLIP 模型（约 350MB）。\n\n"
+                f"模型目录: {model_dir}\n\n"
+                "是否现在下载？"
+            )
+            msg.setInformativeText(
+                "下载后可以使用以下功能：\n"
+                "• 语义搜索（如搜索"黄鹤楼"、"海边"等）\n"
+                "• 以图搜图\n"
+                "• 查找重复照片\n"
+                "• 智能相册创建"
+            )
+            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+
+            result = msg.exec()
+
+            if result == QMessageBox.StandardButton.Yes:
+                self._download_model(model_dir)
+
+        except Exception as e:
+            logger.error("Failed to show download dialog: %s", e)
+
+    def _download_model(self, model_dir: Path) -> None:
+        """Download CLIP model in background.
+
+        Parameters
+        ----------
+        model_dir : Path
+            Directory to save the model.
+        """
+        try:
+            from PySide6.QtCore import QRunnable, Slot, QThreadPool, Signal, QObject
+            from PySide6.QtWidgets import QProgressDialog
+            from ..agent.infrastructure.clip_downloader import download_model_with_transformers
+
+            # Create progress dialog
+            progress = QProgressDialog("正在下载 CLIP 模型...", "取消", 0, 100)
+            progress.setWindowTitle("下载模型")
+            progress.setMinimumDuration(0)
+            progress.setValue(0)
+
+            class DownloadWorker(QRunnable):
+                def __init__(self, callback):
+                    super().__init__()
+                    self.setAutoDelete(True)
+                    self._callback = callback
+
+                @Slot()
+                def run(self):
+                    def progress_callback(current, total, message):
+                        self._callback(current, total, message)
+
+                    success = download_model_with_transformers(
+                        model_dir=model_dir,
+                        progress_callback=progress_callback,
+                    )
+                    self._callback(100, 100, "下载完成！" if success else "下载失败")
+
+            def on_progress(current, total, message):
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: progress.setValue(current))
+                QTimer.singleShot(0, lambda: progress.setLabelText(message))
+
+            worker = DownloadWorker(on_progress)
+            QThreadPool.globalInstance().start(worker)
+
+            progress.exec()
+
+        except Exception as e:
+            logger.error("Failed to download model: %s", e)
 
     def get_embedding_repository(self):
         """Get or initialize the embedding repository.
