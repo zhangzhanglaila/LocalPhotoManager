@@ -82,12 +82,14 @@ pip install insightface onnxruntime
 
 ### 国内用户特别说明
 
-人脸模型和地图扩展需要从境外服务器下载，可能较慢或失败：
+**人脸模型**下载较慢时，可手动从 GitHub 下载：
 
-| 资源 | 解决方案 |
-|------|----------|
-| 人脸模型 (~300MB) | 使用代理，或从其他渠道获取模型文件后放到 `src/extension/models/` |
-| 地图扩展 (~975MB) | 可跳过（自动降级为基础地图），或手动下载后放到项目目录 |
+1. 访问 https://github.com/deepinsight/insightface/releases/tag/v0.7
+2. 下载 `buffalo_l.zip`（约 300MB）
+3. 解压后把 `buffalo_l` 文件夹放到 `src/extension/models/` 下
+4. 最终目录结构：`src/extension/models/buffalo_l/1k3d68.onnx` 等文件
+
+**地图扩展**可跳过（自动降级为基础地图），或等弹窗提示时自动下载。
 
 ## 启动
 
