@@ -201,7 +201,7 @@ class LibrarySession:
             logger.error("Failed to show download dialog: %s", e)
 
     def _download_model(self, model_dir: Path) -> None:
-        """Download CLIP model in background.
+        """Download CLIP model in background (non-blocking).
 
         Parameters
         ----------
@@ -209,45 +209,82 @@ class LibrarySession:
             Directory to save the model.
         """
         try:
-            from PySide6.QtCore import QRunnable, Slot, QThreadPool, Signal, QObject
+            from PySide6.QtCore import QThread, Signal
             from PySide6.QtWidgets import QProgressDialog
             from ..agent.infrastructure.clip_downloader import download_model_with_transformers
 
-            # Create progress dialog
-            progress = QProgressDialog("正在下载 CLIP 模型...", "取消", 0, 100)
+            class DownloadThread(QThread):
+                """Background thread for downloading model."""
+                progress_updated = Signal(int, int, str)
+                finished = Signal(bool)
+
+                def __init__(self, model_dir):
+                    super().__init__()
+                    self._model_dir = model_dir
+
+                def run(self):
+                    def progress_callback(current, total, message):
+                        self.progress_updated.emit(current, total, message)
+
+                    success = download_model_with_transformers(
+                        model_dir=self._model_dir,
+                        progress_callback=progress_callback,
+                    )
+                    self.finished.emit(success)
+
+            # Create non-blocking progress dialog
+            progress = QProgressDialog("正在下载 CLIP 模型...", "后台下载", 0, 100)
             progress.setWindowTitle("下载模型")
             progress.setMinimumDuration(0)
             progress.setValue(0)
+            progress.setAutoClose(False)
+            progress.setAutoReset(False)
 
-            class DownloadWorker(QRunnable):
-                def __init__(self, callback):
-                    super().__init__()
-                    self.setAutoDelete(True)
-                    self._callback = callback
+            # Create and start download thread
+            self._download_thread = DownloadThread(model_dir)
 
-                @Slot()
-                def run(self):
-                    def progress_callback(current, total, message):
-                        self._callback(current, total, message)
+            # Connect signals
+            self._download_thread.progress_updated.connect(
+                lambda current, total, msg: (
+                    progress.setValue(current),
+                    progress.setLabelText(msg)
+                )
+            )
 
-                    success = download_model_with_transformers(
-                        model_dir=model_dir,
-                        progress_callback=progress_callback,
-                    )
-                    self._callback(100, 100, "下载完成！" if success else "下载失败")
+            self._download_thread.finished.connect(
+                lambda success: self._on_download_finished(success, progress)
+            )
 
-            def on_progress(current, total, message):
-                from PySide6.QtCore import QTimer
-                QTimer.singleShot(0, lambda: progress.setValue(current))
-                QTimer.singleShot(0, lambda: progress.setLabelText(message))
+            # Show dialog non-blocking
+            progress.show()
 
-            worker = DownloadWorker(on_progress)
-            QThreadPool.globalInstance().start(worker)
-
-            progress.exec()
+            # Start download
+            self._download_thread.start()
 
         except Exception as e:
-            logger.error("Failed to download model: %s", e)
+            logger.error("Failed to start download: %s", e)
+
+    def _on_download_finished(self, success: bool, progress) -> None:
+        """Handle download completion.
+
+        Parameters
+        ----------
+        success : bool
+            Whether download was successful.
+        progress : QProgressDialog
+            The progress dialog.
+        """
+        from PySide6.QtWidgets import QMessageBox
+
+        if success:
+            progress.setLabelText("下载完成！")
+            progress.setValue(100)
+            QMessageBox.information(None, "下载完成", "CLIP 模型下载完成！\n\n语义搜索功能已启用。")
+        else:
+            progress.setLabelText("下载失败")
+            QMessageBox.warning(None, "下载失败", "CLIP 模型下载失败。\n\n请检查网络连接后重试。")
+
+        progress.close()
 
     def get_embedding_repository(self):
         """Get or initialize the embedding repository.
