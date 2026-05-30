@@ -205,8 +205,6 @@ class MainHeaderWidget(QWidget):
         self.smart_album_time_action = QAction(tr("action.smart_album_time"), main_window)
         self.smart_album_theme_action = QAction(tr("action.smart_album_theme"), main_window)
 
-        # Chat toggle - removed (no LLM dependency)
-        # LLM settings - removed (no LLM dependency)
 
     def _populate_menus(self) -> None:
         """Populate the menu bar and wire shared actions to widgets."""
