@@ -274,6 +274,12 @@ _ZH: dict[str, str] = {
     "action.enable_semantic_search": "启用语义搜索",
     "agent.enabled": "语义搜索已启用",
     "agent.disabled": "语义搜索已禁用",
+    "menu.agent_features": "智能整理",
+    "action.find_duplicates": "查找重复照片",
+    "action.smart_album_event": "按事件创建相册",
+    "action.smart_album_location": "按地点创建相册",
+    "action.smart_album_time": "按时间创建相册",
+    "action.smart_album_theme": "按主题创建相册",
 }
 
 _EN: dict[str, str] = {
@@ -532,6 +538,12 @@ _EN: dict[str, str] = {
     "action.enable_semantic_search": "Enable Semantic Search",
     "agent.enabled": "Semantic search enabled",
     "agent.disabled": "Semantic search disabled",
+    "menu.agent_features": "Smart Organize",
+    "action.find_duplicates": "Find Duplicate Photos",
+    "action.smart_album_event": "Create Album by Event",
+    "action.smart_album_location": "Create Album by Location",
+    "action.smart_album_time": "Create Album by Time",
+    "action.smart_album_theme": "Create Album by Theme",
 }
 
 

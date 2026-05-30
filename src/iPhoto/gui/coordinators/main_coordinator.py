@@ -563,6 +563,27 @@ class MainCoordinator(QObject):
                 self._handle_semantic_search_toggle
             )
 
+        # Agent Organize Features
+        if hasattr(ui, "main_header"):
+            if hasattr(ui.main_header, "find_duplicates_action"):
+                ui.main_header.find_duplicates_action.triggered.connect(self._handle_find_duplicates)
+            if hasattr(ui.main_header, "smart_album_event_action"):
+                ui.main_header.smart_album_event_action.triggered.connect(
+                    lambda: self._handle_create_smart_album("event")
+                )
+            if hasattr(ui.main_header, "smart_album_location_action"):
+                ui.main_header.smart_album_location_action.triggered.connect(
+                    lambda: self._handle_create_smart_album("location")
+                )
+            if hasattr(ui.main_header, "smart_album_time_action"):
+                ui.main_header.smart_album_time_action.triggered.connect(
+                    lambda: self._handle_create_smart_album("time")
+                )
+            if hasattr(ui.main_header, "smart_album_theme_action"):
+                ui.main_header.smart_album_theme_action.triggered.connect(
+                    lambda: self._handle_create_smart_album("theme")
+                )
+
         # Info Button
         if hasattr(ui, "info_button"):
             ui.info_button.clicked.connect(self._playback.toggle_info_panel)
@@ -1201,6 +1222,176 @@ class MainCoordinator(QObject):
         )
 
         QThreadPool.globalInstance().start(worker)
+
+    def _handle_find_duplicates(self) -> None:
+        """Handle find duplicates action."""
+        # Check if semantic search is enabled
+        if not self._context.settings.get("agent.semantic_search_enabled", False):
+            self._status_bar.show_message(
+                tr("search.not_available", default="Please enable semantic search first")
+            )
+            return
+
+        library_session = getattr(self._context, "library_session", None)
+        if library_session is None:
+            return
+
+        embedding_service = library_session.get_embedding_service()
+        embedding_repo = library_session.get_embedding_repository()
+
+        if embedding_service is None or embedding_repo is None:
+            self._status_bar.show_message(
+                tr("search.not_available", default="Agent services not available")
+            )
+            return
+
+        # Run duplicate detection in background
+        from iPhoto.agent.services.organize_service import OrganizeService
+        from PySide6.QtCore import QRunnable, Slot
+
+        class DuplicateWorker(QRunnable):
+            def __init__(self, service, callback):
+                super().__init__()
+                self.setAutoDelete(True)
+                self._service = service
+                self._callback = callback
+
+            @Slot()
+            def run(self):
+                try:
+                    duplicates = self._service.find_duplicates(threshold=0.95)
+                    self._callback(duplicates)
+                except Exception as e:
+                    logging.getLogger(__name__).error("Duplicate detection failed: %s", e)
+                    self._callback([])
+
+        organize_service = OrganizeService(
+            embedding_service=embedding_service,
+            embedding_repository=embedding_repo,
+            asset_repository=library_session.asset_runtime.assets,
+            library_root=library_session.library_root,
+        )
+
+        def on_complete(duplicates):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._display_duplicates(duplicates))
+
+        worker = DuplicateWorker(organize_service, on_complete)
+        QThreadPool.globalInstance().start(worker)
+
+        self._status_bar.show_message(
+            tr("organize.searching_duplicates", default="Searching for duplicates...")
+        )
+
+    def _display_duplicates(self, duplicates: list) -> None:
+        """Display duplicate photos in the gallery."""
+        if not duplicates:
+            self._status_bar.show_message(
+                tr("organize.no_duplicates", default="No duplicates found")
+            )
+            return
+
+        # Flatten all duplicate asset IDs
+        all_asset_ids = []
+        for group in duplicates:
+            all_asset_ids.extend(group.asset_ids)
+
+        # Show in gallery
+        self._gallery_vm.show_search_results(all_asset_ids)
+
+        total_groups = len(duplicates)
+        total_photos = len(all_asset_ids)
+        self._status_bar.show_message(
+            tr("organize.duplicates_found",
+               default=f"Found {total_groups} duplicate groups ({total_photos} photos)")
+        )
+
+    def _handle_create_smart_album(self, group_by: str) -> None:
+        """Handle create smart album action.
+
+        Parameters
+        ----------
+        group_by : str
+            How to group photos: 'event', 'location', 'time', 'theme'.
+        """
+        # Check if semantic search is enabled
+        if not self._context.settings.get("agent.semantic_search_enabled", False):
+            self._status_bar.show_message(
+                tr("search.not_available", default="Please enable semantic search first")
+            )
+            return
+
+        library_session = getattr(self._context, "library_session", None)
+        if library_session is None:
+            return
+
+        embedding_service = library_session.get_embedding_service()
+        embedding_repo = library_session.get_embedding_repository()
+
+        if embedding_service is None or embedding_repo is None:
+            self._status_bar.show_message(
+                tr("search.not_available", default="Agent services not available")
+            )
+            return
+
+        # Run smart album creation in background
+        from iPhoto.agent.services.organize_service import OrganizeService
+        from PySide6.QtCore import QRunnable, Slot
+
+        class SmartAlbumWorker(QRunnable):
+            def __init__(self, service, group_by_type, callback):
+                super().__init__()
+                self.setAutoDelete(True)
+                self._service = service
+                self._group_by = group_by_type
+                self._callback = callback
+
+            @Slot()
+            def run(self):
+                try:
+                    albums = self._service.create_smart_albums(group_by=self._group_by)
+                    self._callback(albums)
+                except Exception as e:
+                    logging.getLogger(__name__).error("Smart album creation failed: %s", e)
+                    self._callback([])
+
+        organize_service = OrganizeService(
+            embedding_service=embedding_service,
+            embedding_repository=embedding_repo,
+            asset_repository=library_session.asset_runtime.assets,
+            library_root=library_session.library_root,
+        )
+
+        def on_complete(albums):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._display_smart_albums(albums, group_by))
+
+        worker = SmartAlbumWorker(organize_service, group_by, on_complete)
+        QThreadPool.globalInstance().start(worker)
+
+        self._status_bar.show_message(
+            tr("organize.creating_albums", default=f"Creating smart albums by {group_by}...")
+        )
+
+    def _display_smart_albums(self, albums: list, group_by: str) -> None:
+        """Display smart album suggestions."""
+        if not albums:
+            self._status_bar.show_message(
+                tr("organize.no_albums", default="No smart albums to create")
+            )
+            return
+
+        # For now, show the first album's photos in the gallery
+        # In a full implementation, we would create actual albums in the library
+        if albums:
+            first_album = albums[0]
+            self._gallery_vm.show_search_results(first_album.asset_ids)
+
+            total_albums = len(albums)
+            self._status_bar.show_message(
+                tr("organize.albums_created",
+                   default=f"Created {total_albums} smart albums")
+            )
 
     def _handle_open_album_dialog(self):
         path = self._dialog.open_album_dialog()

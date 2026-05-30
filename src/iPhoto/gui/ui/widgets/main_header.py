@@ -198,6 +198,13 @@ class MainHeaderWidget(QWidget):
         )
         self.toggle_semantic_search_action.setChecked(False)
 
+        # Agent organize actions
+        self.find_duplicates_action = QAction(tr("action.find_duplicates"), main_window)
+        self.smart_album_event_action = QAction(tr("action.smart_album_event"), main_window)
+        self.smart_album_location_action = QAction(tr("action.smart_album_location"), main_window)
+        self.smart_album_time_action = QAction(tr("action.smart_album_time"), main_window)
+        self.smart_album_theme_action = QAction(tr("action.smart_album_theme"), main_window)
+
     def _populate_menus(self) -> None:
         """Populate the menu bar and wire shared actions to widgets."""
 
@@ -224,6 +231,15 @@ class MainHeaderWidget(QWidget):
         self._view_menu.addAction(self.toggle_hidden_people_action)
         self._view_menu.addSeparator()
         self._view_menu.addAction(self.toggle_filmstrip_action)
+
+        # Agent organize features
+        self._view_menu.addSeparator()
+        self._agent_menu = self._view_menu.addMenu(tr("menu.agent_features"))
+        self._agent_menu.addAction(self.find_duplicates_action)
+        self._agent_menu.addAction(self.smart_album_event_action)
+        self._agent_menu.addAction(self.smart_album_location_action)
+        self._agent_menu.addAction(self.smart_album_time_action)
+        self._agent_menu.addAction(self.smart_album_theme_action)
 
         self._settings_menu = self.menu_bar.addMenu(tr("menu.settings"))
         self._settings_menu.addAction(self.bind_library_action)
@@ -287,6 +303,11 @@ class MainHeaderWidget(QWidget):
         self.language_zh.setText(tr("action.lang_zh"))
         self.language_en.setText(tr("action.lang_en"))
         self.toggle_semantic_search_action.setText(tr("action.enable_semantic_search"))
+        self.find_duplicates_action.setText(tr("action.find_duplicates"))
+        self.smart_album_event_action.setText(tr("action.smart_album_event"))
+        self.smart_album_location_action.setText(tr("action.smart_album_location"))
+        self.smart_album_time_action.setText(tr("action.smart_album_time"))
+        self.smart_album_theme_action.setText(tr("action.smart_album_theme"))
 
         # Menu titles
         self._file_menu.setTitle(tr("menu.file"))
