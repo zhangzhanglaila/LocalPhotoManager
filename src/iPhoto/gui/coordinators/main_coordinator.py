@@ -555,6 +555,10 @@ class MainCoordinator(QObject):
         ui.toggle_face_names_action.toggled.connect(self._handle_face_name_toggle_changed)
         ui.toggle_hidden_people_action.toggled.connect(self._handle_hidden_people_toggle_changed)
 
+        # Semantic Search
+        if hasattr(ui, "main_header") and hasattr(ui.main_header, "search_requested"):
+            ui.main_header.search_requested.connect(self._handle_search_requested)
+
         # Info Button
         if hasattr(ui, "info_button"):
             ui.info_button.clicked.connect(self._playback.toggle_info_panel)
@@ -1057,6 +1061,83 @@ class MainCoordinator(QObject):
             logging.getLogger(__name__).debug(
                 "_sync_selection failed for row %s", row, exc_info=True
             )
+
+    def _handle_search_requested(self, query: str) -> None:
+        """Handle semantic search request from the search input.
+
+        Parameters
+        ----------
+        query : str
+            The search query text.
+        """
+        self._logger.info("Search requested: %s", query)
+
+        # Get the search service from the library session
+        library_session = getattr(self._context, "library_session", None)
+        if library_session is None:
+            self._status_bar.show_message(tr("search.no_session", default="No library session"))
+            return
+
+        search_service = library_session.get_search_service()
+        if search_service is None:
+            self._status_bar.show_message(
+                tr("search.not_available", default="Semantic search not available. Install agent dependencies.")
+            )
+            return
+
+        # Run search in background
+        from PySide6.QtCore import QRunnable, Slot
+
+        class SearchWorker(QRunnable):
+            def __init__(self, service, query_text, callback):
+                super().__init__()
+                self.setAutoDelete(True)
+                self._service = service
+                self._query = query_text
+                self._callback = callback
+
+            @Slot()
+            def run(self):
+                try:
+                    results = self._service.search(self._query, top_k=50)
+                    self._callback(results)
+                except Exception as e:
+                    logging.getLogger(__name__).error("Search failed: %s", e)
+                    self._callback([])
+
+        def on_search_complete(results):
+            # Update UI on main thread
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._display_search_results(results))
+
+        worker = SearchWorker(search_service, query, on_search_complete)
+        QThreadPool.globalInstance().start(worker)
+
+        self._status_bar.show_message(
+            tr("search.searching", default=f"Searching for '{query}'...")
+        )
+
+    def _display_search_results(self, results: list) -> None:
+        """Display search results in the grid view.
+
+        Parameters
+        ----------
+        results : list
+            List of SearchResult objects.
+        """
+        if not results:
+            self._status_bar.show_message(tr("search.no_results", default="No results found"))
+            return
+
+        # Get asset IDs from results
+        asset_ids = [r.asset_id for r in results]
+
+        # Update the gallery to show search results
+        self._gallery_vm.show_search_results(asset_ids)
+
+        self._status_bar.show_message(
+            tr("search.found", default=f"Found {len(results)} photos")
+        )
 
     def _handle_open_album_dialog(self):
         path = self._dialog.open_album_dialog()

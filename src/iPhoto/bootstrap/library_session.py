@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from ..application.ports import (
     AssetRepositoryPort,
@@ -35,6 +37,8 @@ from .library_location_service import LibraryLocationService
 from .library_people_service import create_people_service
 from .library_scan_service import LibraryScanService
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class LibrarySession:
@@ -55,6 +59,10 @@ class LibrarySession:
     edit: EditServicePort | None = None
     locations: LocationAssetServicePort | None = None
     bind_asset_runtime: bool = True
+    # Agent services (optional, initialized lazily)
+    _search_service: object = field(default=None, repr=False)
+    _embedding_service: object = field(default=None, repr=False)
+    _embedding_repository: object = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         self.library_root = Path(self.library_root)
@@ -106,6 +114,96 @@ class LibrarySession:
         bind_edit_service = getattr(self.asset_runtime, "bind_edit_service", None)
         if callable(bind_edit_service):
             bind_edit_service(self.edit)
+
+    def get_search_service(self):
+        """Get or initialize the semantic search service.
+
+        Returns
+        -------
+        SearchService or None
+            The search service, or None if agent dependencies are not installed.
+        """
+        if self._search_service is not None:
+            return self._search_service
+
+        try:
+            from ..agent.services.search_service import SearchService
+            from ..agent.infrastructure.clip_embedding import CLIPEmbeddingService
+            from ..cache.index_store.embedding_repository import get_embedding_repository
+
+            # Initialize embedding service
+            model_dir = self.library_root.parent / "extension" / "models"
+            if not model_dir.exists():
+                model_dir = Path("src/extension/models")
+
+            embedding_service = CLIPEmbeddingService(model_dir=model_dir)
+            if not embedding_service.is_loaded():
+                logger.warning("CLIP model not available. Semantic search disabled.")
+                return None
+
+            # Get embedding repository
+            embedding_repo = get_embedding_repository(self.library_root)
+
+            # Create search service
+            self._search_service = SearchService(
+                embedding_service=embedding_service,
+                asset_repository=self.asset_runtime.assets,
+                embedding_repository=embedding_repo,
+            )
+            self._embedding_service = embedding_service
+            self._embedding_repository = embedding_repo
+
+            return self._search_service
+
+        except ImportError as e:
+            logger.debug("Agent dependencies not installed: %s", e)
+            return None
+        except Exception as e:
+            logger.warning("Failed to initialize search service: %s", e)
+            return None
+
+    def get_embedding_repository(self):
+        """Get or initialize the embedding repository.
+
+        Returns
+        -------
+        EmbeddingRepository or None
+            The embedding repository, or None if initialization fails.
+        """
+        if self._embedding_repository is not None:
+            return self._embedding_repository
+
+        try:
+            from ..cache.index_store.embedding_repository import get_embedding_repository
+            self._embedding_repository = get_embedding_repository(self.library_root)
+            return self._embedding_repository
+        except Exception as e:
+            logger.warning("Failed to initialize embedding repository: %s", e)
+            return None
+
+    def get_embedding_service(self):
+        """Get or initialize the embedding service.
+
+        Returns
+        -------
+        CLIPEmbeddingService or None
+            The embedding service, or None if not available.
+        """
+        if self._embedding_service is not None:
+            return self._embedding_service
+
+        try:
+            from ..agent.infrastructure.clip_embedding import CLIPEmbeddingService
+
+            model_dir = self.library_root.parent / "extension" / "models"
+            if not model_dir.exists():
+                model_dir = Path("src/extension/models")
+
+            self._embedding_service = CLIPEmbeddingService(model_dir=model_dir)
+            return self._embedding_service
+        except Exception as e:
+            logger.warning("Failed to initialize embedding service: %s", e)
+            return None
 
     @property
     def assets(self) -> AssetRepositoryPort:

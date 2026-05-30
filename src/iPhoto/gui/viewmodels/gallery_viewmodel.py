@@ -690,6 +690,35 @@ class GalleryViewModel(BaseViewModel):
         self.cluster_gallery_mode_changed.emit(False)
         self.route_requested.emit("gallery")
 
+    def show_search_results(self, asset_ids: list[str]) -> None:
+        """Display search results in the gallery.
+
+        Parameters
+        ----------
+        asset_ids : list[str]
+            List of asset IDs to display, ordered by relevance.
+        """
+        if not asset_ids:
+            self.message_requested.emit("No search results", 3000)
+            return
+
+        root = self._context.library.root()
+        query = AssetQuery(asset_ids=asset_ids)
+
+        self._store.cancel_pending_load()
+        self.current_section.value = "search_results"
+        self.static_selection.value = "Search Results"
+        self.active_root.value = root
+        self.current_query.value = query
+        self.current_direct_assets.value = None
+        self.can_return_to_map.value = False
+
+        # Load the search results
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self._store.load_selection(root, query=query))
+        self.cluster_gallery_mode_changed.emit(False)
+        self.route_requested.emit("gallery")
+
     def _clear_location_context(self) -> None:
         self._location_session.set_mode("inactive")
         self.can_return_to_map.value = False

@@ -261,6 +261,14 @@ _ZH: dict[str, str] = {
     "menu.restore": "还原",
     "menu.paste": "粘贴",
     "menu.open_folder": "打开文件夹位置",
+
+    # -- Search --
+    "search.placeholder": "搜索照片...",
+    "search.no_session": "无图库会话",
+    "search.not_available": "语义搜索不可用，请安装 agent 依赖",
+    "search.searching": "正在搜索 '{query}'...",
+    "search.no_results": "未找到结果",
+    "search.found": "找到 {count} 张照片",
 }
 
 _EN: dict[str, str] = {
@@ -506,6 +514,14 @@ _EN: dict[str, str] = {
     "menu.restore": "Restore",
     "menu.paste": "Paste",
     "menu.open_folder": "Open Folder Location",
+
+    # -- Search --
+    "search.placeholder": "Search photos...",
+    "search.no_session": "No library session",
+    "search.not_available": "Semantic search not available. Install agent dependencies.",
+    "search.searching": "Searching for '{query}'...",
+    "search.no_results": "No results found",
+    "search.found": "Found {count} photos",
 }
 
 

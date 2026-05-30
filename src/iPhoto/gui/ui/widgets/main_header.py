@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QActionGroup, QPalette
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QLineEdit,
     QMenuBar,
     QSizePolicy,
     QSpacerItem,
@@ -16,8 +17,34 @@ from PySide6.QtWidgets import (
 from ....i18n import tr
 
 
+class SearchInput(QLineEdit):
+    """Search input widget with placeholder text and clear button."""
+
+    # Signal emitted when user presses Enter
+    search_submitted = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setPlaceholderText(tr("search.placeholder", default="Search photos..."))
+        self.setClearButtonEnabled(True)
+        self.setMinimumWidth(200)
+        self.setMaximumWidth(400)
+
+        # Connect Enter key to signal
+        self.returnPressed.connect(self._on_return_pressed)
+
+    def _on_return_pressed(self) -> None:
+        """Handle Enter key press."""
+        text = self.text().strip()
+        if text:
+            self.search_submitted.emit(text)
+
+
 class MainHeaderWidget(QWidget):
     """Container hosting the menu bar alongside quick access buttons."""
+
+    # Signal for search queries
+    search_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None, main_window: QWidget) -> None:
         super().__init__(parent)
@@ -44,6 +71,12 @@ class MainHeaderWidget(QWidget):
         )
 
         layout.addWidget(self.menu_bar)
+
+        # Add search input
+        self.search_input = SearchInput(self)
+        self.search_input.search_submitted.connect(self.search_requested.emit)
+        layout.addWidget(self.search_input)
+
         layout.addSpacerItem(
             QSpacerItem(
                 1,
