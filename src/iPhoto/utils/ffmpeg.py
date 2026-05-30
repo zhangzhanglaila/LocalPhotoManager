@@ -242,6 +242,7 @@ def _extract_with_ffmpeg(
         command += ["-ss", f"{max(at, 0):.3f}"]
     # Security: Ensure absolute path to prevent argument injection if filename starts with '-'
     command += [
+        "-noautorotate",
         "-i",
         str(source.absolute()),
         "-an",
@@ -263,6 +264,19 @@ def _extract_with_ffmpeg(
                     h=height,
                 )
             )
+    # Apply rotation based on video display matrix metadata.
+    # We use -noautorotate on the command line and handle rotation here
+    # to ensure consistent behaviour across ffmpeg versions.
+    try:
+        cw_degrees, _, _, _ = probe_video_rotation_info(source)
+        if cw_degrees == 90:
+            filters.append("transpose=1")  # 90° clockwise
+        elif cw_degrees == 180:
+            filters.append("transpose=1,transpose=1")  # 180°
+        elif cw_degrees == 270:
+            filters.append("transpose=2")  # 90° counter-clockwise (270° CW)
+    except Exception:
+        pass  # If rotation probing fails, proceed without rotation
     if format == "jpeg":
         if not filters:
             filters.append("scale=iw:ih")

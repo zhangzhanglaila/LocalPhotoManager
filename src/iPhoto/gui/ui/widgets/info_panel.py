@@ -497,6 +497,7 @@ class InfoPanel(QWidget):
         self._face_add_button.setFixedSize(_FACE_ADD_BUTTON_SIZE)
         self._face_add_button.setAutoRaise(True)
         self._face_add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._face_add_button.setToolTip("Add face annotation")
         self._face_add_button.setStyleSheet(
             "QToolButton { padding: 0px; margin: 0px; border: none; background: transparent; }"
         )
@@ -1021,6 +1022,10 @@ class InfoPanel(QWidget):
                     widget.hide()
                 else:
                     widget.deleteLater()
+        if not self._asset_faces:
+            self._face_separator.setVisible(False)
+            self._face_container.setVisible(False)
+            return
         for annotation in self._asset_faces:
             self._face_layout.addWidget(self._make_face_avatar(annotation))
         self._face_add_button.show()
