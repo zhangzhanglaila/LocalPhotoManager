@@ -1,10 +1,13 @@
-"""AI Agent module for intelligent photo management.
+"""Lightweight search module for photo management.
 
-This module provides local AI capabilities using CLIP model:
-- Semantic search (text-to-image)
-- Image similarity search
-- Duplicate detection
-- Smart album creation
+This module provides search capabilities using existing metadata:
+- Date/time search
+- Location search
+- Camera search
+- Keyword search
+- People search (using existing face recognition)
+
+No large model downloads required.
 """
 
 from .services.search_service import SearchService

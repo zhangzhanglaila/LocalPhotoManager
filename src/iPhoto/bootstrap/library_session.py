@@ -116,227 +116,30 @@ class LibrarySession:
             bind_edit_service(self.edit)
 
     def get_search_service(self):
-        """Get or initialize the semantic search service.
+        """Get or initialize the lightweight search service.
 
         Returns
         -------
         SearchService or None
-            The search service, or None if agent dependencies are not installed.
+            The search service.
         """
         if self._search_service is not None:
             return self._search_service
 
         try:
             from ..agent.services.search_service import SearchService
-            from ..agent.infrastructure.clip_embedding import CLIPEmbeddingService
-            from ..cache.index_store.embedding_repository import get_embedding_repository
 
-            # Initialize embedding service
-            model_dir = self.library_root.parent / "extension" / "models"
-            if not model_dir.exists():
-                model_dir = Path("src/extension/models")
-
-            embedding_service = CLIPEmbeddingService(model_dir=model_dir)
-            if not embedding_service.is_loaded():
-                logger.warning("CLIP model not available. Semantic search disabled.")
-                # Show dialog to user
-                self._show_model_download_dialog(model_dir)
-                return None
-
-            # Get embedding repository
-            embedding_repo = get_embedding_repository(self.library_root)
-
-            # Create search service
+            # Create lightweight search service (no model download needed)
             self._search_service = SearchService(
-                embedding_service=embedding_service,
                 asset_repository=self.asset_runtime.assets,
-                embedding_repository=embedding_repo,
             )
-            self._embedding_service = embedding_service
-            self._embedding_repository = embedding_repo
 
             return self._search_service
 
-        except ImportError as e:
-            logger.debug("Agent dependencies not installed: %s", e)
-            return None
         except Exception as e:
             logger.warning("Failed to initialize search service: %s", e)
             return None
 
-    def _show_model_download_dialog(self, model_dir: Path) -> None:
-        """Show dialog to user about missing CLIP model.
-
-        Parameters
-        ----------
-        model_dir : Path
-            Expected model directory.
-        """
-        try:
-            from PySide6.QtWidgets import QMessageBox, QPushButton, QApplication
-            from ..agent.infrastructure.clip_downloader import get_download_instructions, download_model
-
-            model_path = model_dir / "clip-vit-base-patch32"
-
-            msg = QMessageBox()
-            msg.setWindowTitle("语义搜索需要下载模型")
-            msg.setText(
-                "语义搜索功能需要下载 CLIP 模型（约 350MB）。\n\n"
-                f"模型目录: {model_path}\n\n"
-                "是否现在下载？"
-            )
-            msg.setInformativeText(
-                "下载后可以使用以下功能：\n"
-                "- 语义搜索（如搜索黄鹤楼、海边等）\n"
-                "- 以图搜图\n"
-                "- 查找重复照片\n"
-                "- 智能相册创建\n\n"
-                "如果自动下载失败，可以手动下载。"
-            )
-
-            # Add custom buttons
-            auto_button = msg.addButton("自动下载", QMessageBox.ButtonRole.AcceptRole)
-            manual_button = msg.addButton("手动下载", QMessageBox.ButtonRole.ActionRole)
-            cancel_button = msg.addButton("取消", QMessageBox.ButtonRole.RejectRole)
-
-            msg.exec()
-
-            clicked = msg.clickedButton()
-
-            if clicked == auto_button:
-                self._download_model(model_dir)
-            elif clicked == manual_button:
-                # Show manual download instructions
-                instructions = get_download_instructions(model_dir)
-
-                # Create instruction dialog
-                from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
-
-                dialog = QDialog()
-                dialog.setWindowTitle("手动下载 CLIP 模型")
-                dialog.setMinimumSize(600, 400)
-
-                layout = QVBoxLayout(dialog)
-
-                text_edit = QTextEdit()
-                text_edit.setPlainText(instructions)
-                text_edit.setReadOnly(True)
-                layout.addWidget(text_edit)
-
-                # Copy button
-                copy_btn = QPushButton("复制命令到剪贴板")
-                copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(instructions))
-                layout.addWidget(copy_btn)
-
-                # Open folder button
-                open_btn = QPushButton("打开模型目录")
-                open_btn.clicked.connect(lambda: os.startfile(str(model_path)) if os.name == 'nt' else None)
-                layout.addWidget(open_btn)
-
-                close_btn = QPushButton("关闭")
-                close_btn.clicked.connect(dialog.close)
-                layout.addWidget(close_btn)
-
-                dialog.exec()
-
-        except Exception as e:
-            logger.error("Failed to show download dialog: %s", e)
-
-    def _download_model(self, model_dir: Path) -> None:
-        """Download CLIP model in background (non-blocking).
-
-        Parameters
-        ----------
-        model_dir : Path
-            Directory to save the model.
-        """
-        try:
-            from PySide6.QtCore import QThread, Signal
-            from PySide6.QtWidgets import QProgressDialog
-            from ..agent.infrastructure.clip_downloader import download_model
-
-            class DownloadThread(QThread):
-                """Background thread for downloading model."""
-                progress_updated = Signal(int, int, str)
-                finished = Signal(bool)
-
-                def __init__(self, model_dir):
-                    super().__init__()
-                    self._model_dir = model_dir
-
-                def run(self):
-                    def progress_callback(current, total, message):
-                        self.progress_updated.emit(current, total, message)
-
-                    success = download_model(
-                        model_dir=self._model_dir,
-                        progress_callback=progress_callback,
-                    )
-                    self.finished.emit(success)
-
-            # Create non-blocking progress dialog
-            progress = QProgressDialog("正在下载 CLIP 模型...", "后台下载", 0, 100)
-            progress.setWindowTitle("下载模型")
-            progress.setMinimumDuration(0)
-            progress.setValue(0)
-            progress.setAutoClose(False)
-            progress.setAutoReset(False)
-
-            # Create and start download thread
-            self._download_thread = DownloadThread(model_dir)
-
-            # Connect signals
-            self._download_thread.progress_updated.connect(
-                lambda current, total, msg: (
-                    progress.setValue(current),
-                    progress.setLabelText(msg)
-                )
-            )
-
-            self._download_thread.finished.connect(
-                lambda success: self._on_download_finished(success, progress, model_dir)
-            )
-
-            # Show dialog non-blocking
-            progress.show()
-
-            # Start download
-            self._download_thread.start()
-
-        except Exception as e:
-            logger.error("Failed to start download: %s", e)
-
-    def _on_download_finished(self, success: bool, progress, model_dir: Path) -> None:
-        """Handle download completion.
-
-        Parameters
-        ----------
-        success : bool
-            Whether download was successful.
-        progress : QProgressDialog
-            The progress dialog.
-        model_dir : Path
-            The model directory.
-        """
-        from PySide6.QtWidgets import QMessageBox
-
-        if success:
-            progress.setLabelText("下载完成！")
-            progress.setValue(100)
-            QMessageBox.information(None, "下载完成", "CLIP 模型下载完成！\n\n语义搜索功能已启用。")
-        else:
-            progress.setLabelText("下载失败")
-            QMessageBox.warning(
-                None,
-                "下载失败",
-                "CLIP 模型自动下载失败。\n\n"
-                "可能原因：\n"
-                "- 网络连接问题\n"
-                "- HuggingFace 被屏蔽\n\n"
-                "请尝试手动下载。"
-            )
-
-        progress.close()
 
     def get_embedding_repository(self):
         """Get or initialize the embedding repository.
