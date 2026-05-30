@@ -583,6 +583,8 @@ class MainCoordinator(QObject):
                 ui.main_header.smart_album_theme_action.triggered.connect(
                     lambda: self._handle_create_smart_album("theme")
                 )
+            if hasattr(ui.main_header, "llm_settings_action"):
+                ui.main_header.llm_settings_action.triggered.connect(self._show_llm_settings)
 
         # Info Button
         if hasattr(ui, "info_button"):
@@ -1410,6 +1412,29 @@ class MainCoordinator(QObject):
         ui = self._window.ui
         if hasattr(ui, "main_header") and hasattr(ui.main_header, "toggle_chat_action"):
             ui.main_header.toggle_chat_action.toggled.connect(self._toggle_chat_panel)
+
+    def _show_llm_settings(self) -> None:
+        """Show the LLM settings dialog."""
+        from iPhoto.agent.config.llm_config import LLMConfigManager
+        from iPhoto.gui.ui.widgets.llm_settings_dialog import LLMSettingsDialog
+
+        # Get or create config manager
+        if not hasattr(self, "_llm_config_manager"):
+            self._llm_config_manager = LLMConfigManager()
+
+        # Show dialog
+        dialog = LLMSettingsDialog(self._llm_config_manager, self._window)
+        dialog.settings_changed.connect(self._on_llm_settings_changed)
+        dialog.exec()
+
+    def _on_llm_settings_changed(self) -> None:
+        """Handle LLM settings change."""
+        self._logger.info("LLM settings changed")
+        # Update the LLM service if needed
+        if hasattr(self, "_llm_config_manager"):
+            active_config = self._llm_config_manager.get_active_config()
+            if active_config:
+                self._logger.info("Active LLM: %s (%s)", active_config.name, active_config.model)
 
     def _toggle_chat_panel(self, visible: bool) -> None:
         """Toggle chat panel visibility."""

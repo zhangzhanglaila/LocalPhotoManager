@@ -209,6 +209,9 @@ class MainHeaderWidget(QWidget):
         self.toggle_chat_action = QAction(tr("action.toggle_chat"), main_window, checkable=True)
         self.toggle_chat_action.setChecked(False)
 
+        # LLM settings
+        self.llm_settings_action = QAction(tr("action.llm_settings"), main_window)
+
     def _populate_menus(self) -> None:
         """Populate the menu bar and wire shared actions to widgets."""
 
@@ -282,6 +285,7 @@ class MainHeaderWidget(QWidget):
         # Agent features
         self._settings_menu.addSeparator()
         self._settings_menu.addAction(self.toggle_semantic_search_action)
+        self._settings_menu.addAction(self.llm_settings_action)
 
     def retranslate(self) -> None:
         """Refresh all menu and action texts for the current language."""
@@ -315,6 +319,7 @@ class MainHeaderWidget(QWidget):
         self.smart_album_time_action.setText(tr("action.smart_album_time"))
         self.smart_album_theme_action.setText(tr("action.smart_album_theme"))
         self.toggle_chat_action.setText(tr("action.toggle_chat"))
+        self.llm_settings_action.setText(tr("action.llm_settings"))
 
         # Menu titles
         self._file_menu.setTitle(tr("menu.file"))
