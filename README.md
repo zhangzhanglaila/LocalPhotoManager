@@ -2,7 +2,7 @@
 
 一个类似 macOS 照片应用的**文件夹原生**照片管理工具，支持 Windows、macOS 和 Linux。无需上传云端，直接管理本地照片和视频。
 
-基于 [iPhotron](https://github.com/zhangzhanglaila/LocalPhotoManager) 开源项目的中文优化版本。
+> 基于 [iPhotron](https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager) 项目开发，感谢原作者 Haibin Zhao。
 
 ---
 
@@ -70,7 +70,7 @@ pip install insightface onnxruntime
 > | 资源 | 大小 | 触发条件 | 下载来源 |
 > |------|------|---------|----------|
 > | 人脸模型 | ~300MB | 安装了 insightface 后，首次使用"人物识别" | InsightFace CDN（自动下载） |
-> | 地图扩展 | ~975MB | 首次启动时弹窗提示 | 原始项目 GitHub Release（自动下载） |
+> | 地图扩展 | ~975MB | 首次启动时弹窗提示 | 本项目 GitHub Release（自动下载） |
 >
 > **注意：** 第 4 步不装的话，人脸功能完全不可用（不会自动下载模型）。
 >
@@ -82,14 +82,21 @@ pip install insightface onnxruntime
 
 ### 国内用户特别说明
 
-**人脸模型**下载较慢时，可手动从 GitHub 下载：
+**人脸模型**下载较慢时，可手动下载：
 
 1. 访问 https://github.com/deepinsight/insightface/releases/tag/v0.7
 2. 下载 `buffalo_l.zip`（约 300MB）
 3. 解压后把 `buffalo_l` 文件夹放到 `src/extension/models/` 下
 4. 最终目录结构：`src/extension/models/buffalo_l/1k3d68.onnx` 等文件
 
-**地图扩展**可跳过（自动降级为基础地图），或等弹窗提示时自动下载。
+**地图扩展**下载较慢时，可手动下载：
+
+1. 访问 https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v1.0.0
+2. Windows 下载 `extension.zip`，Linux 下载 `extension.tar.xz`
+3. 解压后把 `extension` 文件夹放到 `src/maps/tiles/` 下
+4. 最终目录结构：`src/maps/tiles/extension/World_basemap_2.obf` 等文件
+
+也可跳过地图扩展，自动降级为基础地图。
 
 ## 启动
 
@@ -159,6 +166,4 @@ iphoto-gui /photos/LondonTrip
 
 ## 许可证
 
-MIT License (原始项目许可证)
-
-原始项目由 Haibin Zhao (OliverZhaohaibin) 创建。
+MIT License
