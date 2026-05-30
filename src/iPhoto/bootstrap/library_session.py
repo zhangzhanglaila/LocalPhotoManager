@@ -173,13 +173,16 @@ class LibrarySession:
             Expected model directory.
         """
         try:
-            from PySide6.QtWidgets import QMessageBox, QPushButton
+            from PySide6.QtWidgets import QMessageBox, QPushButton, QApplication
+            from ..agent.infrastructure.clip_downloader import get_download_instructions, download_model
+
+            model_path = model_dir / "clip-vit-base-patch32"
 
             msg = QMessageBox()
             msg.setWindowTitle("语义搜索需要下载模型")
             msg.setText(
                 "语义搜索功能需要下载 CLIP 模型（约 350MB）。\n\n"
-                f"模型目录: {model_dir}\n\n"
+                f"模型目录: {model_path}\n\n"
                 "是否现在下载？"
             )
             msg.setInformativeText(
@@ -187,15 +190,54 @@ class LibrarySession:
                 "- 语义搜索（如搜索黄鹤楼、海边等）\n"
                 "- 以图搜图\n"
                 "- 查找重复照片\n"
-                "- 智能相册创建"
+                "- 智能相册创建\n\n"
+                "如果自动下载失败，可以手动下载。"
             )
-            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            msg.setDefaultButton(QMessageBox.StandardButton.Yes)
 
-            result = msg.exec()
+            # Add custom buttons
+            auto_button = msg.addButton("自动下载", QMessageBox.ButtonRole.AcceptRole)
+            manual_button = msg.addButton("手动下载", QMessageBox.ButtonRole.ActionRole)
+            cancel_button = msg.addButton("取消", QMessageBox.ButtonRole.RejectRole)
 
-            if result == QMessageBox.StandardButton.Yes:
+            msg.exec()
+
+            clicked = msg.clickedButton()
+
+            if clicked == auto_button:
                 self._download_model(model_dir)
+            elif clicked == manual_button:
+                # Show manual download instructions
+                instructions = get_download_instructions(model_dir)
+
+                # Create instruction dialog
+                from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
+
+                dialog = QDialog()
+                dialog.setWindowTitle("手动下载 CLIP 模型")
+                dialog.setMinimumSize(600, 400)
+
+                layout = QVBoxLayout(dialog)
+
+                text_edit = QTextEdit()
+                text_edit.setPlainText(instructions)
+                text_edit.setReadOnly(True)
+                layout.addWidget(text_edit)
+
+                # Copy button
+                copy_btn = QPushButton("复制命令到剪贴板")
+                copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(instructions))
+                layout.addWidget(copy_btn)
+
+                # Open folder button
+                open_btn = QPushButton("打开模型目录")
+                open_btn.clicked.connect(lambda: os.startfile(str(model_path)) if os.name == 'nt' else None)
+                layout.addWidget(open_btn)
+
+                close_btn = QPushButton("关闭")
+                close_btn.clicked.connect(dialog.close)
+                layout.addWidget(close_btn)
+
+                dialog.exec()
 
         except Exception as e:
             logger.error("Failed to show download dialog: %s", e)
@@ -211,7 +253,7 @@ class LibrarySession:
         try:
             from PySide6.QtCore import QThread, Signal
             from PySide6.QtWidgets import QProgressDialog
-            from ..agent.infrastructure.clip_downloader import download_model_with_transformers
+            from ..agent.infrastructure.clip_downloader import download_model
 
             class DownloadThread(QThread):
                 """Background thread for downloading model."""
@@ -226,7 +268,7 @@ class LibrarySession:
                     def progress_callback(current, total, message):
                         self.progress_updated.emit(current, total, message)
 
-                    success = download_model_with_transformers(
+                    success = download_model(
                         model_dir=self._model_dir,
                         progress_callback=progress_callback,
                     )
@@ -252,7 +294,7 @@ class LibrarySession:
             )
 
             self._download_thread.finished.connect(
-                lambda success: self._on_download_finished(success, progress)
+                lambda success: self._on_download_finished(success, progress, model_dir)
             )
 
             # Show dialog non-blocking
@@ -264,7 +306,7 @@ class LibrarySession:
         except Exception as e:
             logger.error("Failed to start download: %s", e)
 
-    def _on_download_finished(self, success: bool, progress) -> None:
+    def _on_download_finished(self, success: bool, progress, model_dir: Path) -> None:
         """Handle download completion.
 
         Parameters
@@ -273,6 +315,8 @@ class LibrarySession:
             Whether download was successful.
         progress : QProgressDialog
             The progress dialog.
+        model_dir : Path
+            The model directory.
         """
         from PySide6.QtWidgets import QMessageBox
 
@@ -282,7 +326,15 @@ class LibrarySession:
             QMessageBox.information(None, "下载完成", "CLIP 模型下载完成！\n\n语义搜索功能已启用。")
         else:
             progress.setLabelText("下载失败")
-            QMessageBox.warning(None, "下载失败", "CLIP 模型下载失败。\n\n请检查网络连接后重试。")
+            QMessageBox.warning(
+                None,
+                "下载失败",
+                "CLIP 模型自动下载失败。\n\n"
+                "可能原因：\n"
+                "- 网络连接问题\n"
+                "- HuggingFace 被屏蔽\n\n"
+                "请尝试手动下载。"
+            )
 
         progress.close()
 

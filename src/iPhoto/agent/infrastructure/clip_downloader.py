@@ -1,9 +1,11 @@
-"""CLIP model downloader with progress tracking."""
+"""CLIP model downloader with manual download support."""
 
 from __future__ import annotations
 
 import logging
 import os
+import shutil
+import zipfile
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -12,57 +14,128 @@ _LOGGER = logging.getLogger(__name__)
 # CLIP model ID
 _TRANSFORMERS_MODEL_ID = "openai/clip-vit-base-patch32"
 
+# Model directory name
+_MODEL_NAME = "clip-vit-base-patch32"
+
 
 def get_model_dir(library_root: Path) -> Path:
     """Get the model directory for CLIP."""
     return library_root.parent / "extension" / "models"
 
 
-def is_model_available(model_dir: Path, model_name: str = "clip-vit-base-patch32") -> bool:
+def get_model_path(library_root: Path) -> Path:
+    """Get the full path to the CLIP model."""
+    return get_model_dir(library_root) / _MODEL_NAME
+
+
+def is_model_available(model_dir: Path) -> bool:
     """Check if CLIP model is available."""
-    model_path = model_dir / model_name
+    model_path = model_dir / _MODEL_NAME
+
+    # Check for config.json (indicates model is downloaded)
     config_file = model_path / "config.json"
-    return config_file.exists()
+    if config_file.exists():
+        return True
+
+    # Check for ONNX files
+    onnx_dir = model_path / "onnx"
+    if onnx_dir.exists():
+        return True
+
+    return False
 
 
-def download_model_with_transformers(
+def get_download_instructions(model_dir: Path) -> str:
+    """Get instructions for manually downloading the model.
+
+    Parameters
+    ----------
+    model_dir : Path
+        Directory where model should be saved.
+
+    Returns
+    -------
+    str
+        Download instructions.
+    """
+    model_path = model_dir / _MODEL_NAME
+
+    return f"""手动下载 CLIP 模型：
+
+方法1：使用 HuggingFace 镜像（推荐）
+========================================
+pip install huggingface_hub
+export HF_ENDPOINT=https://hf-mirror.com
+python -c "from huggingface_hub import snapshot_download; snapshot_download('openai/clip-vit-base-patch32', local_dir='{model_path}')"
+
+方法2：手动下载
+========================================
+1. 访问 https://huggingface.co/openai/clip-vit-base-patch32
+2. 或使用镜像 https://hf-mirror.com/openai/clip-vit-base-patch32
+3. 下载所有文件到: {model_path}
+
+方法3：使用 ModelScope（国内镜像）
+========================================
+pip install modelscope
+python -c "from modelscope import snapshot_download; snapshot_download('AI-ModelScope/clip-vit-base-patch32', cache_dir='{model_dir}')"
+
+下载完成后重启应用即可使用语义搜索功能。
+"""
+
+
+def download_model(
     model_dir: Path,
-    model_name: str = "clip-vit-base-patch32",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> bool:
-    """Download CLIP model using transformers library.
+    """Try to download CLIP model automatically.
 
     Parameters
     ----------
     model_dir : Path
         Directory to save the model.
-    model_name : str
-        Name of the model.
     progress_callback : Optional[Callable]
-        Callback for progress updates (current, total, message).
+        Callback for progress updates.
 
     Returns
     -------
     bool
         True if download was successful.
     """
+    model_path = model_dir / _MODEL_NAME
+    model_path.mkdir(parents=True, exist_ok=True)
+
+    if progress_callback:
+        progress_callback(0, 100, "尝试下载 CLIP 模型...")
+
+    # Try using huggingface_hub with mirror
     try:
-        from transformers import CLIPModel, CLIPProcessor, CLIPTokenizer
+        return _download_with_huggingface_hub(model_path, progress_callback)
+    except Exception as e:
+        _LOGGER.warning("HuggingFace download failed: %s", e)
+
+    # Try using modelscope
+    try:
+        return _download_with_modelscope(model_dir, progress_callback)
+    except Exception as e:
+        _LOGGER.warning("ModelScope download failed: %s", e)
+
+    return False
+
+
+def _download_with_huggingface_hub(
+    model_path: Path,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+) -> bool:
+    """Download using huggingface_hub with mirror support."""
+    try:
         from huggingface_hub import snapshot_download
 
-        model_path = model_dir / model_name
-        model_path.mkdir(parents=True, exist_ok=True)
+        # Try mirror first
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
         if progress_callback:
-            progress_callback(5, 100, "Preparing download...")
+            progress_callback(10, 100, "正在从镜像下载...")
 
-        # Use snapshot_download for better progress tracking
-        if progress_callback:
-            progress_callback(10, 100, "Downloading model files...")
-
-        _LOGGER.info("Downloading CLIP model to %s", model_path)
-
-        # Download with progress
         snapshot_download(
             repo_id=_TRANSFORMERS_MODEL_ID,
             local_dir=str(model_path),
@@ -70,103 +143,77 @@ def download_model_with_transformers(
         )
 
         if progress_callback:
-            progress_callback(80, 100, "Loading model...")
+            progress_callback(100, 100, "下载完成！")
 
-        # Verify model can be loaded
-        model = CLIPModel.from_pretrained(str(model_path))
-        processor = CLIPProcessor.from_pretrained(str(model_path))
-
-        if progress_callback:
-            progress_callback(90, 100, "Saving tokenizer...")
-
-        # Ensure tokenizer is saved
-        tokenizer = CLIPTokenizer.from_pretrained(str(model_path))
-        tokenizer.save_pretrained(str(model_path))
-
-        if progress_callback:
-            progress_callback(100, 100, "Download complete!")
-
-        _LOGGER.info("CLIP model downloaded successfully")
         return True
 
     except Exception as e:
-        _LOGGER.error("Failed to download CLIP model: %s", e)
-
-        # Fallback: try simpler download
-        return _download_simple(model_dir, model_name, progress_callback)
+        _LOGGER.error("HuggingFace download failed: %s", e)
+        raise
 
 
-def _download_simple(
+def _download_with_modelscope(
     model_dir: Path,
-    model_name: str,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> bool:
-    """Simple fallback download method.
-
-    Downloads only the essential files needed for inference.
-    """
+    """Download using ModelScope (Chinese mirror)."""
     try:
-        import requests
-
-        model_path = model_dir / model_name
-        model_path.mkdir(parents=True, exist_ok=True)
-
-        # Essential files to download
-        files = {
-            "config.json": "Model configuration",
-            "vocab.json": "Vocabulary",
-            "merges.txt": "Tokenizer merges",
-            "special_tokens_map.json": "Special tokens",
-            "preprocessor_config.json": "Preprocessor config",
-            "tokenizer_config.json": "Tokenizer config",
-        }
-
-        base_url = f"https://huggingface.co/{_TRANSFORMERS_MODEL_ID}/resolve/main"
-        total = len(files) + 2  # +2 for model files
+        from modelscope import snapshot_download
 
         if progress_callback:
-            progress_callback(0, total, "Starting download...")
+            progress_callback(10, 100, "正在从 ModelScope 下载...")
 
-        for i, (filename, desc) in enumerate(files.items(), 1):
-            if progress_callback:
-                progress_callback(i, total, f"Downloading {desc}...")
-
-            filepath = model_path / filename
-            if not filepath.exists():
-                url = f"{base_url}/{filename}"
-                _download_file(url, filepath)
-
-        # Download model files (larger)
-        model_files = [
-            ("model.safetensors", "Model weights"),
-        ]
-
-        for filename, desc in model_files:
-            if progress_callback:
-                progress_callback(total - 1, total, f"Downloading {desc}...")
-
-            filepath = model_path / filename
-            if not filepath.exists():
-                url = f"{base_url}/{filename}"
-                _download_file(url, filepath)
+        # ModelScope uses different model ID format
+        snapshot_download(
+            model_id="AI-ModelScope/clip-vit-base-patch32",
+            cache_dir=str(model_dir),
+        )
 
         if progress_callback:
-            progress_callback(total, total, "Download complete!")
+            progress_callback(100, 100, "下载完成！")
 
-        return is_model_available(model_dir, model_name)
+        return True
 
     except Exception as e:
-        _LOGGER.error("Simple download failed: %s", e)
-        return False
+        _LOGGER.error("ModelScope download failed: %s", e)
+        raise
 
 
-def _download_file(url: str, filepath: Path) -> None:
-    """Download a file with progress."""
-    import requests
+def create_download_script(model_dir: Path, script_path: Path) -> None:
+    """Create a batch script for manual download.
 
-    response = requests.get(url, stream=True, timeout=60)
-    response.raise_for_status()
+    Parameters
+    ----------
+    model_dir : Path
+        Directory where model should be saved.
+    script_path : Path
+        Path to save the script.
+    """
+    model_path = model_dir / _MODEL_NAME
 
-    with open(filepath, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+    script_content = f"""@echo off
+echo ========================================
+echo CLIP Model Download Script
+echo ========================================
+echo.
+
+echo Installing huggingface_hub...
+pip install huggingface_hub
+
+echo.
+echo Setting mirror...
+set HF_ENDPOINT=https://hf-mirror.com
+
+echo.
+echo Downloading model to: {model_path}
+python -c "from huggingface_hub import snapshot_download; snapshot_download('openai/clip-vit-base-patch32', local_dir=r'{model_path}')"
+
+echo.
+echo ========================================
+echo Download complete!
+echo Please restart the application.
+echo ========================================
+pause
+"""
+
+    script_path.write_text(script_content, encoding="utf-8")
