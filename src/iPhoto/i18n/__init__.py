@@ -280,6 +280,12 @@ _ZH: dict[str, str] = {
     "action.smart_album_location": "按地点创建相册",
     "action.smart_album_time": "按时间创建相册",
     "action.smart_album_theme": "按主题创建相册",
+    "action.toggle_chat": "AI 助手",
+    "chat.title": "AI 助手",
+    "chat.placeholder": "询问关于你的照片...",
+    "chat.send": "发送",
+    "chat.welcome": "你好！我可以帮你查找和整理照片。试试问我一些问题吧！",
+    "chat.thinking": "思考中...",
 }
 
 _EN: dict[str, str] = {
@@ -544,6 +550,12 @@ _EN: dict[str, str] = {
     "action.smart_album_location": "Create Album by Location",
     "action.smart_album_time": "Create Album by Time",
     "action.smart_album_theme": "Create Album by Theme",
+    "action.toggle_chat": "AI Assistant",
+    "chat.title": "AI Assistant",
+    "chat.placeholder": "Ask about your photos...",
+    "chat.send": "Send",
+    "chat.welcome": "Hello! I can help you find and organize your photos. Try asking me something!",
+    "chat.thinking": "Thinking...",
 }
 
 

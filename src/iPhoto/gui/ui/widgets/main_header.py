@@ -205,6 +205,10 @@ class MainHeaderWidget(QWidget):
         self.smart_album_time_action = QAction(tr("action.smart_album_time"), main_window)
         self.smart_album_theme_action = QAction(tr("action.smart_album_theme"), main_window)
 
+        # Chat toggle
+        self.toggle_chat_action = QAction(tr("action.toggle_chat"), main_window, checkable=True)
+        self.toggle_chat_action.setChecked(False)
+
     def _populate_menus(self) -> None:
         """Populate the menu bar and wire shared actions to widgets."""
 
@@ -240,6 +244,8 @@ class MainHeaderWidget(QWidget):
         self._agent_menu.addAction(self.smart_album_location_action)
         self._agent_menu.addAction(self.smart_album_time_action)
         self._agent_menu.addAction(self.smart_album_theme_action)
+        self._agent_menu.addSeparator()
+        self._agent_menu.addAction(self.toggle_chat_action)
 
         self._settings_menu = self.menu_bar.addMenu(tr("menu.settings"))
         self._settings_menu.addAction(self.bind_library_action)
@@ -308,6 +314,7 @@ class MainHeaderWidget(QWidget):
         self.smart_album_location_action.setText(tr("action.smart_album_location"))
         self.smart_album_time_action.setText(tr("action.smart_album_time"))
         self.smart_album_theme_action.setText(tr("action.smart_album_theme"))
+        self.toggle_chat_action.setText(tr("action.toggle_chat"))
 
         # Menu titles
         self._file_menu.setTitle(tr("menu.file"))
