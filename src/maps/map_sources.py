@@ -18,12 +18,12 @@ DEFAULT_OSMAND_STYLE_PATH = DEFAULT_OSMAND_RESOURCES_ROOT / "rendering_styles" /
 DEFAULT_OSMAND_SEARCH_RELATIVE_PATH = DEFAULT_OSMAND_EXTENSION_RELATIVE_ROOT / "search" / "geonames.sqlite3"
 DEFAULT_OSMAND_PENDING_EXTENSION_SUFFIX = ".pending"
 LINUX_MAP_EXTENSION_DOWNLOAD_URL = (
-    "https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager/"
-    "releases/download/v5.0.0/extension.tar.xz"
+    "https://github.com/zhangzhanglaila/LocalPhotoManager/"
+    "releases/download/v6.1.0/extension.tar.xz"
 )
 WINDOWS_MAP_EXTENSION_DOWNLOAD_URL = (
-    "https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager/"
-    "releases/download/v5.0.0/extension.zip"
+    "https://github.com/zhangzhanglaila/LocalPhotoManager/"
+    "releases/download/v6.1.0/extension.zip"
 )
 ENV_OSMAND_HELPER = "IPHOTO_OSMAND_RENDER_HELPER"
 ENV_OSMAND_NATIVE_WIDGET_LIBRARY = "IPHOTO_OSMAND_NATIVE_WIDGET_LIBRARY"

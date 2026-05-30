@@ -25,7 +25,7 @@ Please note that this project is released with a [Code of Conduct](CODE_OF_CONDU
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager.git
+    git clone https://github.com/zhangzhanglaila/LocalPhotoManager.git
     cd iPhotron-LocalPhotoAlbumManager
     ```
 

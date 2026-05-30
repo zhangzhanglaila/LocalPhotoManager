@@ -2,7 +2,7 @@
 
 一个类似 macOS 照片应用的**文件夹原生**照片管理工具，支持 Windows、macOS 和 Linux。无需上传云端，直接管理本地照片和视频。
 
-基于 [iPhotron](https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager) 开源项目的中文优化版本。
+基于 [iPhotron](https://github.com/zhangzhanglaila/LocalPhotoManager) 开源项目的中文优化版本。
 
 ---
 
@@ -41,13 +41,17 @@
   - Windows: `choco install exiftool` 或从 https://exiftool.org 下载
   - macOS: `brew install exiftool`
   - Linux: `sudo apt install libimage-exiftool-perl` 或 `sudo dnf install perl-Image-ExifTool`
+- **FFmpeg**（必须，用于视频封面提取、元数据读取、视频导出）
+  - Windows: `choco install ffmpeg` 或从 https://ffmpeg.org 下载
+  - macOS: `brew install ffmpeg`
+  - Linux: `sudo apt install ffmpeg` 或 `sudo dnf install ffmpeg`
 
 ### 安装步骤
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager.git
-cd iPhotron-LocalPhotoAlbumManager
+git clone https://github.com/zhangzhanglaila/LocalPhotoManager.git
+cd LocalPhotoManager
 
 # 2. 创建虚拟环境
 python -m venv .venv
@@ -69,6 +73,21 @@ pip install insightface onnxruntime
 > | 地图扩展 | ~975MB | 首次启动时弹窗提示 | 可跳过，自动降级为基础地图 |
 >
 > **注意：** 第 4 步不装的话，人脸功能完全不可用（不会自动下载模型）。
+>
+> **Linux 用户注意：** `rawpy` 依赖 `libraw`，安装前需先执行：
+> ```bash
+> sudo apt install libraw-dev    # Debian/Ubuntu
+> sudo dnf install LibRaw-devel  # Fedora
+> ```
+
+### 国内用户特别说明
+
+人脸模型和地图扩展需要从境外服务器下载，可能较慢或失败：
+
+| 资源 | 解决方案 |
+|------|----------|
+| 人脸模型 (~300MB) | 使用代理，或从其他渠道获取模型文件后放到 `src/extension/models/` |
+| 地图扩展 (~975MB) | 可跳过（自动降级为基础地图），或手动下载后放到项目目录 |
 
 ## 启动
 
