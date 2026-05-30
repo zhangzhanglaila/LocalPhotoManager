@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Callable, List, Optional, Protocol
 
@@ -10,6 +11,7 @@ import numpy as np
 
 from ..models.search_result import SearchResult
 from ..ports.embedding_port import EmbeddingPort
+from ..ports.llm_port import ChatMessage, LLMPort
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,6 +20,87 @@ _DEFAULT_TOP_K = 20
 
 # Minimum similarity score to include in results
 _MIN_SIMILARITY_THRESHOLD = 0.2
+
+# Common Chinese to English translations for better CLIP search
+_ZH_EN_TRANSLATIONS = {
+    # 建筑/地标
+    "黄鹤楼": "yellow crane tower chinese landmark",
+    "长城": "great wall of china",
+    "故宫": "forbidden city beijing palace",
+    "天安门": "tiananmen square beijing",
+    "东方明珠": "oriental pearl tower shanghai",
+    "埃菲尔铁塔": "eiffel tower paris",
+    "自由女神": "statue of liberty",
+    "大本钟": "big ben london",
+    "悉尼歌剧院": "sydney opera house",
+
+    # 自然景观
+    "海边": "beach ocean sea",
+    "海滩": "beach sandy shore",
+    "山": "mountain hill",
+    "雪山": "snow mountain",
+    "日落": "sunset",
+    "日出": "sunrise",
+    "星空": "starry night sky",
+    "森林": "forest trees",
+    "湖": "lake water",
+    "河": "river",
+    "瀑布": "waterfall",
+    "花": "flowers",
+    "樱花": "cherry blossom sakura",
+    "红叶": "autumn leaves red foliage",
+
+    # 活动/场景
+    "婚礼": "wedding ceremony",
+    "生日": "birthday party",
+    "旅行": "travel trip",
+    "聚餐": "dinner gathering food",
+    "运动": "sports exercise",
+    "游泳": "swimming pool water",
+    "滑雪": "skiing snow winter",
+    "音乐会": "concert music stage",
+    "毕业": "graduation ceremony",
+
+    # 人物
+    "家人": "family",
+    "朋友": "friends group",
+    "孩子": "children kids",
+    "宝宝": "baby infant",
+    "宠物": "pet animal",
+    "狗": "dog puppy",
+    "猫": "cat kitten",
+
+    # 物品
+    "美食": "food delicious meal",
+    "蛋糕": "cake dessert",
+    "咖啡": "coffee cup",
+    "车": "car vehicle",
+    "飞机": "airplane flight",
+    "火车": "train railway",
+
+    # 时间
+    "春天": "spring season",
+    "夏天": "summer season",
+    "秋天": "autumn fall season",
+    "冬天": "winter snow cold",
+    "新年": "new year celebration",
+    "圣诞": "christmas",
+    "中秋": "mid-autumn festival moon",
+    "春节": "chinese new year spring festival",
+
+    # 场景
+    "夜景": "night cityscape lights",
+    "城市": "city urban skyline",
+    "乡村": "countryside rural village",
+    "公园": "park garden",
+    "寺庙": "temple buddhist",
+    "教堂": "church",
+    "博物馆": "museum",
+    "餐厅": "restaurant dining",
+    "酒店": "hotel resort",
+    "机场": "airport",
+    "车站": "train station",
+}
 
 
 class AssetRepositoryProtocol(Protocol):
@@ -32,40 +115,15 @@ class EmbeddingRepositoryProtocol(Protocol):
     """Protocol for accessing embedding data."""
 
     def get_all_embeddings(self) -> List[dict]:
-        """Get all stored embeddings.
-
-        Returns
-        -------
-        List[dict]
-            List of dicts with 'asset_id' and 'embedding' keys.
-        """
+        """Get all stored embeddings."""
         ...
 
     def store_embedding(self, asset_id: str, embedding: np.ndarray) -> None:
-        """Store an embedding for an asset.
-
-        Parameters
-        ----------
-        asset_id : str
-            The asset identifier.
-        embedding : np.ndarray
-            The embedding vector.
-        """
+        """Store an embedding for an asset."""
         ...
 
     def get_embedding(self, asset_id: str) -> Optional[np.ndarray]:
-        """Get the embedding for an asset.
-
-        Parameters
-        ----------
-        asset_id : str
-            The asset identifier.
-
-        Returns
-        -------
-        Optional[np.ndarray]
-            The embedding vector, or None if not found.
-        """
+        """Get the embedding for an asset."""
         ...
 
 
@@ -81,6 +139,7 @@ class SearchService:
         embedding_service: EmbeddingPort,
         asset_repository: AssetRepositoryProtocol,
         embedding_repository: EmbeddingRepositoryProtocol,
+        llm_service: Optional[LLMPort] = None,
     ) -> None:
         """Initialize the search service.
 
@@ -92,10 +151,62 @@ class SearchService:
             Repository for accessing asset data.
         embedding_repository : EmbeddingRepositoryProtocol
             Repository for storing and retrieving embeddings.
+        llm_service : Optional[LLMPort]
+            LLM service for query translation.
         """
         self._embedding_service = embedding_service
         self._asset_repository = asset_repository
         self._embedding_repository = embedding_repository
+        self._llm_service = llm_service
+
+    def _translate_query(self, query: str) -> str:
+        """Translate Chinese query to English for better CLIP results.
+
+        Parameters
+        ----------
+        query : str
+            The original query (may contain Chinese).
+
+        Returns
+        -------
+        str
+            Translated query (English).
+        """
+        query_lower = query.lower().strip()
+
+        # Check direct translations first
+        for zh, en in _ZH_EN_TRANSLATIONS.items():
+            if zh in query_lower:
+                # Replace Chinese with English
+                query_lower = query_lower.replace(zh, en)
+
+        # If still contains Chinese characters, try LLM translation
+        if re.search(r'[一-鿿]', query_lower):
+            if self._llm_service and self._llm_service.is_available():
+                try:
+                    messages = [
+                        ChatMessage(
+                            role="system",
+                            content="Translate the following Chinese text to English for image search. "
+                                    "Output only the translation, nothing else."
+                        ),
+                        ChatMessage(role="user", content=query),
+                    ]
+                    response = self._llm_service.chat(messages, temperature=0.3, max_tokens=100)
+                    if response and response.content:
+                        translated = response.content.strip()
+                        if translated:
+                            _LOGGER.info("Translated '%s' to '%s'", query, translated)
+                            return translated
+                except Exception as e:
+                    _LOGGER.warning("LLM translation failed: %s", e)
+
+            # Fallback: extract any English words
+            english_words = re.findall(r'[a-zA-Z]+', query)
+            if english_words:
+                return ' '.join(english_words)
+
+        return query_lower
 
     def search(
         self,
@@ -108,7 +219,7 @@ class SearchService:
         Parameters
         ----------
         query : str
-            Natural language search query (e.g., "sunset beach").
+            Natural language search query (e.g., "sunset beach" or "海边日落").
         top_k : int
             Maximum number of results to return.
         threshold : float
@@ -122,10 +233,14 @@ class SearchService:
         if not query.strip():
             return []
 
+        # Translate query for better CLIP results
+        translated_query = self._translate_query(query)
+        _LOGGER.info("Search query: '%s' -> '%s'", query, translated_query)
+
         # Generate text embedding for the query
-        query_embedding = self._embedding_service.encode_text(query)
+        query_embedding = self._embedding_service.encode_text(translated_query)
         if query_embedding is None:
-            _LOGGER.warning("Failed to generate embedding for query: %s", query)
+            _LOGGER.warning("Failed to generate embedding for query: %s", translated_query)
             return []
 
         # Get all stored embeddings
