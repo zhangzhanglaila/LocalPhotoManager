@@ -40,15 +40,12 @@ def check_and_prompt_api_config(
     if active_config and active_config.api_key:
         return True
 
-    # Show prompt dialog
-    message = tr(
-        "api_config.prompt",
-        default=f"使用 {feature_name} 需要配置 LLM API。\n\n是否现在配置？"
-    )
+    # Show prompt dialog with feature_name substitution
+    message = tr("api_config.prompt", feature_name=feature_name)
 
     reply = QMessageBox.question(
         parent,
-        tr("api_config.title", default="需要配置 API"),
+        tr("api_config.title"),
         message,
         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         QMessageBox.StandardButton.Yes,
@@ -88,14 +85,11 @@ def show_api_config_required(parent: QWidget, feature_name: str = "AI 助手") -
     feature_name : str
         Name of the feature requiring API.
     """
-    message = tr(
-        "api_config.required",
-        default=f"请先配置 LLM API 才能使用 {feature_name}。\n\n设置 → LLM 设置"
-    )
+    message = tr("api_config.required", feature_name=feature_name)
 
     QMessageBox.information(
         parent,
-        tr("api_config.title", default="需要配置 API"),
+        tr("api_config.title"),
         message,
     )
 
@@ -108,17 +102,10 @@ def show_search_tips(parent: QWidget) -> None:
     parent : QWidget
         Parent widget for the dialog.
     """
-    tips = tr(
-        "search.tips",
-        default="搜索提示：\n\n"
-        "1. 使用英文关键词效果更好（如 'yellow crane tower' 而非 '黄鹤楼'）\n"
-        "2. 使用描述性词语（如 'Chinese tower', 'landmark', 'building'）\n"
-        "3. 可以组合多个关键词（如 'sunset beach summer'）\n"
-        "4. 支持场景、物体、活动等描述"
-    )
+    tips = tr("search.tips")
 
     QMessageBox.information(
         parent,
-        tr("search.tips_title", default="搜索技巧"),
+        tr("search.tips_title"),
         tips,
     )

@@ -307,6 +307,11 @@ _ZH: dict[str, str] = {
     "llm_settings.delete": "删除",
     "llm_settings.test": "测试连接",
     "llm_settings.close": "关闭",
+    "api_config.title": "需要配置 API",
+    "api_config.prompt": "使用 {feature_name} 需要配置 LLM API。\n\n是否现在配置？",
+    "api_config.required": "请先配置 LLM API 才能使用 {feature_name}。\n\n设置 → LLM 设置",
+    "search.tips_title": "搜索技巧",
+    "search.tips": "搜索提示：\n\n1. 使用英文关键词效果更好（如 'yellow crane tower' 而非 '黄鹤楼'）\n2. 使用描述性词语（如 'Chinese tower', 'landmark', 'building'）\n3. 可以组合多个关键词（如 'sunset beach summer'）\n4. 支持场景、物体、活动等描述",
 }
 
 _EN: dict[str, str] = {
@@ -598,6 +603,11 @@ _EN: dict[str, str] = {
     "llm_settings.delete": "Delete",
     "llm_settings.test": "Test Connection",
     "llm_settings.close": "Close",
+    "api_config.title": "API Configuration Required",
+    "api_config.prompt": "Using {feature_name} requires LLM API configuration.\n\nWould you like to configure now?",
+    "api_config.required": "Please configure LLM API first to use {feature_name}.\n\nSettings → LLM Settings",
+    "search.tips_title": "Search Tips",
+    "search.tips": "Search Tips:\n\n1. English keywords work better (e.g., 'yellow crane tower' instead of '黄鹤楼')\n2. Use descriptive words (e.g., 'Chinese tower', 'landmark', 'building')\n3. Combine multiple keywords (e.g., 'sunset beach summer')\n4. Supports scenes, objects, activities descriptions",
 }
 
 
