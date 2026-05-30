@@ -1097,25 +1097,18 @@ class MainCoordinator(QObject):
         """
         self._logger.info("Search requested: %s", query)
 
-        # Check if semantic search is enabled
-        if not self._context.settings.get("agent.semantic_search_enabled", False):
-            # Auto-enable semantic search
-            self._context.settings.set("agent.semantic_search_enabled", True)
-            ui = self._window.ui
-            if hasattr(ui, "main_header") and hasattr(ui.main_header, "toggle_semantic_search_action"):
-                ui.main_header.toggle_semantic_search_action.setChecked(True)
+        # Show immediate feedback
+        self._status_bar.show_message(f"正在搜索: {query}...")
 
         # Get the search service from the library session
         library_session = getattr(self._context, "library_session", None)
         if library_session is None:
-            self._status_bar.show_message(tr("search.no_session", default="No library session"))
+            self._status_bar.show_message("无法搜索：未找到图库")
             return
 
         search_service = library_session.get_search_service()
         if search_service is None:
-            self._status_bar.show_message(
-                tr("search.not_available", default="Semantic search not available. Install agent dependencies.")
-            )
+            self._status_bar.show_message("搜索服务初始化失败")
             return
 
         # Run search in background
@@ -1141,25 +1134,23 @@ class MainCoordinator(QObject):
         def on_search_complete(results):
             # Update UI on main thread
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, lambda: self._display_search_results(results))
+            QTimer.singleShot(0, lambda: self._display_search_results(results, query))
 
         worker = SearchWorker(search_service, query, on_search_complete)
         QThreadPool.globalInstance().start(worker)
 
-        self._status_bar.show_message(
-            tr("search.searching", default=f"Searching for '{query}'...")
-        )
-
-    def _display_search_results(self, results: list) -> None:
+    def _display_search_results(self, results: list, query: str = "") -> None:
         """Display search results in the grid view.
 
         Parameters
         ----------
         results : list
             List of SearchResult objects.
+        query : str
+            The original search query.
         """
         if not results:
-            self._status_bar.show_message(tr("search.no_results", default="No results found"))
+            self._status_bar.show_message(f"未找到与 '{query}' 相关的照片")
             return
 
         # Get asset IDs from results
@@ -1168,9 +1159,7 @@ class MainCoordinator(QObject):
         # Update the gallery to show search results
         self._gallery_vm.show_search_results(asset_ids)
 
-        self._status_bar.show_message(
-            tr("search.found", default=f"Found {len(results)} photos")
-        )
+        self._status_bar.show_message(f"找到 {len(results)} 张与 '{query}' 相关的照片")
 
     def _handle_semantic_search_toggle(self, enabled: bool) -> None:
         """Handle semantic search toggle.
