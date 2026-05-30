@@ -1,6 +1,6 @@
 """Question-answering service for photo management.
 
-Uses JIT (Just-in-Time) context loading for efficiency.
+Uses function calling for reliable tool invocation and JIT context loading.
 """
 
 from __future__ import annotations
@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from ..ports.llm_port import ChatMessage, LLMPort
+from ..ports.llm_port import ChatMessage, LLMPort, ToolDefinition
 from ..ports.vision_port import VisionPort
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,54 +38,6 @@ class QAResult:
     def __post_init__(self):
         if self.context_used is None:
             self.context_used = []
-
-
-# System prompt for photo QA with JIT context
-_PHOTO_QA_PROMPT = """你是一个照片管理应用的AI助手。你帮助用户理解他们的照片和照片库。
-
-你可以回答关于以下内容的问题：
-1. 照片元数据（日期、位置、相机设置等）
-2. 照片内容（照片里有什么、谁在里面等）
-3. 照片库统计（有多少照片、什么时候拍的等）
-4. 照片组织（相册、标签、人脸等）
-
-## 可用工具
-你可以使用以下工具来获取信息：
-
-1. get_asset_count[] - 获取照片总数
-2. get_date_range[] - 获取照片日期范围
-3. get_locations[] - 获取所有地点
-4. get_cameras[] - 获取所有相机型号
-5. get_asset_info[asset_id] - 获取特定照片的详细信息
-6. get_tags[asset_id] - 获取照片标签
-7. get_caption[asset_id] - 获取照片描述
-8. search_by_tag[tag_name] - 按标签搜索照片
-9. search_by_location[location] - 按地点搜索照片
-10. search_by_date[date] - 按日期搜索照片
-
-## 工作流程
-请严格按照以下格式进行回应：
-
-Thought: 分析问题，确定需要哪些信息
-Action: 调用工具获取信息（格式：工具名[参数]）
-Observation: 工具返回的结果
-... (可以重复多次)
-Thought: 基于获取的信息，形成最终答案
-Action: Finish[最终答案]
-
-## 重要提醒
-1. 只加载回答问题所需的最少信息
-2. 如果问题简单，可以直接回答而不需要工具
-3. 使用中文回答用户的问题
-
-## 当前任务
-**问题:** {question}
-
-## 执行历史
-{history}
-
-现在开始你的推理和行动：
-"""
 
 
 class ContextItem:
@@ -116,24 +68,9 @@ class ContextItem:
 
 
 class JITContextManager:
-    """Manages JIT (Just-in-Time) context loading.
-
-    This class provides lazy-loaded context items that are only
-    fetched when actually needed.
-    """
+    """Manages JIT (Just-in-Time) context loading."""
 
     def __init__(self, asset_repository: object, embedding_repository: object, library_root: Path):
-        """Initialize the JIT context manager.
-
-        Parameters
-        ----------
-        asset_repository : object
-            Repository for accessing asset data.
-        embedding_repository : object
-            Repository for accessing embeddings and tags.
-        library_root : Path
-            Root directory of the library.
-        """
         self._asset_repository = asset_repository
         self._embedding_repository = embedding_repository
         self._library_root = library_root
@@ -150,35 +87,11 @@ class JITContextManager:
         self._asset_cache = {}
 
     def get_context(self, name: str):
-        """Get a context item by name.
-
-        Parameters
-        ----------
-        name : str
-            Name of the context item.
-
-        Returns
-        -------
-        any
-            The context value.
-        """
         if name in self._context_items:
             return self._context_items[name].load()
         return None
 
     def get_asset_info(self, asset_id: str) -> Optional[dict]:
-        """Get asset info (JIT loaded).
-
-        Parameters
-        ----------
-        asset_id : str
-            The asset ID.
-
-        Returns
-        -------
-        Optional[dict]
-            Asset information.
-        """
         if asset_id in self._asset_cache:
             return self._asset_cache[asset_id]
 
@@ -190,18 +103,6 @@ class JITContextManager:
         return None
 
     def get_asset_tags(self, asset_id: str) -> List[dict]:
-        """Get asset tags (JIT loaded).
-
-        Parameters
-        ----------
-        asset_id : str
-            The asset ID.
-
-        Returns
-        -------
-        List[dict]
-            List of tags.
-        """
         cache_key = f"tags_{asset_id}"
         if cache_key in self._asset_cache:
             return self._asset_cache[cache_key]
@@ -211,18 +112,6 @@ class JITContextManager:
         return tags
 
     def get_asset_caption(self, asset_id: str) -> Optional[str]:
-        """Get asset caption (JIT loaded).
-
-        Parameters
-        ----------
-        asset_id : str
-            The asset ID.
-
-        Returns
-        -------
-        Optional[str]
-            The caption.
-        """
         cache_key = f"caption_{asset_id}"
         if cache_key in self._asset_cache:
             return self._asset_cache[cache_key]
@@ -232,60 +121,22 @@ class JITContextManager:
         return caption
 
     def search_by_tag(self, tag_name: str) -> List[str]:
-        """Search assets by tag.
-
-        Parameters
-        ----------
-        tag_name : str
-            The tag name.
-
-        Returns
-        -------
-        List[str]
-            List of asset IDs.
-        """
         return self._embedding_repository.search_by_tag(tag_name)
 
     def search_by_location(self, location: str) -> List[str]:
-        """Search assets by location.
-
-        Parameters
-        ----------
-        location : str
-            The location name.
-
-        Returns
-        -------
-        List[str]
-            List of asset IDs.
-        """
         all_assets = self._asset_repository.read_all()
         return [a["id"] for a in all_assets if location.lower() in a.get("location", "").lower()]
 
     def search_by_date(self, date: str) -> List[str]:
-        """Search assets by date.
-
-        Parameters
-        ----------
-        date : str
-            The date string (partial match).
-
-        Returns
-        -------
-        List[str]
-            List of asset IDs.
-        """
         all_assets = self._asset_repository.read_all()
         return [a["id"] for a in all_assets if date in a.get("dt", "")]
 
     def invalidate_all(self):
-        """Invalidate all cached context."""
         for item in self._context_items.values():
             item.invalidate()
         self._asset_cache.clear()
 
     def _load_asset_count(self) -> dict:
-        """Load asset count."""
         all_assets = self._asset_repository.read_all()
         total = len(all_assets)
         images = sum(1 for a in all_assets if a.get("media_type") == 0)
@@ -293,7 +144,6 @@ class JITContextManager:
         return {"total": total, "images": images, "videos": videos}
 
     def _load_date_range(self) -> dict:
-        """Load date range."""
         all_assets = self._asset_repository.read_all()
         dates = [a.get("dt", "") for a in all_assets if a.get("dt")]
         if dates:
@@ -301,7 +151,6 @@ class JITContextManager:
         return {"earliest": None, "latest": None}
 
     def _load_locations(self) -> List[str]:
-        """Load all unique locations."""
         all_assets = self._asset_repository.read_all()
         locations = set()
         for asset in all_assets:
@@ -311,7 +160,6 @@ class JITContextManager:
         return sorted(list(locations))
 
     def _load_cameras(self) -> List[str]:
-        """Load all unique cameras."""
         all_assets = self._asset_repository.read_all()
         cameras = set()
         for asset in all_assets:
@@ -321,10 +169,103 @@ class JITContextManager:
         return sorted(list(cameras))
 
 
+# Tool definitions for function calling
+QA_TOOLS = [
+    ToolDefinition(
+        name="get_library_stats",
+        description="获取照片库统计信息（总数、日期范围、地点、相机等）",
+        parameters={
+            "type": "object",
+            "properties": {
+                "stat_type": {
+                    "type": "string",
+                    "enum": ["count", "date_range", "locations", "cameras"],
+                    "description": "统计类型"
+                }
+            },
+            "required": ["stat_type"]
+        }
+    ),
+    ToolDefinition(
+        name="get_asset_info",
+        description="获取特定照片的详细信息（元数据、标签、描述等）",
+        parameters={
+            "type": "object",
+            "properties": {
+                "asset_id": {
+                    "type": "string",
+                    "description": "照片ID"
+                },
+                "info_type": {
+                    "type": "string",
+                    "enum": ["metadata", "tags", "caption", "all"],
+                    "description": "信息类型"
+                }
+            },
+            "required": ["asset_id"]
+        }
+    ),
+    ToolDefinition(
+        name="search_assets",
+        description="搜索照片（按标签、地点、日期等）",
+        parameters={
+            "type": "object",
+            "properties": {
+                "search_type": {
+                    "type": "string",
+                    "enum": ["tag", "location", "date"],
+                    "description": "搜索类型"
+                },
+                "query": {
+                    "type": "string",
+                    "description": "搜索关键词"
+                }
+            },
+            "required": ["search_type", "query"]
+        }
+    ),
+    ToolDefinition(
+        name="generate_answer",
+        description="生成最终答案",
+        parameters={
+            "type": "object",
+            "properties": {
+                "answer": {
+                    "type": "string",
+                    "description": "答案内容"
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "置信度 (0.0-1.0)"
+                }
+            },
+            "required": ["answer"]
+        }
+    )
+]
+
+# System prompt for QA
+_QA_SYSTEM_PROMPT = """你是一个照片管理应用的AI助手，负责回答用户关于照片库的问题。
+
+你的任务是：
+1. 理解用户的问题
+2. 使用工具获取相关信息
+3. 基于获取的信息生成准确的答案
+
+请使用提供的工具来获取信息。首先分析问题需要哪些信息，然后使用相应工具获取，最后使用 generate_answer 生成答案。
+
+常见问题类型：
+- 统计类：多少张照片、什么时候拍的、去过哪里 → 使用 get_library_stats
+- 查询类：特定照片的信息 → 使用 get_asset_info
+- 搜索类：找特定标签、地点、日期的照片 → 使用 search_assets
+
+重要：只获取回答问题所需的最少信息，不要过度查询。"""
+
+
 class QAService:
     """Question-answering service for photos.
 
-    Uses JIT context loading for efficient resource usage.
+    Uses function calling for reliable tool invocation and JIT context loading.
     """
 
     def __init__(
@@ -335,21 +276,6 @@ class QAService:
         embedding_repository: object = None,
         library_root: Path = None,
     ) -> None:
-        """Initialize the QA service.
-
-        Parameters
-        ----------
-        llm_service : Optional[LLMPort]
-            LLM service for text-based QA.
-        vision_service : Optional[VisionPort]
-            Vision service for image-based QA.
-        asset_repository : object
-            Repository for accessing asset data.
-        embedding_repository : object
-            Repository for accessing embeddings and tags.
-        library_root : Path
-            Root directory of the library.
-        """
         self._llm_service = llm_service
         self._vision_service = vision_service
         self._context_manager = JITContextManager(
@@ -386,22 +312,22 @@ class QAService:
                 sources=[],
             )
 
-        # Try ReAct-based QA if LLM is available
+        # Try function calling QA if LLM is available
         if self._llm_service and self._llm_service.is_available():
             try:
-                return self._answer_with_react(question, context)
+                return self._answer_with_function_calling(question, context)
             except Exception as e:
-                _LOGGER.warning("ReAct QA failed, falling back to simple: %s", e)
+                _LOGGER.warning("Function calling QA failed, falling back to simple: %s", e)
 
         # Fall back to simple QA
         return self._answer_simple(question, context)
 
-    def _answer_with_react(
+    def _answer_with_function_calling(
         self,
         question: str,
         context: Optional[dict],
     ) -> QAResult:
-        """Answer using ReAct pattern with JIT context loading.
+        """Answer using function calling.
 
         Parameters
         ----------
@@ -415,170 +341,140 @@ class QAService:
         QAResult
             The answer.
         """
-        import re
-
-        history = []
+        # State tracking
+        answer = None
+        confidence = 0.0
         context_used = []
-        max_steps = 5
 
-        for step in range(max_steps):
-            # Build prompt
-            history_str = "\n".join(history) if history else "无"
-            prompt = _PHOTO_QA_PROMPT.format(question=question, history=history_str)
+        # Tool executor
+        def tool_executor(tool_name: str, arguments: Dict[str, Any]) -> str:
+            nonlocal answer, confidence
 
-            # Call LLM
-            messages = [ChatMessage(role="user", content=prompt)]
-            response = self._llm_service.chat(messages, temperature=0.3, max_tokens=500)
+            if tool_name == "get_library_stats":
+                stat_type = arguments.get("stat_type", "count")
+                context_used.append(f"stats:{stat_type}")
 
-            if not response:
-                break
+                if stat_type == "count":
+                    stats = self._context_manager.get_context("asset_count")
+                    return f"照片总数: {stats['total']} (照片: {stats['images']}, 视频: {stats['videos']})"
 
-            response_text = response.content
+                elif stat_type == "date_range":
+                    date_range = self._context_manager.get_context("date_range")
+                    if date_range["earliest"]:
+                        return f"日期范围: {date_range['earliest']} 到 {date_range['latest']}"
+                    return "无日期信息"
 
-            # Parse Thought and Action
-            thought_match = re.search(r'Thought:\s*(.+?)(?=Action:|$)', response_text, re.DOTALL)
-            action_match = re.search(r'Action:\s*(.+?)$', response_text, re.DOTALL)
+                elif stat_type == "locations":
+                    locations = self._context_manager.get_context("locations")
+                    return f"所有地点: {', '.join(locations[:10])}" if locations else "无地点信息"
 
-            if thought_match:
-                thought = thought_match.group(1).strip()
-                history.append(f"Thought: {thought}")
+                elif stat_type == "cameras":
+                    cameras = self._context_manager.get_context("cameras")
+                    return f"所有相机: {', '.join(cameras[:5])}" if cameras else "无相机信息"
 
-            if not action_match:
-                break
+                return "未知统计类型"
 
-            action = action_match.group(1).strip()
+            elif tool_name == "get_asset_info":
+                asset_id = arguments.get("asset_id")
+                info_type = arguments.get("info_type", "all")
+                context_used.append(f"asset:{asset_id}")
 
-            # Check if this is a Finish action
-            if action.startswith("Finish"):
-                final_answer = self._parse_action_input(action)
-                return QAResult(
-                    question=question,
-                    answer=final_answer,
-                    confidence=0.8,
-                    sources=["llm", "jit_context"],
-                    context_used=context_used,
-                )
+                if info_type in ["metadata", "all"]:
+                    info = self._context_manager.get_asset_info(asset_id)
+                    if info:
+                        parts = []
+                        if info.get("rel"):
+                            parts.append(f"文件: {info['rel']}")
+                        if info.get("dt"):
+                            parts.append(f"日期: {info['dt']}")
+                        if info.get("location"):
+                            parts.append(f"地点: {info['location']}")
+                        if info.get("model"):
+                            parts.append(f"相机: {info['model']}")
+                        if info.get("w") and info.get("h"):
+                            parts.append(f"尺寸: {info['w']}x{info['h']}")
+                        return "\n".join(parts) if parts else "无详细信息"
 
-            # Execute tool call (JIT loading)
-            tool_name, tool_input = self._parse_action(action)
-            observation = self._execute_tool(tool_name, tool_input)
-            context_used.append(f"{tool_name}[{tool_input}]")
+                if info_type in ["tags", "all"]:
+                    tags = self._context_manager.get_asset_tags(asset_id)
+                    if tags:
+                        tag_names = [t["name"] for t in tags]
+                        return f"标签: {', '.join(tag_names)}"
 
-            history.append(f"Action: {action}")
-            history.append(f"Observation: {observation}")
+                if info_type in ["caption", "all"]:
+                    caption = self._context_manager.get_asset_caption(asset_id)
+                    if caption:
+                        return f"描述: {caption}"
 
-        # If ReAct didn't complete, return what we have
-        return QAResult(
-            question=question,
-            answer="I couldn't fully answer your question. Please try rephrasing.",
-            confidence=0.3,
-            sources=[],
-            context_used=context_used,
+                return "未找到信息"
+
+            elif tool_name == "search_assets":
+                search_type = arguments.get("search_type")
+                query = arguments.get("query")
+                context_used.append(f"search:{search_type}:{query}")
+
+                if search_type == "tag":
+                    asset_ids = self._context_manager.search_by_tag(query)
+                    return f"找到 {len(asset_ids)} 张标签为 '{query}' 的照片"
+
+                elif search_type == "location":
+                    asset_ids = self._context_manager.search_by_location(query)
+                    return f"找到 {len(asset_ids)} 张在 '{query}' 拍摄的照片"
+
+                elif search_type == "date":
+                    asset_ids = self._context_manager.search_by_date(query)
+                    return f"找到 {len(asset_ids)} 张在 '{query}' 期间的照片"
+
+                return "未知搜索类型"
+
+            elif tool_name == "generate_answer":
+                answer = arguments.get("answer")
+                confidence = arguments.get("confidence", 0.8)
+                return "答案已生成"
+
+            else:
+                return f"未知工具: {tool_name}"
+
+        # Create messages
+        messages = [
+            ChatMessage(role="system", content=_QA_SYSTEM_PROMPT),
+            ChatMessage(role="user", content=f"问题: {question}"),
+        ]
+
+        # Use chat_with_tools for automatic tool execution loop
+        result = self._llm_service.chat_with_tools(
+            messages=messages,
+            tools=QA_TOOLS,
+            tool_executor=tool_executor,
+            max_iterations=5,
+            temperature=0.3,
+            max_tokens=500,
         )
 
-    def _parse_action(self, action: str) -> tuple:
-        """Parse action string into tool name and input."""
-        match = re.match(r'(\w+)\[(.+?)\]', action)
-        if match:
-            return match.group(1), match.group(2)
-        return action, ""
+        # If we got a response but no answer was generated, use the response
+        if result and result.content and not answer:
+            answer = result.content
+            confidence = 0.7
 
-    def _parse_action_input(self, action: str) -> str:
-        """Extract input from Finish action."""
-        match = re.match(r'Finish\[(.+?)\]$', action, re.DOTALL)
-        if match:
-            return match.group(1)
-        return action
+        # Default answer if nothing was generated
+        if not answer:
+            answer = "I couldn't answer your question. Please try rephrasing."
+            confidence = 0.3
 
-    def _execute_tool(self, tool_name: str, tool_input: str) -> str:
-        """Execute a tool and return the result.
-
-        This is where JIT context loading happens.
-        """
-        if tool_name == "get_asset_count":
-            stats = self._context_manager.get_context("asset_count")
-            return f"照片总数: {stats['total']} (照片: {stats['images']}, 视频: {stats['videos']})"
-
-        elif tool_name == "get_date_range":
-            date_range = self._context_manager.get_context("date_range")
-            if date_range["earliest"]:
-                return f"日期范围: {date_range['earliest']} 到 {date_range['latest']}"
-            return "无日期信息"
-
-        elif tool_name == "get_locations":
-            locations = self._context_manager.get_context("locations")
-            return f"所有地点: {', '.join(locations[:10])}" if locations else "无地点信息"
-
-        elif tool_name == "get_cameras":
-            cameras = self._context_manager.get_context("cameras")
-            return f"所有相机: {', '.join(cameras[:5])}" if cameras else "无相机信息"
-
-        elif tool_name == "get_asset_info":
-            info = self._context_manager.get_asset_info(tool_input)
-            if info:
-                return self._format_asset_info(info)
-            return "未找到照片信息"
-
-        elif tool_name == "get_tags":
-            tags = self._context_manager.get_asset_tags(tool_input)
-            if tags:
-                tag_names = [t["name"] for t in tags]
-                return f"标签: {', '.join(tag_names)}"
-            return "无标签"
-
-        elif tool_name == "get_caption":
-            caption = self._context_manager.get_asset_caption(tool_input)
-            return f"描述: {caption}" if caption else "无描述"
-
-        elif tool_name == "search_by_tag":
-            asset_ids = self._context_manager.search_by_tag(tool_input)
-            return f"找到 {len(asset_ids)} 张标签为 '{tool_input}' 的照片"
-
-        elif tool_name == "search_by_location":
-            asset_ids = self._context_manager.search_by_location(tool_input)
-            return f"找到 {len(asset_ids)} 张在 '{tool_input}' 拍摄的照片"
-
-        elif tool_name == "search_by_date":
-            asset_ids = self._context_manager.search_by_date(tool_input)
-            return f"找到 {len(asset_ids)} 张在 '{tool_input}' 期间的照片"
-
-        else:
-            return f"未知工具: {tool_name}"
-
-    def _format_asset_info(self, info: dict) -> str:
-        """Format asset info as string."""
-        parts = []
-        if info.get("rel"):
-            parts.append(f"文件: {info['rel']}")
-        if info.get("dt"):
-            parts.append(f"日期: {info['dt']}")
-        if info.get("location"):
-            parts.append(f"地点: {info['location']}")
-        if info.get("model"):
-            parts.append(f"相机: {info['model']}")
-        if info.get("w") and info.get("h"):
-            parts.append(f"尺寸: {info['w']}x{info['h']}")
-        return "\n".join(parts) if parts else "无详细信息"
+        return QAResult(
+            question=question,
+            answer=answer,
+            confidence=confidence,
+            sources=["function_calling", "jit_context"],
+            context_used=context_used,
+        )
 
     def _answer_simple(
         self,
         question: str,
         context: Optional[dict],
     ) -> QAResult:
-        """Simple fallback QA without LLM.
-
-        Parameters
-        ----------
-        question : str
-            The question.
-        context : Optional[dict]
-            Optional context.
-
-        Returns
-        -------
-        QAResult
-            The answer.
-        """
+        """Simple fallback QA without LLM."""
         question_lower = question.lower()
 
         # Check for stats questions
