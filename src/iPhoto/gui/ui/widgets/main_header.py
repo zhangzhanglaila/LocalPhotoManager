@@ -205,12 +205,8 @@ class MainHeaderWidget(QWidget):
         self.smart_album_time_action = QAction(tr("action.smart_album_time"), main_window)
         self.smart_album_theme_action = QAction(tr("action.smart_album_theme"), main_window)
 
-        # Chat toggle
-        self.toggle_chat_action = QAction(tr("action.toggle_chat"), main_window, checkable=True)
-        self.toggle_chat_action.setChecked(False)
-
-        # LLM settings
-        self.llm_settings_action = QAction(tr("action.llm_settings"), main_window)
+        # Chat toggle - removed (no LLM dependency)
+        # LLM settings - removed (no LLM dependency)
 
     def _populate_menus(self) -> None:
         """Populate the menu bar and wire shared actions to widgets."""
@@ -247,8 +243,6 @@ class MainHeaderWidget(QWidget):
         self._agent_menu.addAction(self.smart_album_location_action)
         self._agent_menu.addAction(self.smart_album_time_action)
         self._agent_menu.addAction(self.smart_album_theme_action)
-        self._agent_menu.addSeparator()
-        self._agent_menu.addAction(self.toggle_chat_action)
 
         self._settings_menu = self.menu_bar.addMenu(tr("menu.settings"))
         self._settings_menu.addAction(self.bind_library_action)
@@ -285,7 +279,6 @@ class MainHeaderWidget(QWidget):
         # Agent features
         self._settings_menu.addSeparator()
         self._settings_menu.addAction(self.toggle_semantic_search_action)
-        self._settings_menu.addAction(self.llm_settings_action)
 
     def retranslate(self) -> None:
         """Refresh all menu and action texts for the current language."""
@@ -318,8 +311,6 @@ class MainHeaderWidget(QWidget):
         self.smart_album_location_action.setText(tr("action.smart_album_location"))
         self.smart_album_time_action.setText(tr("action.smart_album_time"))
         self.smart_album_theme_action.setText(tr("action.smart_album_theme"))
-        self.toggle_chat_action.setText(tr("action.toggle_chat"))
-        self.llm_settings_action.setText(tr("action.llm_settings"))
 
         # Menu titles
         self._file_menu.setTitle(tr("menu.file"))

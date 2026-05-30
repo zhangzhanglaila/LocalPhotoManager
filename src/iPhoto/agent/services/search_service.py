@@ -11,7 +11,6 @@ import numpy as np
 
 from ..models.search_result import SearchResult
 from ..ports.embedding_port import EmbeddingPort
-from ..ports.llm_port import ChatMessage, LLMPort
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -139,7 +138,6 @@ class SearchService:
         embedding_service: EmbeddingPort,
         asset_repository: AssetRepositoryProtocol,
         embedding_repository: EmbeddingRepositoryProtocol,
-        llm_service: Optional[LLMPort] = None,
     ) -> None:
         """Initialize the search service.
 
@@ -151,13 +149,10 @@ class SearchService:
             Repository for accessing asset data.
         embedding_repository : EmbeddingRepositoryProtocol
             Repository for storing and retrieving embeddings.
-        llm_service : Optional[LLMPort]
-            LLM service for query translation.
         """
         self._embedding_service = embedding_service
         self._asset_repository = asset_repository
         self._embedding_repository = embedding_repository
-        self._llm_service = llm_service
 
     def _translate_query(self, query: str) -> str:
         """Translate Chinese query to English for better CLIP results.
@@ -180,28 +175,8 @@ class SearchService:
                 # Replace Chinese with English
                 query_lower = query_lower.replace(zh, en)
 
-        # If still contains Chinese characters, try LLM translation
+        # If still contains Chinese characters, extract any English words
         if re.search(r'[一-鿿]', query_lower):
-            if self._llm_service and self._llm_service.is_available():
-                try:
-                    messages = [
-                        ChatMessage(
-                            role="system",
-                            content="Translate the following Chinese text to English for image search. "
-                                    "Output only the translation, nothing else."
-                        ),
-                        ChatMessage(role="user", content=query),
-                    ]
-                    response = self._llm_service.chat(messages, temperature=0.3, max_tokens=100)
-                    if response and response.content:
-                        translated = response.content.strip()
-                        if translated:
-                            _LOGGER.info("Translated '%s' to '%s'", query, translated)
-                            return translated
-                except Exception as e:
-                    _LOGGER.warning("LLM translation failed: %s", e)
-
-            # Fallback: extract any English words
             english_words = re.findall(r'[a-zA-Z]+', query)
             if english_words:
                 return ' '.join(english_words)
