@@ -558,6 +558,10 @@ class MainCoordinator(QObject):
         # Semantic Search
         if hasattr(ui, "main_header") and hasattr(ui.main_header, "search_requested"):
             ui.main_header.search_requested.connect(self._handle_search_requested)
+        if hasattr(ui, "main_header") and hasattr(ui.main_header, "toggle_semantic_search_action"):
+            ui.main_header.toggle_semantic_search_action.toggled.connect(
+                self._handle_semantic_search_toggle
+            )
 
         # Info Button
         if hasattr(ui, "info_button"):
@@ -1139,6 +1143,65 @@ class MainCoordinator(QObject):
             tr("search.found", default=f"Found {len(results)} photos")
         )
 
+    def _handle_semantic_search_toggle(self, enabled: bool) -> None:
+        """Handle semantic search toggle.
+
+        Parameters
+        ----------
+        enabled : bool
+            Whether semantic search is enabled.
+        """
+        self._context.settings.set("agent.semantic_search_enabled", enabled)
+
+        if enabled:
+            # Start embedding generation if not already done
+            self._start_embedding_generation()
+            self._status_bar.show_message(
+                tr("agent.enabled", default="Semantic search enabled")
+            )
+        else:
+            self._status_bar.show_message(
+                tr("agent.disabled", default="Semantic search disabled")
+            )
+
+    def _start_embedding_generation(self) -> None:
+        """Start background embedding generation."""
+        library_session = getattr(self._context, "library_session", None)
+        if library_session is None:
+            return
+
+        embedding_service = library_session.get_embedding_service()
+        embedding_repo = library_session.get_embedding_repository()
+
+        if embedding_service is None or embedding_repo is None:
+            self._logger.warning("Cannot start embedding generation: services not available")
+            return
+
+        if not embedding_service.is_loaded():
+            self._logger.warning("CLIP model not loaded, skipping embedding generation")
+            return
+
+        # Start embedding worker in background
+        from iPhoto.agent.workers.embedding_worker import EmbeddingWorker
+
+        worker = EmbeddingWorker(
+            embedding_service=embedding_service,
+            embedding_repository=embedding_repo,
+            asset_repository=library_session.asset_runtime.assets,
+            library_root=library_session.library_root,
+        )
+
+        worker.signals.progress.connect(
+            lambda current, total, msg: self._status_bar.show_message(msg, 2000)
+        )
+        worker.signals.finished.connect(
+            lambda processed, failed: self._logger.info(
+                "Embedding generation complete: %d processed, %d failed", processed, failed
+            )
+        )
+
+        QThreadPool.globalInstance().start(worker)
+
     def _handle_open_album_dialog(self):
         path = self._dialog.open_album_dialog()
         if path:
@@ -1267,6 +1330,17 @@ class MainCoordinator(QObject):
         ui.toggle_hidden_people_action.setChecked(show_hidden_people)
         if hasattr(ui, "people_page"):
             ui.people_page.set_show_hidden_people(show_hidden_people)
+
+        # 3. Semantic Search
+        stored_semantic_search = settings.get("agent.semantic_search_enabled", False)
+        if isinstance(stored_semantic_search, str):
+            semantic_search_enabled = stored_semantic_search.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            semantic_search_enabled = bool(stored_semantic_search)
+        if hasattr(ui, "main_header") and hasattr(ui.main_header, "toggle_semantic_search_action"):
+            ui.main_header.toggle_semantic_search_action.setChecked(semantic_search_enabled)
+            if semantic_search_enabled:
+                self._start_embedding_generation()
 
         # 2. Volume / Mute
         stored_volume = settings.get("ui.volume", 75)

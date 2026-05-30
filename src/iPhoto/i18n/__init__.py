@@ -269,6 +269,11 @@ _ZH: dict[str, str] = {
     "search.searching": "正在搜索 '{query}'...",
     "search.no_results": "未找到结果",
     "search.found": "找到 {count} 张照片",
+
+    # -- Agent --
+    "action.enable_semantic_search": "启用语义搜索",
+    "agent.enabled": "语义搜索已启用",
+    "agent.disabled": "语义搜索已禁用",
 }
 
 _EN: dict[str, str] = {
@@ -522,6 +527,11 @@ _EN: dict[str, str] = {
     "search.searching": "Searching for '{query}'...",
     "search.no_results": "No results found",
     "search.found": "Found {count} photos",
+
+    # -- Agent --
+    "action.enable_semantic_search": "Enable Semantic Search",
+    "agent.enabled": "Semantic search enabled",
+    "agent.disabled": "Semantic search disabled",
 }
 
 

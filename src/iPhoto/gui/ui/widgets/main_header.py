@@ -192,6 +192,12 @@ class MainHeaderWidget(QWidget):
         self.language_group.addAction(self.language_en)
         self.language_zh.setChecked(True)
 
+        # Agent features toggle
+        self.toggle_semantic_search_action = QAction(
+            tr("action.enable_semantic_search"), main_window, checkable=True
+        )
+        self.toggle_semantic_search_action.setChecked(False)
+
     def _populate_menus(self) -> None:
         """Populate the menu bar and wire shared actions to widgets."""
 
@@ -251,6 +257,10 @@ class MainHeaderWidget(QWidget):
         self._language_menu.addAction(self.language_zh)
         self._language_menu.addAction(self.language_en)
 
+        # Agent features
+        self._settings_menu.addSeparator()
+        self._settings_menu.addAction(self.toggle_semantic_search_action)
+
     def retranslate(self) -> None:
         """Refresh all menu and action texts for the current language."""
 
@@ -276,6 +286,7 @@ class MainHeaderWidget(QWidget):
         self.theme_dark.setText(tr("action.dark_mode"))
         self.language_zh.setText(tr("action.lang_zh"))
         self.language_en.setText(tr("action.lang_en"))
+        self.toggle_semantic_search_action.setText(tr("action.enable_semantic_search"))
 
         # Menu titles
         self._file_menu.setTitle(tr("menu.file"))

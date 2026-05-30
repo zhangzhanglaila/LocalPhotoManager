@@ -10,6 +10,7 @@ from typing import Callable, List, Optional
 from PySide6.QtCore import QObject, QRunnable, Signal
 
 from ..ports.embedding_port import EmbeddingPort
+from ..ports.vision_port import VisionPort
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ class EmbeddingWorker(QRunnable):
         asset_repository: object,  # AssetRepository
         library_root: Path,
         force_rebuild: bool = False,
+        vision_service: Optional[VisionPort] = None,
     ) -> None:
         """Initialize the embedding worker.
 
@@ -54,6 +56,8 @@ class EmbeddingWorker(QRunnable):
             Root directory of the library.
         force_rebuild : bool
             If True, regenerate all embeddings even if they exist.
+        vision_service : Optional[VisionPort]
+            Optional vision service for generating captions and tags.
         """
         super().__init__()
         self.setAutoDelete(True)
@@ -63,6 +67,7 @@ class EmbeddingWorker(QRunnable):
         self._asset_repository = asset_repository
         self._library_root = library_root
         self._force_rebuild = force_rebuild
+        self._vision_service = vision_service
         self._cancelled = False
 
         self.signals = EmbeddingWorkerSignals()
@@ -154,10 +159,31 @@ class EmbeddingWorker(QRunnable):
 
             # Store successful embeddings
             to_store = []
-            for (asset_id, _), embedding in zip(batch_paths, embeddings):
+            for (asset_id, image_path), embedding in zip(batch_paths, embeddings):
                 if embedding is not None:
                     to_store.append((asset_id, embedding, "clip-vit-base-patch32"))
                     processed += 1
+
+                    # Generate captions and tags if vision service is available
+                    if self._vision_service and self._vision_service.is_loaded():
+                        try:
+                            # Generate caption
+                            caption = self._vision_service.caption_image(image_path)
+                            if caption:
+                                self._embedding_repository.store_caption(
+                                    asset_id, caption.text, caption.language, caption.confidence
+                                )
+
+                            # Generate tags
+                            tags = self._vision_service.tag_image(image_path)
+                            if tags:
+                                tag_dicts = [
+                                    {"name": t.name, "category": t.category, "confidence": t.confidence}
+                                    for t in tags
+                                ]
+                                self._embedding_repository.store_tags(asset_id, tag_dicts)
+                        except Exception as e:
+                            _LOGGER.debug("Failed to generate AI metadata for %s: %s", asset_id, e)
                 else:
                     failed += 1
 

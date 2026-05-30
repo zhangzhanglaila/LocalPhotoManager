@@ -482,6 +482,29 @@ class InfoPanel(QWidget):
         exposure_layout.addWidget(self._exposure_label)
         content_layout.addWidget(exposure_container)
 
+        # AI-generated metadata section
+        self._ai_separator = QFrame(self)
+        self._ai_separator.setFrameShape(QFrame.HLine)
+        self._ai_separator.setFrameShadow(QFrame.Sunken)
+        content_layout.addWidget(self._ai_separator)
+
+        self._ai_container = QWidget(self)
+        ai_layout = QVBoxLayout(self._ai_container)
+        ai_layout.setContentsMargins(0, 0, 0, 0)
+        ai_layout.setSpacing(6)
+
+        self._caption_label = self._make_content_label()
+        self._caption_label.setWordWrap(True)
+        ai_layout.addWidget(self._caption_label)
+
+        self._tags_container = QWidget(self)
+        self._tags_layout = QHBoxLayout(self._tags_container)
+        self._tags_layout.setContentsMargins(0, 0, 0, 0)
+        self._tags_layout.setSpacing(4)
+        ai_layout.addWidget(self._tags_container)
+
+        content_layout.addWidget(self._ai_container)
+
         self._face_separator = QFrame(self)
         self._face_separator.setFrameShape(QFrame.HLine)
         self._face_separator.setFrameShadow(QFrame.Sunken)
@@ -615,6 +638,54 @@ class InfoPanel(QWidget):
         self._face_action_candidates = list(candidates)
         self._rebuild_face_strip()
 
+    def set_asset_ai_metadata(self, caption: Optional[str] = None, tags: Optional[list] = None) -> None:
+        """Set AI-generated metadata for the current asset.
+
+        Parameters
+        ----------
+        caption : Optional[str]
+            Generated caption text.
+        tags : Optional[list]
+            List of tag dictionaries with 'name' and 'confidence'.
+        """
+        # Update caption
+        if caption:
+            self._caption_label.setText(caption)
+            self._caption_label.setVisible(True)
+        else:
+            self._caption_label.clear()
+            self._caption_label.setVisible(False)
+
+        # Clear existing tags
+        while self._tags_layout.count() > 0:
+            item = self._tags_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        # Add new tags
+        if tags:
+            for tag in tags[:8]:  # Limit to 8 tags
+                tag_name = tag.get("name", "")
+                if not tag_name:
+                    continue
+                tag_label = QLabel(tag_name)
+                tag_label.setStyleSheet(
+                    "QLabel { background-color: palette(highlight); color: palette(highlighted-text); "
+                    "border-radius: 8px; padding: 2px 8px; font-size: 11px; }"
+                )
+                self._tags_layout.addWidget(tag_label)
+            self._tags_container.setVisible(True)
+        else:
+            self._tags_container.setVisible(False)
+
+        # Show/hide the AI section
+        has_ai_data = caption or tags
+        self._ai_separator.setVisible(has_ai_data)
+        self._ai_container.setVisible(has_ai_data)
+
+        self._refresh_or_schedule_panel_geometry()
+
     def clear(self) -> None:
         """Reset the panel to an empty state without hiding the window."""
 
@@ -647,6 +718,17 @@ class InfoPanel(QWidget):
         self._location_confirm_queued = False
         self._last_location_map_target = None
         self.set_asset_faces([])
+        # Clear AI metadata
+        self._caption_label.clear()
+        self._caption_label.setVisible(False)
+        while self._tags_layout.count() > 0:
+            item = self._tags_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._tags_container.setVisible(False)
+        self._ai_separator.setVisible(False)
+        self._ai_container.setVisible(False)
         self._refresh_or_schedule_panel_geometry()
 
     def current_rel(self) -> Optional[str]:

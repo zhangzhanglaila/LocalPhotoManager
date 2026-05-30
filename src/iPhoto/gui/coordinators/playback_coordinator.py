@@ -1080,6 +1080,60 @@ class PlaybackCoordinator(QObject):
                 Path(path_key),
                 is_video=bool(local_info.get("is_video")),
             )
+        # Refresh AI metadata (caption and tags)
+        self._refresh_info_panel_ai_metadata(presentation.asset_id if presentation is not None else None)
+
+    def _refresh_info_panel_ai_metadata(self, asset_id: str | None) -> None:
+        """Refresh AI-generated metadata (caption and tags) in the info panel."""
+        info_panel = getattr(self, "_info_panel", None)
+        if info_panel is None or asset_id is None:
+            return
+
+        # Check if semantic search is enabled
+        settings = getattr(self, "_context", None)
+        if settings is None:
+            return
+        semantic_search_enabled = settings.settings.get("agent.semantic_search_enabled", False)
+        if not semantic_search_enabled:
+            info_panel.set_asset_ai_metadata(caption=None, tags=None)
+            return
+
+        # Get the embedding repository
+        library_session = getattr(self, "_context", None)
+        if library_session is None:
+            return
+        embedding_repo = library_session.library_session.get_embedding_repository()
+        if embedding_repo is None:
+            return
+
+        # Fetch AI metadata in background
+        from PySide6.QtCore import QRunnable, Slot, QThreadPool
+        import logging
+
+        class AIMetadataWorker(QRunnable):
+            def __init__(self, repo, aid, callback):
+                super().__init__()
+                self.setAutoDelete(True)
+                self._repo = repo
+                self._asset_id = aid
+                self._callback = callback
+
+            @Slot()
+            def run(self):
+                try:
+                    caption = self._repo.get_caption(self._asset_id)
+                    tags = self._repo.get_tags(self._asset_id)
+                    self._callback(caption, tags)
+                except Exception as e:
+                    logging.getLogger(__name__).debug("Failed to fetch AI metadata: %s", e)
+                    self._callback(None, None)
+
+        def on_ai_metadata_ready(caption, tags):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: info_panel.set_asset_ai_metadata(caption, tags))
+
+        worker = AIMetadataWorker(embedding_repo, asset_id, on_ai_metadata_ready)
+        QThreadPool.globalInstance().start(worker)
 
     def _update_detail_map(self, info: dict) -> None:
         """Update the detail map panel with GPS coordinates from the current asset."""

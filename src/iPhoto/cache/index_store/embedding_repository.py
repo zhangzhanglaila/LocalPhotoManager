@@ -96,6 +96,8 @@ class EmbeddingRepository:
     def _init_db(self) -> None:
         """Initialize the database schema."""
         conn = self._get_conn()
+
+        # Embeddings table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS embeddings (
                 asset_id TEXT PRIMARY KEY,
@@ -109,6 +111,44 @@ class EmbeddingRepository:
             CREATE INDEX IF NOT EXISTS idx_embeddings_asset_id
             ON embeddings(asset_id)
         """)
+
+        # Captions table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS captions (
+                asset_id TEXT PRIMARY KEY,
+                caption TEXT NOT NULL,
+                language TEXT DEFAULT 'en',
+                confidence REAL DEFAULT 1.0,
+                model_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_captions_asset_id
+            ON captions(asset_id)
+        """)
+
+        # Tags table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_id TEXT NOT NULL,
+                tag_name TEXT NOT NULL,
+                category TEXT DEFAULT 'general',
+                confidence REAL DEFAULT 1.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(asset_id, tag_name)
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tags_asset_id
+            ON tags(asset_id)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tags_tag_name
+            ON tags(tag_name)
+        """)
+
         conn.commit()
 
     def store_embedding(
@@ -348,6 +388,227 @@ class EmbeddingRepository:
             existing.update(row[0] for row in cursor)
 
         return [aid for aid in asset_ids if aid not in existing]
+
+    # Caption methods
+
+    def store_caption(
+        self,
+        asset_id: str,
+        caption: str,
+        language: str = "en",
+        confidence: float = 1.0,
+        model_name: Optional[str] = None,
+    ) -> None:
+        """Store a caption for an asset.
+
+        Parameters
+        ----------
+        asset_id : str
+            The asset identifier.
+        caption : str
+            The caption text.
+        language : str
+            Language of the caption.
+        confidence : float
+            Confidence score.
+        model_name : Optional[str]
+            Name of the model used.
+        """
+        conn = self._get_conn()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO captions (asset_id, caption, language, confidence, model_name)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (asset_id, caption, language, confidence, model_name),
+        )
+        conn.commit()
+
+    def get_caption(self, asset_id: str) -> Optional[str]:
+        """Get the caption for an asset.
+
+        Parameters
+        ----------
+        asset_id : str
+            The asset identifier.
+
+        Returns
+        -------
+        Optional[str]
+            The caption text, or None if not found.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT caption FROM captions WHERE asset_id = ?",
+            (asset_id,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def get_captions_batch(self, asset_ids: List[str]) -> dict[str, str]:
+        """Get captions for multiple assets.
+
+        Parameters
+        ----------
+        asset_ids : List[str]
+            List of asset identifiers.
+
+        Returns
+        -------
+        dict[str, str]
+            Dictionary mapping asset_id to caption.
+        """
+        if not asset_ids:
+            return {}
+
+        conn = self._get_conn()
+        result = {}
+
+        chunk_size = 900
+        for i in range(0, len(asset_ids), chunk_size):
+            chunk = asset_ids[i:i + chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            cursor = conn.execute(
+                f"SELECT asset_id, caption FROM captions WHERE asset_id IN ({placeholders})",
+                chunk,
+            )
+            result.update(dict(cursor))
+
+        return result
+
+    # Tag methods
+
+    def store_tags(
+        self,
+        asset_id: str,
+        tags: List[dict],
+    ) -> None:
+        """Store tags for an asset.
+
+        Parameters
+        ----------
+        asset_id : str
+            The asset identifier.
+        tags : List[dict]
+            List of tag dictionaries with 'name', 'category', and 'confidence'.
+        """
+        conn = self._get_conn()
+
+        # Delete existing tags for this asset
+        conn.execute("DELETE FROM tags WHERE asset_id = ?", (asset_id,))
+
+        # Insert new tags
+        for tag in tags:
+            conn.execute(
+                """
+                INSERT INTO tags (asset_id, tag_name, category, confidence)
+                VALUES (?, ?, ?, ?)
+                """,
+                (asset_id, tag["name"], tag.get("category", "general"), tag.get("confidence", 1.0)),
+            )
+        conn.commit()
+
+    def get_tags(self, asset_id: str) -> List[dict]:
+        """Get tags for an asset.
+
+        Parameters
+        ----------
+        asset_id : str
+            The asset identifier.
+
+        Returns
+        -------
+        List[dict]
+            List of tag dictionaries.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT tag_name, category, confidence FROM tags WHERE asset_id = ?",
+            (asset_id,),
+        )
+        return [
+            {"name": row[0], "category": row[1], "confidence": row[2]}
+            for row in cursor
+        ]
+
+    def get_tags_batch(self, asset_ids: List[str]) -> dict[str, List[dict]]:
+        """Get tags for multiple assets.
+
+        Parameters
+        ----------
+        asset_ids : List[str]
+            List of asset identifiers.
+
+        Returns
+        -------
+        dict[str, List[dict]]
+            Dictionary mapping asset_id to list of tags.
+        """
+        if not asset_ids:
+            return {}
+
+        conn = self._get_conn()
+        result: dict[str, List[dict]] = {aid: [] for aid in asset_ids}
+
+        chunk_size = 900
+        for i in range(0, len(asset_ids), chunk_size):
+            chunk = asset_ids[i:i + chunk_size]
+            placeholders = ",".join("?" * len(chunk))
+            cursor = conn.execute(
+                f"SELECT asset_id, tag_name, category, confidence FROM tags WHERE asset_id IN ({placeholders})",
+                chunk,
+            )
+            for row in cursor:
+                asset_id, tag_name, category, confidence = row
+                if asset_id not in result:
+                    result[asset_id] = []
+                result[asset_id].append({
+                    "name": tag_name,
+                    "category": category,
+                    "confidence": confidence,
+                })
+
+        return result
+
+    def search_by_tag(self, tag_name: str) -> List[str]:
+        """Search for assets by tag name.
+
+        Parameters
+        ----------
+        tag_name : str
+            The tag name to search for.
+
+        Returns
+        -------
+        List[str]
+            List of asset IDs with the tag.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT DISTINCT asset_id FROM tags WHERE tag_name = ?",
+            (tag_name,),
+        )
+        return [row[0] for row in cursor]
+
+    def get_all_tags(self) -> List[dict]:
+        """Get all unique tags with their counts.
+
+        Returns
+        -------
+        List[dict]
+            List of dictionaries with 'name', 'category', and 'count'.
+        """
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            SELECT tag_name, category, COUNT(*) as count
+            FROM tags
+            GROUP BY tag_name, category
+            ORDER BY count DESC
+        """)
+        return [
+            {"name": row[0], "category": row[1], "count": row[2]}
+            for row in cursor
+        ]
 
     def close(self) -> None:
         """Close the database connection."""
