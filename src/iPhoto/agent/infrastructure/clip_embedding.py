@@ -84,12 +84,14 @@ class CLIPEmbeddingService:
             # Process image
             inputs = self._processor(images=image, return_tensors="pt")
 
-            # Generate embedding
+            # Generate embedding using vision model
             with torch.no_grad():
-                outputs = self._model.get_image_features(**inputs)
+                outputs = self._model.vision_model(**inputs)
+                image_embeds = outputs.pooler_output
+                image_embeds = self._model.visual_projection(image_embeds)
 
             # Normalize
-            embedding = outputs[0].numpy()
+            embedding = image_embeds[0].numpy()
             embedding = embedding / np.linalg.norm(embedding)
 
             return embedding.astype(np.float32)
@@ -119,12 +121,14 @@ class CLIPEmbeddingService:
             # Process text
             inputs = self._tokenizer(text, return_tensors="pt", padding=True, truncation=True)
 
-            # Generate embedding
+            # Generate embedding using text model
             with torch.no_grad():
-                outputs = self._model.get_text_features(**inputs)
+                outputs = self._model.text_model(**inputs)
+                text_embeds = outputs.pooler_output
+                text_embeds = self._model.text_projection(text_embeds)
 
             # Normalize
-            embedding = outputs[0].numpy()
+            embedding = text_embeds[0].numpy()
             embedding = embedding / np.linalg.norm(embedding)
 
             return embedding.astype(np.float32)
