@@ -176,15 +176,17 @@ class LibrarySession:
             from ..agent.infrastructure.clip_downloader import get_model_path, is_model_available, get_model_dir
 
             model_dir = get_model_dir(self.library_root)
+            logger.info(f"Checking CLIP model at: {model_dir}")
 
             # Check if model exists
             if not is_model_available(model_dir):
-                logger.info("CLIP model not found, showing download dialog")
+                logger.info(f"CLIP model not found at {model_dir}, showing download dialog")
                 self._show_model_download_dialog(model_dir)
                 return None
 
             # Load model
             model_path = get_model_path(self.library_root)
+            logger.info(f"Loading CLIP model from: {model_path}")
             self._embedding_service = CLIPEmbeddingService(model_dir=model_path)
             return self._embedding_service
         except Exception as e:
