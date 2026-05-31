@@ -1121,11 +1121,51 @@ class MainCoordinator(QObject):
             finished = Signal(object, str)  # results or None, error
             progress = Signal(str, int, int)  # message, current, total
 
+            # Chinese to English translation map
+            _ZH_EN_MAP = {
+                "树": "tree", "花": "flower", "山": "mountain", "水": "water",
+                "海": "sea ocean", "河": "river", "湖": "lake", "天空": "sky",
+                "日落": "sunset", "日出": "sunrise", "月亮": "moon", "星星": "star",
+                "狗": "dog", "猫": "cat", "鸟": "bird", "鱼": "fish",
+                "车": "car", "飞机": "airplane", "船": "boat",
+                "人": "person people", "孩子": "child children", "宝宝": "baby",
+                "美食": "food", "蛋糕": "cake", "咖啡": "coffee",
+                "建筑": "building", "房子": "house", "桥": "bridge",
+                "路": "road", "公园": "park", "花园": "garden",
+                "雪": "snow", "雨": "rain", "云": "cloud",
+                "红色": "red", "蓝色": "blue", "绿色": "green", "黄色": "yellow",
+                "海边": "beach", "沙滩": "sand beach",
+                "婚礼": "wedding", "生日": "birthday", "聚会": "party",
+                "旅行": "travel", "风景": "landscape scenery",
+                "夜景": "night cityscape", "城市": "city",
+                "乡村": "countryside village",
+            }
+
             def __init__(self, query_text, model_path, lib_root):
                 super().__init__()
                 self._query = query_text
                 self._model_dir = model_path
                 self._library_root = lib_root
+
+            def _translate_query(self, query: str) -> str:
+                """Translate Chinese query to English for CLIP."""
+                import re
+                query_lower = query.lower().strip()
+
+                # Replace Chinese words with English
+                for zh, en in self._ZH_EN_MAP.items():
+                    if zh in query_lower:
+                        query_lower = query_lower.replace(zh, en)
+
+                # If still has Chinese characters, try to extract English words
+                if re.search(r'[一-鿿]', query_lower):
+                    english_words = re.findall(r'[a-zA-Z]+', query)
+                    if english_words:
+                        return ' '.join(english_words)
+                    # Fallback: return original
+                    return query
+
+                return query_lower
 
             def run(self):
                 try:
@@ -1154,8 +1194,9 @@ class MainCoordinator(QObject):
 
                     self.progress.emit(f"已加载 {len(all_embeddings)} 个索引，正在搜索...", 2, 3)
 
-                    # 3. Search
-                    query_embedding = service.encode_text(self._query)
+                    # 3. Translate query and search
+                    translated_query = self._translate_query(self._query)
+                    query_embedding = service.encode_text(translated_query)
                     if query_embedding is None:
                         self.finished.emit(None, "搜索编码失败")
                         return
@@ -1229,18 +1270,13 @@ class MainCoordinator(QObject):
         """Update search progress in the UI."""
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
-            if total > 0:
-                ui.gallery_page.show_loading_message(
-                    message,
-                    f"步骤 {current}/{total}",
-                    show_progress=False
-                )
+            page = ui.gallery_page
+            if "模型" in message:
+                page.show_model_loading()
+            elif "索引" in message:
+                page.show_model_loading()
             else:
-                ui.gallery_page.show_loading_message(
-                    message,
-                    "请稍候...",
-                    show_progress=False
-                )
+                page.show_search_loading(message)
 
     def _display_search_results(self, results: list, query: str = "") -> None:
         """Display search results in the grid view."""
