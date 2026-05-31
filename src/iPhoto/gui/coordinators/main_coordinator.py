@@ -1169,48 +1169,28 @@ class MainCoordinator(QObject):
         """Show loading state in the grid view area."""
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
-            gallery_page = ui.gallery_page
-            if hasattr(gallery_page, 'show_loading_message'):
-                gallery_page.show_loading_message(
-                    f"正在搜索 \"{query}\"...",
-                    sub_message or "正在使用 AI 搜索照片...",
-                    show_continue=show_continue
-                )
+            ui.gallery_page.show_search_loading(query)
 
     def _display_search_results(self, results: list, query: str = "") -> None:
-        """Display search results in the grid view.
-
-        Parameters
-        ----------
-        results : list
-            List of SearchResult objects.
-        query : str
-            The original search query.
-        """
-        # Hide loading message
+        """Display search results in the grid view."""
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
-            ui.gallery_page.hide_loading_message()
+            ui.gallery_page.hide_loading()
 
         if not results:
             self._status_bar.show_message(f"未找到与 '{query}' 相关的照片")
             return
 
-        # Get asset IDs from results
         asset_ids = [r.asset_id for r in results]
-
-        # Update the gallery to show search results
         self._gallery_vm.show_search_results(asset_ids)
-
         self._status_bar.show_message(f"找到 {len(results)} 张与 '{query}' 相关的照片")
 
     def _display_search_error(self, error: str) -> None:
         """Display search error in the grid view."""
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
-            ui.gallery_page.hide_loading_message()
-
-        self._status_bar.show_message(f"搜索失败: {error}")
+            ui.gallery_page.show_error("搜索失败", error)
+        self._status_bar.show_message(f"搜索失败: {error}", 10000)
 
     def _on_search_back(self) -> None:
         """Handle back button click during search."""
@@ -1401,71 +1381,40 @@ class MainCoordinator(QObject):
         ui = self._window.ui
         self._logger.info(f"Embedding status: {status_type} - {message}")
 
+        if not hasattr(ui, 'gallery_page'):
+            return
+
+        page = ui.gallery_page
+
         if status_type == "loading_model":
-            # Phase 1: Model loading (no progress bar, just spinner + time)
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_model_loading()
+            page.show_model_loading()
 
         elif status_type == "model_loading":
-            # Model files found, loading into memory
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_loading_message(
-                    "正在加载模型到内存...",
-                    message,
-                    show_progress=False,
-                    show_continue=True
-                )
+            page.show_model_loading()
 
         elif status_type == "model_loaded":
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_loading_message(
-                    "AI 模型加载完成 ✓",
-                    message,
-                    show_progress=False
-                )
+            page.show_model_loading()
 
         elif status_type == "counting":
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_loading_message(
-                    "正在统计照片...",
-                    message,
-                    show_progress=False
-                )
+            page.show_model_loading()
 
         elif status_type == "starting":
-            # Phase 2: Embedding generation (with progress bar)
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_loading_message(
-                    "开始生成索引...",
-                    f"共 {current} 张照片需要处理",
-                    show_progress=True,
-                    show_continue=True
-                )
-                ui.gallery_page.update_progress(0, current, "开始生成索引...")
+            page.show_indexing_progress(0, current)
 
         elif status_type == "progress":
-            # Update progress bar
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_embedding_progress(current, total)
+            page.show_indexing_progress(current, total)
             progress_pct = int(current / total * 100) if total > 0 else 0
             self._status_bar.show_message(f"AI 索引生成中: {current}/{total} ({progress_pct}%)")
 
         elif status_type == "done":
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.hide_loading_message()
+            page.show_done(current)
             if current > 0:
                 self._status_bar.show_message(f"AI 索引生成完成！共处理 {current} 张照片", 5000)
             else:
                 self._status_bar.show_message("AI 索引已是最新", 3000)
 
         elif status_type == "error":
-            if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_loading_message(
-                    "❌ 初始化失败",
-                    message,
-                    show_progress=False,
-                    show_continue=True
-                )
+            page.show_error("初始化失败", message)
             self._status_bar.show_message(f"AI 初始化失败: {message}", 10000)
 
     def _handle_find_duplicates(self) -> None:
