@@ -1316,12 +1316,32 @@ class MainCoordinator(QObject):
                 try:
                     # Step 1: Load CLIP model
                     self._callback("loading_model", 0, 0, "正在加载 AI 模型（约350MB）...")
-                    embedding_service = self._session.get_embedding_service()
-                    if embedding_service is None or not embedding_service.is_loaded():
-                        self._callback("error", 0, 0, "AI 模型加载失败，请检查模型文件")
+
+                    # Check if model files exist first
+                    from iPhoto.agent.infrastructure.clip_downloader import get_model_path, is_model_available, get_model_dir
+                    model_dir = get_model_dir(self._session.library_root)
+
+                    if not is_model_available(model_dir):
+                        self._callback("error", 0, 0, "模型文件不存在，请先下载模型")
                         return
 
-                    self._callback("model_loaded", 0, 0, "AI 模型加载完成")
+                    self._callback("model_loading", 0, 0, "模型文件已找到，正在加载...")
+
+                    # Load model with timeout tracking
+                    import time
+                    start_time = time.time()
+                    embedding_service = self._session.get_embedding_service()
+                    load_time = int(time.time() - start_time)
+
+                    if embedding_service is None:
+                        self._callback("error", 0, 0, f"AI 模型加载失败（耗时 {load_time} 秒）")
+                        return
+
+                    if not embedding_service.is_loaded():
+                        self._callback("error", 0, 0, f"AI 模型加载失败（耗时 {load_time} 秒）")
+                        return
+
+                    self._callback("model_loaded", 0, 0, f"AI 模型加载完成（耗时 {load_time} 秒）")
 
                     # Step 2: Get embedding repository
                     embedding_repo = self._session.get_embedding_repository()
@@ -1364,7 +1384,10 @@ class MainCoordinator(QObject):
                     QThreadPool.globalInstance().start(worker)
 
                 except Exception as e:
-                    self._callback("error", 0, 0, str(e))
+                    import traceback
+                    error_detail = traceback.format_exc()
+                    logging.getLogger(__name__).error("Embedding init failed: %s\n%s", e, error_detail)
+                    self._callback("error", 0, 0, f"{str(e)[:100]}")
 
         def on_status(status_type, current, total, message):
             from PySide6.QtCore import QTimer
@@ -1376,17 +1399,28 @@ class MainCoordinator(QObject):
     def _handle_embedding_status(self, status_type: str, current: int, total: int, message: str) -> None:
         """Handle embedding generation status updates."""
         ui = self._window.ui
+        self._logger.info(f"Embedding status: {status_type} - {message}")
 
         if status_type == "loading_model":
             # Phase 1: Model loading (no progress bar, just spinner + time)
             if hasattr(ui, 'gallery_page'):
                 ui.gallery_page.show_model_loading()
 
+        elif status_type == "model_loading":
+            # Model files found, loading into memory
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.show_loading_message(
+                    "正在加载模型到内存...",
+                    message,
+                    show_progress=False,
+                    show_continue=True
+                )
+
         elif status_type == "model_loaded":
             if hasattr(ui, 'gallery_page'):
                 ui.gallery_page.show_loading_message(
                     "AI 模型加载完成 ✓",
-                    "正在准备生成索引...",
+                    message,
                     show_progress=False
                 )
 
@@ -1426,8 +1460,13 @@ class MainCoordinator(QObject):
 
         elif status_type == "error":
             if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.hide_loading_message()
-            self._status_bar.show_message(f"AI 索引生成失败: {message}", 5000)
+                ui.gallery_page.show_loading_message(
+                    "❌ 初始化失败",
+                    message,
+                    show_progress=False,
+                    show_continue=True
+                )
+            self._status_bar.show_message(f"AI 初始化失败: {message}", 10000)
 
     def _handle_find_duplicates(self) -> None:
         """Handle find duplicates action."""
