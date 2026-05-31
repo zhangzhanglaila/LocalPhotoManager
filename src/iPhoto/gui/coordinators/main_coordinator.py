@@ -602,6 +602,10 @@ class MainCoordinator(QObject):
         if hasattr(ui, "gallery_page") and hasattr(ui.gallery_page, "backRequested"):
             ui.gallery_page.backRequested.connect(self._gallery_vm.return_from_cluster_gallery)
 
+        # Search back button
+        if hasattr(ui, "gallery_page") and hasattr(ui.gallery_page, "searchBackRequested"):
+            ui.gallery_page.searchBackRequested.connect(self._on_search_back)
+
         # Dashboard Click
         if hasattr(ui, "albums_dashboard_page"):
             ui.albums_dashboard_page.albumSelected.connect(self.open_album_from_path)
@@ -1190,6 +1194,12 @@ class MainCoordinator(QObject):
             ui.gallery_page.hide_loading_message()
 
         self._status_bar.show_message(f"搜索失败: {error}")
+
+    def _on_search_back(self) -> None:
+        """Handle back button click during search."""
+        # Return to normal gallery view
+        self._gallery_vm.open_all_photos()
+        self._status_bar.show_message("")
 
     def _handle_semantic_search_toggle(self, enabled: bool) -> None:
         """Handle semantic search toggle.
