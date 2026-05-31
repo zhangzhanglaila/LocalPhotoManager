@@ -124,15 +124,26 @@ def _download_with_modelscope(
     if progress_callback:
         progress_callback(10, 100, "正在从 ModelScope 下载...")
 
-    snapshot_download(
-        model_id="AI-ModelScope/clip-vit-base-patch32",
-        cache_dir=str(model_dir),
-    )
+    # Try different model IDs on ModelScope
+    model_ids = [
+        "AI-ModelScope/clip-vit-base-patch32",
+        "damo/clip_vit-base-patch32",
+    ]
 
-    if progress_callback:
-        progress_callback(100, 100, "下载完成！")
+    for model_id in model_ids:
+        try:
+            snapshot_download(
+                model_id=model_id,
+                cache_dir=str(model_dir),
+            )
+            if progress_callback:
+                progress_callback(100, 100, "下载完成！")
+            return True
+        except Exception as e:
+            _LOGGER.warning("ModelScope download failed for %s: %s", model_id, e)
+            continue
 
-    return True
+    return False
 
 
 def get_download_instructions(model_dir: Path) -> str:
@@ -141,16 +152,42 @@ def get_download_instructions(model_dir: Path) -> str:
 
     return f"""手动下载 CLIP 模型：
 
-方法1：使用 HuggingFace 镜像（推荐）
+【方法1】HuggingFace 镜像（推荐）
 ========================================
+1. 打开 CMD 或 PowerShell
+2. 执行以下命令：
+
 pip install huggingface_hub
+
 set HF_ENDPOINT=https://hf-mirror.com
+
 python -c "from huggingface_hub import snapshot_download; snapshot_download('openai/clip-vit-base-patch32', local_dir=r'{model_path}')"
 
-方法2：使用 ModelScope（国内镜像）
-========================================
-pip install modelscope
-python -c "from modelscope import snapshot_download; snapshot_download('AI-ModelScope/clip-vit-base-patch32', cache_dir=r'{model_dir}')"
+如果还是失败，尝试设置代理：
+set HTTP_PROXY=http://127.0.0.1:7890
+set HTTPS_PROXY=http://127.0.0.1:7890
 
+
+【方法2】手动下载文件
+========================================
+1. 浏览器打开：https://hf-mirror.com/openai/clip-vit-base-patch32
+2. 下载以下文件：
+   - config.json
+   - model.safetensors
+   - preprocessor_config.json
+   - tokenizer.json
+   - vocab.json
+   - merges.txt
+   - special_tokens_map.json
+   - tokenizer_config.json
+3. 全部放到：{model_path}
+
+
+【方法3】使用 Git 克隆
+========================================
+git clone https://hf-mirror.com/openai/clip-vit-base-patch32 "{model_path}"
+
+
+下载位置：{model_path}
 下载完成后重启应用即可使用语义搜索功能。
 """
