@@ -79,21 +79,23 @@ class ThumbnailCacheService(QObject):
 
     thumbnailReady = Signal(Path)
 
-    def __init__(self, disk_cache_path: Path, memory_limit_mb: int = 500):
+    def __init__(self, disk_cache_path: Path, memory_limit_mb: int = 300):
         super().__init__()
         self._disk_cache_path = disk_cache_path
         self._disk_cache_path.mkdir(parents=True, exist_ok=True)
         self._generator = PillowThumbnailGenerator()
         self._edit_service: EditServicePort | None = None
 
-        # Simple in-memory cache: Dict[Path, QPixmap]
-        # In a real app, use an LRU cache with size tracking.
+        # In-memory cache with size limit
         self._memory_cache: Dict[str, QPixmap] = {}
-        self._max_memory_items = 1000  # Rough approximation
+        self._max_memory_items = 500  # Reduced from 1000 to save memory
 
         self._pending_tasks: Set[str] = set()
         self._thread_pool = QThreadPool.globalInstance()
         self._is_shutting_down = False
+
+        # Throttling: limit concurrent tasks
+        self._max_concurrent_tasks = 10
 
     def shutdown(self):
         """Prevents new tasks from being submitted and clears pending logic."""
@@ -124,14 +126,18 @@ class ThumbnailCacheService(QObject):
         if key in self._memory_cache:
             return self._memory_cache[key]
 
-        # 2. Disk Check — async load to avoid blocking the main thread
+        # 2. Throttle: don't queue too many tasks
+        if len(self._pending_tasks) >= self._max_concurrent_tasks:
+            return None
+
+        # 3. Disk Check — async load to avoid blocking the main thread
         if key not in self._pending_tasks:
             disk_file = self._disk_cache_path / f"{key}.jpg"
             if disk_file.exists():
                 self._pending_tasks.add(key)
                 self._start_disk_load(disk_file, path, size)
             else:
-                # 3. Trigger Async Generation if not pending
+                # 4. Trigger Async Generation if not pending
                 self._pending_tasks.add(key)
                 self._start_generation(path, size)
 

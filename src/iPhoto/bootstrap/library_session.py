@@ -289,7 +289,7 @@ class LibrarySession:
 
     def _on_download_finished(self, success: bool, progress, model_dir: Path = None) -> None:
         """Handle download completion."""
-        from PySide6.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QTextEdit, QPushButton, QApplication
 
         if success:
             progress.setLabelText("下载完成！")
@@ -297,35 +297,61 @@ class LibrarySession:
             QMessageBox.information(None, "下载完成", "CLIP 模型下载完成！\n\n请重新启动应用以使用语义搜索。")
         else:
             progress.setLabelText("下载失败")
-            # Show detailed error and manual instructions
+
             model_path = model_dir / "clip-vit-base-patch32" if model_dir else "项目目录/extension/models/clip-vit-base-patch32"
 
-            error_msg = (
-                "CLIP 模型下载失败。\n\n"
+            # Create a dialog with selectable text
+            dialog = QDialog()
+            dialog.setWindowTitle("下载失败")
+            dialog.setMinimumSize(650, 500)
+
+            layout = QVBoxLayout(dialog)
+
+            # Title
+            title = QLabel("CLIP 模型下载失败")
+            title.setStyleSheet("font-size: 14px; font-weight: bold;")
+            layout.addWidget(title)
+
+            # Error message with selectable text
+            error_text = QTextEdit()
+            error_text.setReadOnly(True)
+            error_text.setStyleSheet("font-family: Consolas, monospace; font-size: 12px;")
+            error_text.setText(
                 "可能原因：\n"
                 "1. 网络连接问题\n"
                 "2. HuggingFace 被屏蔽（需要VPN）\n"
                 "3. 磁盘空间不足\n\n"
-                "手动下载方法：\n\n"
-                "方法1：使用命令行（推荐）\n"
+                "========================================\n"
+                "手动下载方法（复制以下命令到CMD执行）：\n"
+                "========================================\n\n"
+                "【方法1】HuggingFace 镜像（推荐）\n"
                 "----------------------------------------\n"
-                "pip install huggingface_hub\n"
-                f"set HF_ENDPOINT=https://hf-mirror.com\n"
-                f"python -c \"from huggingface_hub import snapshot_download; snapshot_download('openai/clip-vit-base-patch32', local_dir=r'{model_path}')\"\n\n"
-                "方法2：使用 ModelScope\n"
+                "pip install huggingface_hub\n\n"
+                "set HF_ENDPOINT=https://hf-mirror.com\n\n"
+                f"python -c \"from huggingface_hub import snapshot_download; snapshot_download('openai/clip-vit-base-patch32', local_dir=r'{model_path}')\"\n\n\n"
+                "【方法2】ModelScope（国内镜像）\n"
                 "----------------------------------------\n"
-                "pip install modelscope\n"
-                f"python -c \"from modelscope import snapshot_download; snapshot_download('AI-ModelScope/clip-vit-base-patch32', cache_dir=r'{model_dir}')\"\n\n"
+                "pip install modelscope\n\n"
+                f"python -c \"from modelscope import snapshot_download; snapshot_download('AI-ModelScope/clip-vit-base-patch32', cache_dir=r'{model_dir}')\"\n\n\n"
                 f"下载位置：{model_path}\n\n"
                 "下载完成后重启应用即可。"
             )
+            layout.addWidget(error_text)
 
-            msg = QMessageBox()
-            msg.setWindowTitle("下载失败")
-            msg.setText("CLIP 模型下载失败")
-            msg.setInformativeText(error_msg)
-            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg.exec()
+            # Buttons
+            btn_layout = QHBoxLayout()
+
+            copy_btn = QPushButton("复制全部内容")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(error_text.toPlainText()))
+            btn_layout.addWidget(copy_btn)
+
+            close_btn = QPushButton("关闭")
+            close_btn.clicked.connect(dialog.close)
+            btn_layout.addWidget(close_btn)
+
+            layout.addLayout(btn_layout)
+
+            dialog.exec()
 
         progress.close()
 
