@@ -15,7 +15,7 @@ _MODEL_ID = "openai/clip-vit-base-patch32"
 
 def get_model_dir(library_root: Path) -> Path:
     """Get the model directory for CLIP."""
-    return library_root.parent / "extension" / "models"
+    return library_root / "extension" / "models"
 
 
 def get_model_path(library_root: Path) -> Path:
