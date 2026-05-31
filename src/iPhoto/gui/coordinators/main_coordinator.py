@@ -1119,6 +1119,7 @@ class MainCoordinator(QObject):
 
         class SearchThread(QThread):
             finished = Signal(object, str)  # results or None, error
+            progress = Signal(str, int, int)  # message, current, total
 
             def __init__(self, query_text, model_path, lib_root):
                 super().__init__()
@@ -1130,14 +1131,18 @@ class MainCoordinator(QObject):
                 try:
                     from iPhoto.agent.infrastructure.clip_embedding import CLIPEmbeddingService
                     from iPhoto.cache.index_store.embedding_repository import get_embedding_repository
+                    import time
 
                     # 1. Load model
+                    self.progress.emit("正在加载 AI 模型...", 0, 0)
                     service = CLIPEmbeddingService(model_dir=self._model_dir)
                     service._ensure_loaded()
 
                     if not service.is_loaded():
                         self.finished.emit(None, "AI 模型加载失败")
                         return
+
+                    self.progress.emit("AI 模型加载完成，正在加载索引...", 1, 3)
 
                     # 2. Load embeddings
                     embedding_repo = get_embedding_repository(self._library_root)
@@ -1147,6 +1152,8 @@ class MainCoordinator(QObject):
                         self.finished.emit(None, "没有找到照片索引，请先生成索引")
                         return
 
+                    self.progress.emit(f"已加载 {len(all_embeddings)} 个索引，正在搜索...", 2, 3)
+
                     # 3. Search
                     query_embedding = service.encode_text(self._query)
                     if query_embedding is None:
@@ -1154,7 +1161,7 @@ class MainCoordinator(QObject):
                         return
 
                     results = []
-                    for item in all_embeddings:
+                    for i, item in enumerate(all_embeddings):
                         similarity = service.compute_similarity(query_embedding, item["embedding"])
                         if similarity > 0.2:
                             results.append({
@@ -1180,8 +1187,13 @@ class MainCoordinator(QObject):
             else:
                 QTimer.singleShot(0, lambda: self._display_search_results_raw([], query))
 
+        def on_progress(message, current, total):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._update_search_progress(message, current, total))
+
         self._search_thread = SearchThread(query, model_dir, library_root)
         self._search_thread.finished.connect(on_finished)
+        self._search_thread.progress.connect(on_progress)
         self._search_thread.start()
 
     def _display_search_results_raw(self, results: list, query: str) -> None:
@@ -1212,6 +1224,23 @@ class MainCoordinator(QObject):
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
             ui.gallery_page.show_search_loading(query)
+
+    def _update_search_progress(self, message: str, current: int, total: int) -> None:
+        """Update search progress in the UI."""
+        ui = self._window.ui
+        if hasattr(ui, 'gallery_page'):
+            if total > 0:
+                ui.gallery_page.show_loading_message(
+                    message,
+                    f"步骤 {current}/{total}",
+                    show_progress=False
+                )
+            else:
+                ui.gallery_page.show_loading_message(
+                    message,
+                    "请稍候...",
+                    show_progress=False
+                )
 
     def _display_search_results(self, results: list, query: str = "") -> None:
         """Display search results in the grid view."""
