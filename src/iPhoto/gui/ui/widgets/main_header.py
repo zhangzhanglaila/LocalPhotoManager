@@ -324,16 +324,29 @@ class MainHeaderWidget(QWidget):
         self.smart_album_time_action.setText(tr("action.smart_album_time"))
         self.smart_album_theme_action.setText(tr("action.smart_album_theme"))
 
-        # Menu titles
-        self._file_menu.setTitle(tr("menu.file"))
-        self._view_menu.setTitle(tr("menu.view"))
-        self._settings_menu.setTitle(tr("menu.settings"))
-        self._appearance_menu.setTitle(tr("menu.appearance"))
-        self._export_dest_menu.setTitle(tr("menu.export_destination"))
-        self._export_fmt_menu.setTitle(tr("menu.export_format"))
-        self._wheel_menu.setTitle(tr("menu.wheel_action"))
-        self._share_menu.setTitle(tr("menu.share_action"))
-        self._language_menu.setTitle(tr("menu.language"))
+        # Menu titles (with safety checks for deleted objects)
+        try:
+            if hasattr(self, '_file_menu') and self._file_menu is not None:
+                self._file_menu.setTitle(tr("menu.file"))
+            if hasattr(self, '_view_menu') and self._view_menu is not None:
+                self._view_menu.setTitle(tr("menu.view"))
+            if hasattr(self, '_settings_menu') and self._settings_menu is not None:
+                self._settings_menu.setTitle(tr("menu.settings"))
+            if hasattr(self, '_appearance_menu') and self._appearance_menu is not None:
+                self._appearance_menu.setTitle(tr("menu.appearance"))
+            if hasattr(self, '_export_dest_menu') and self._export_dest_menu is not None:
+                self._export_dest_menu.setTitle(tr("menu.export_destination"))
+            if hasattr(self, '_export_fmt_menu') and self._export_fmt_menu is not None:
+                self._export_fmt_menu.setTitle(tr("menu.export_format"))
+            if hasattr(self, '_wheel_menu') and self._wheel_menu is not None:
+                self._wheel_menu.setTitle(tr("menu.wheel_action"))
+            if hasattr(self, '_share_menu') and self._share_menu is not None:
+                self._share_menu.setTitle(tr("menu.share_action"))
+            if hasattr(self, '_language_menu') and self._language_menu is not None:
+                self._language_menu.setTitle(tr("menu.language"))
+        except RuntimeError:
+            # Menu objects may have been deleted
+            pass
 
 
 __all__ = ["MainHeaderWidget"]
