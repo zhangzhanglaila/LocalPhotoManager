@@ -27,7 +27,10 @@ def is_model_available(model_dir: Path) -> bool:
     """Check if CLIP model is available."""
     model_path = model_dir / "clip-vit-base-patch32"
     config_file = model_path / "config.json"
-    return config_file.exists()
+    # Check for model weights (pytorch_model.bin or model.safetensors)
+    model_weights = model_path / "pytorch_model.bin"
+    model_safetensors = model_path / "model.safetensors"
+    return config_file.exists() and (model_weights.exists() or model_safetensors.exists())
 
 
 def download_model(
