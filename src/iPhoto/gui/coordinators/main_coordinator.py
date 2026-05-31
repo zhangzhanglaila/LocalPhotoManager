@@ -1291,12 +1291,13 @@ class MainCoordinator(QObject):
         if library_session is None:
             return
 
-        # Show progress in the gallery page
+        # Show progress in the gallery page with progress bar
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
             ui.gallery_page.show_loading_message(
                 "正在初始化 AI 搜索...",
-                "首次使用需要为照片生成索引，之后搜索会很快"
+                "首次使用需要为照片生成索引，之后搜索会很快",
+                show_progress=True
             )
 
         # Run model loading and embedding generation in background
@@ -1374,15 +1375,17 @@ class MainCoordinator(QObject):
             if hasattr(ui, 'gallery_page'):
                 ui.gallery_page.show_loading_message(
                     "正在加载 AI 模型...",
-                    "首次使用需要下载和加载 AI 模型，请稍后"
+                    "首次使用需要下载和加载 AI 模型，请稍后",
+                    show_progress=False
                 )
 
         elif status_type == "progress":
             progress_pct = int(current / total * 100) if total > 0 else 0
             if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_loading_message(
-                    f"正在为照片生成索引... {progress_pct}%",
-                    f"已处理 {current}/{total} 张照片，之后搜索会很快"
+                ui.gallery_page.update_progress(
+                    current,
+                    total,
+                    f"正在为照片生成索引... {progress_pct}%"
                 )
             self._status_bar.show_message(f"AI 索引生成中: {current}/{total} ({progress_pct}%)")
 

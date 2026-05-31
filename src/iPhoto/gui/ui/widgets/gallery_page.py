@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QStackedWidget, QToolButton, QVBoxLayout, QWidget
 
 from ..icon import load_icon
 from .gallery_grid_view import GalleryGridView
@@ -91,6 +91,7 @@ class GalleryPageWidget(QWidget):
         loading_content = QWidget()
         loading_content_layout = QVBoxLayout(loading_content)
         loading_content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_content_layout.setSpacing(12)
 
         self._loading_icon = QLabel("🔍")
         self._loading_icon.setStyleSheet("font-size: 48px;")
@@ -101,6 +102,18 @@ class GalleryPageWidget(QWidget):
         self._loading_label.setStyleSheet("font-size: 16px; color: palette(text);")
         self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         loading_content_layout.addWidget(self._loading_label)
+
+        # Progress bar
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setMinimum(0)
+        self._progress_bar.setMaximum(100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setMinimumWidth(300)
+        self._progress_bar.setMaximumWidth(500)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setFormat("%p% (%v/%m)")
+        self._progress_bar.hide()
+        loading_content_layout.addWidget(self._progress_bar, 0, Qt.AlignmentFlag.AlignCenter)
 
         self._loading_sublabel = QLabel("正在使用 AI 搜索照片...")
         self._loading_sublabel.setStyleSheet("font-size: 12px; color: palette(mid);")
@@ -114,17 +127,35 @@ class GalleryPageWidget(QWidget):
         # Show grid view by default
         self._stack.setCurrentWidget(self.grid_view)
 
-    def show_loading_message(self, message: str, sub_message: str = "正在使用 AI 搜索照片...") -> None:
+    def show_loading_message(self, message: str, sub_message: str = "正在使用 AI 搜索照片...", show_progress: bool = False) -> None:
         """Show a loading message in the gallery area.
 
         Args:
             message: The main message to display.
             sub_message: The sub message to display.
+            show_progress: Whether to show the progress bar.
         """
         self._loading_label.setText(message)
         self._loading_sublabel.setText(sub_message)
         self._search_title_label.setText("搜索中")
+        if show_progress:
+            self._progress_bar.show()
+        else:
+            self._progress_bar.hide()
         self._stack.setCurrentWidget(self._loading_widget)
+
+    def update_progress(self, current: int, total: int, message: str = None) -> None:
+        """Update the progress bar.
+
+        Args:
+            current: Current progress value.
+            total: Total value.
+            message: Optional message to display.
+        """
+        self._progress_bar.setMaximum(total)
+        self._progress_bar.setValue(current)
+        if message:
+            self._loading_label.setText(message)
 
     def show_search_results_mode(self, query: str) -> None:
         """Show search results mode with back button.
@@ -133,10 +164,12 @@ class GalleryPageWidget(QWidget):
             query: The search query.
         """
         self._search_title_label.setText(f"搜索: {query}")
+        self._progress_bar.hide()
         self._stack.setCurrentWidget(self._loading_widget)
 
     def hide_loading_message(self) -> None:
         """Hide the loading message and show the grid view."""
+        self._progress_bar.hide()
         self._stack.setCurrentWidget(self.grid_view)
 
     def _on_search_back_clicked(self) -> None:
