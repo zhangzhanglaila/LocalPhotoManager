@@ -146,14 +146,20 @@ class SearchService:
         List[SearchResult]
             List of matching assets, sorted by relevance.
         """
+        import time
+        start_time = time.time()
+
         if not query.strip():
             return []
 
         # Parse query into search terms
         search_terms = self._parse_query(query)
+        _LOGGER.info("Search terms: %s", search_terms)
 
         # Get all assets
         all_assets = self._asset_repository.read_all()
+        _LOGGER.info("Loaded %d assets in %.3f seconds", len(all_assets), time.time() - start_time)
+
         if not all_assets:
             return []
 
@@ -178,6 +184,9 @@ class SearchService:
                 asset_rel=asset.get("rel", ""),
                 score=score,
             ))
+
+        elapsed = time.time() - start_time
+        _LOGGER.info("Search completed: %d results in %.3f seconds", len(results), elapsed)
 
         return results
 
@@ -278,16 +287,22 @@ class SearchService:
         score = 0.0
         max_score = 0.0
 
+        # Get asset fields for matching
+        filename = asset.get("rel", "").lower()
+        location = asset.get("location", "").lower()
+        camera = asset.get("model", "").lower()
+        dt = asset.get("dt", "")
+
         # Date matching
         if search_terms.get("year"):
             max_score += 1.0
-            asset_year = self._extract_year(asset.get("dt", ""))
+            asset_year = self._extract_year(dt)
             if asset_year == search_terms["year"]:
                 score += 1.0
 
         if search_terms.get("month"):
             max_score += 1.0
-            asset_month = self._extract_month(asset.get("dt", ""))
+            asset_month = self._extract_month(dt)
             if asset_month == search_terms["month"]:
                 score += 1.0
 
@@ -295,15 +310,14 @@ class SearchService:
             max_score += 1.0
             date_type = search_terms["date"]
             if date_type == "last_year":
-                # Check if asset is from last year
                 from datetime import datetime
                 last_year = datetime.now().year - 1
-                if self._extract_year(asset.get("dt", "")) == last_year:
+                if self._extract_year(dt) == last_year:
                     score += 1.0
             elif date_type == "this_year":
                 from datetime import datetime
                 this_year = datetime.now().year
-                if self._extract_year(asset.get("dt", "")) == this_year:
+                if self._extract_year(dt) == this_year:
                     score += 1.0
 
         # Media type matching
@@ -318,14 +332,12 @@ class SearchService:
         # Location matching
         if search_terms.get("location"):
             max_score += 1.0
-            location = asset.get("location", "").lower()
             if search_terms["location"] in location:
                 score += 1.0
 
         # Camera matching
         if search_terms.get("camera"):
             max_score += 1.0
-            camera = asset.get("model", "").lower()
             if search_terms["camera"] in camera:
                 score += 1.0
 
@@ -334,34 +346,29 @@ class SearchService:
             max_score += len(search_terms["keywords"])
             for keyword in search_terms["keywords"]:
                 # Check filename
-                filename = asset.get("rel", "").lower()
                 if keyword in filename:
                     score += 1.0
                     continue
 
                 # Check location
-                location = asset.get("location", "").lower()
                 if keyword in location:
                     score += 1.0
                     continue
 
                 # Check camera model
-                camera = asset.get("model", "").lower()
                 if keyword in camera:
                     score += 0.5
                     continue
 
-        # Also check raw query directly (for Chinese characters)
+        # Also check raw query directly (for Chinese characters and exact matches)
         raw_query = search_terms.get("raw_query", "")
         if raw_query:
             # Check filename
-            filename = asset.get("rel", "").lower()
             if raw_query in filename:
                 score += 2.0  # Higher score for direct match
                 max_score += 2.0
 
             # Check location
-            location = asset.get("location", "").lower()
             if raw_query in location:
                 score += 2.0
                 max_score += 2.0
