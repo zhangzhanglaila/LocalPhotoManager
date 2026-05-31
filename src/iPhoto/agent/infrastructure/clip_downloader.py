@@ -17,7 +17,13 @@ def get_model_dir(library_root: Path) -> Path:
     """Get the model directory for CLIP."""
     # Use project directory instead of library root
     # This ensures the model is stored with the application, not with user's photos
-    project_dir = Path(__file__).resolve().parents[3]  # src/iPhoto/agent/infrastructure -> project root
+    # File is at: src/iPhoto/agent/infrastructure/clip_downloader.py
+    # parents[0] = infrastructure/
+    # parents[1] = agent/
+    # parents[2] = iPhoto/
+    # parents[3] = src/
+    # parents[4] = project root
+    project_dir = Path(__file__).resolve().parents[4]
     return project_dir / "extension" / "models"
 
 
