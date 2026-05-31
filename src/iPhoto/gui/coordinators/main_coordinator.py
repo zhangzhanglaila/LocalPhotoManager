@@ -1097,8 +1097,8 @@ class MainCoordinator(QObject):
         """
         self._logger.info("Search requested: %s", query)
 
-        # Show immediate feedback
-        self._status_bar.show_message(f"正在搜索: {query}...")
+        # Show immediate feedback in grid view
+        self._show_search_loading(query)
 
         # Get the search service from the library session
         library_session = getattr(self._context, "library_session", None)
@@ -1139,6 +1139,19 @@ class MainCoordinator(QObject):
         worker = SearchWorker(search_service, query, on_search_complete)
         QThreadPool.globalInstance().start(worker)
 
+    def _show_search_loading(self, query: str) -> None:
+        """Show loading state in the grid view area."""
+        # Get the grid view's parent (gallery page)
+        ui = self._window.ui
+        if hasattr(ui, 'gallery_page'):
+            gallery_page = ui.gallery_page
+            # Show a loading message in the gallery page
+            if hasattr(gallery_page, 'show_loading_message'):
+                gallery_page.show_loading_message(f"正在搜索 \"{query}\"...")
+            else:
+                # Fallback: update status bar
+                self._status_bar.show_message(f"🔍 正在搜索: {query}...")
+
     def _display_search_results(self, results: list, query: str = "") -> None:
         """Display search results in the grid view.
 
@@ -1149,6 +1162,11 @@ class MainCoordinator(QObject):
         query : str
             The original search query.
         """
+        # Hide loading message
+        ui = self._window.ui
+        if hasattr(ui, 'gallery_page'):
+            ui.gallery_page.hide_loading_message()
+
         if not results:
             self._status_bar.show_message(f"未找到与 '{query}' 相关的照片")
             return

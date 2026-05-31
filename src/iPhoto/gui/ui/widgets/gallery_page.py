@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedWidget, QToolButton, QVBoxLayout, QWidget
 
 from ..icon import load_icon
 from .gallery_grid_view import GalleryGridView
@@ -47,9 +47,52 @@ class GalleryPageWidget(QWidget):
         self._header.hide()
         layout.addWidget(self._header)
 
+        # Create a stacked widget to switch between grid view and loading message
+        self._stack = QStackedWidget()
+        layout.addWidget(self._stack)
+
+        # Grid view (index 0)
         self.grid_view = GalleryGridView()
         self.grid_view.setObjectName("galleryGridView")
-        layout.addWidget(self.grid_view)
+        self._stack.addWidget(self.grid_view)
+
+        # Loading message widget (index 1)
+        self._loading_widget = QWidget()
+        loading_layout = QVBoxLayout(self._loading_widget)
+        loading_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._loading_icon = QLabel("🔍")
+        self._loading_icon.setStyleSheet("font-size: 48px;")
+        self._loading_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_layout.addWidget(self._loading_icon)
+
+        self._loading_label = QLabel("")
+        self._loading_label.setStyleSheet("font-size: 16px; color: palette(text);")
+        self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_layout.addWidget(self._loading_label)
+
+        self._loading_sublabel = QLabel("正在使用 AI 搜索照片...")
+        self._loading_sublabel.setStyleSheet("font-size: 12px; color: palette(mid);")
+        self._loading_sublabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_layout.addWidget(self._loading_sublabel)
+
+        self._stack.addWidget(self._loading_widget)
+
+        # Show grid view by default
+        self._stack.setCurrentWidget(self.grid_view)
+
+    def show_loading_message(self, message: str) -> None:
+        """Show a loading message in the gallery area.
+
+        Args:
+            message: The message to display.
+        """
+        self._loading_label.setText(message)
+        self._stack.setCurrentWidget(self._loading_widget)
+
+    def hide_loading_message(self) -> None:
+        """Hide the loading message and show the grid view."""
+        self._stack.setCurrentWidget(self.grid_view)
 
     def set_cluster_gallery_mode(self, enabled: bool, back_tooltip: str = "Return") -> None:
         """Show or hide the header with back button for cluster gallery mode.
