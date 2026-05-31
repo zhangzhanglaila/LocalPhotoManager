@@ -1220,7 +1220,7 @@ class MainCoordinator(QObject):
             )
 
     def _start_embedding_generation_silent(self) -> None:
-        """Start embedding generation silently in background (no UI change)."""
+        """Start embedding generation silently in background with status bar updates."""
         library_session = getattr(self._context, "library_session", None)
         if library_session is None:
             return
@@ -1228,17 +1228,18 @@ class MainCoordinator(QObject):
         from PySide6.QtCore import QRunnable, Slot
 
         class SilentWorker(QRunnable):
-            def __init__(self, session):
+            def __init__(self, session, status_callback):
                 super().__init__()
                 self.setAutoDelete(True)
                 self._session = session
+                self._status_callback = status_callback
 
             @Slot()
             def run(self):
                 try:
                     # Load CLIP model
                     embedding_service = self._session.get_embedding_service()
-                    if embedding_service is None or not embedding_service.is_loaded():
+                    if embedding_service is None:
                         return
 
                     # Get embedding repository
@@ -1246,11 +1247,18 @@ class MainCoordinator(QObject):
                     if embedding_repo is None:
                         return
 
-                    # Check if embeddings already exist
-                    if embedding_repo.count() > 0:
-                        return  # Already have embeddings
+                    # Check how many need processing
+                    all_assets = self._session.asset_runtime.assets.read_all()
+                    image_assets = [a for a in all_assets if a.get("media_type") == 0]
+                    asset_ids = [a["id"] for a in image_assets]
+                    pending = embedding_repo.get_asset_ids_without_embeddings(asset_ids)
 
-                    # Start embedding generation
+                    if not pending:
+                        total = embedding_repo.count()
+                        self._status_callback(f"AI 索引已就绪 ({total} 张照片)")
+                        return
+
+                    # Start embedding generation with progress callbacks
                     from iPhoto.agent.workers.embedding_worker import EmbeddingWorker
                     worker = EmbeddingWorker(
                         embedding_service=embedding_service,
@@ -1258,12 +1266,27 @@ class MainCoordinator(QObject):
                         asset_repository=self._session.asset_runtime.assets,
                         library_root=self._session.library_root,
                     )
+
+                    def on_progress(current, total, msg):
+                        pct = int(current / total * 100) if total > 0 else 0
+                        self._status_callback(f"AI 索引生成中: {current}/{total} ({pct}%)")
+
+                    def on_finished(processed, failed):
+                        self._status_callback(f"AI 索引生成完成 ({processed} 张照片)")
+
+                    worker.signals.progress.connect(on_progress)
+                    worker.signals.finished.connect(on_finished)
+
                     QThreadPool.globalInstance().start(worker)
 
                 except Exception as e:
                     logging.getLogger(__name__).debug("Silent embedding generation failed: %s", e)
 
-        worker = SilentWorker(library_session)
+        def status_callback(message):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._status_bar.show_message(message, 5000))
+
+        worker = SilentWorker(library_session, status_callback)
         QThreadPool.globalInstance().start(worker)
 
     def _start_embedding_generation(self) -> None:
