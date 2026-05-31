@@ -1107,7 +1107,13 @@ class MainCoordinator(QObject):
         from PySide6.QtCore import QThread, Signal
 
         # Get paths before starting thread
-        project_root = Path(__file__).resolve().parents[3]
+        # __file__ = src/iPhoto/gui/coordinators/main_coordinator.py
+        # parents[0] = coordinators/
+        # parents[1] = gui/
+        # parents[2] = iPhoto/
+        # parents[3] = src/
+        # parents[4] = project root
+        project_root = Path(__file__).resolve().parents[4]
         model_dir = project_root / 'extension' / 'models' / 'clip-vit-base-patch32'
         library_root = Path(self._context.library.root()) if hasattr(self._context, 'library') else Path.cwd()
 
