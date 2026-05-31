@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -274,7 +275,7 @@ class LibrarySession:
             )
 
             self._download_thread.finished.connect(
-                lambda success: self._on_download_finished(success, progress)
+                lambda success: self._on_download_finished(success, progress, model_dir)
             )
 
             # Show dialog non-blocking
@@ -286,7 +287,7 @@ class LibrarySession:
         except Exception as e:
             logger.error("Failed to start download: %s", e)
 
-    def _on_download_finished(self, success: bool, progress) -> None:
+    def _on_download_finished(self, success: bool, progress, model_dir: Path = None) -> None:
         """Handle download completion."""
         from PySide6.QtWidgets import QMessageBox
 
@@ -296,35 +297,98 @@ class LibrarySession:
             QMessageBox.information(None, "下载完成", "CLIP 模型下载完成！\n\n请重新启动应用以使用语义搜索。")
         else:
             progress.setLabelText("下载失败")
-            QMessageBox.warning(None, "下载失败", "CLIP 模型下载失败。\n\n请尝试手动下载。")
+            # Show detailed error and manual instructions
+            model_path = model_dir / "clip-vit-base-patch32" if model_dir else "项目目录/extension/models/clip-vit-base-patch32"
+
+            error_msg = (
+                "CLIP 模型下载失败。\n\n"
+                "可能原因：\n"
+                "1. 网络连接问题\n"
+                "2. HuggingFace 被屏蔽（需要VPN）\n"
+                "3. 磁盘空间不足\n\n"
+                "手动下载方法：\n\n"
+                "方法1：使用命令行（推荐）\n"
+                "----------------------------------------\n"
+                "pip install huggingface_hub\n"
+                f"set HF_ENDPOINT=https://hf-mirror.com\n"
+                f"python -c \"from huggingface_hub import snapshot_download; snapshot_download('openai/clip-vit-base-patch32', local_dir=r'{model_path}')\"\n\n"
+                "方法2：使用 ModelScope\n"
+                "----------------------------------------\n"
+                "pip install modelscope\n"
+                f"python -c \"from modelscope import snapshot_download; snapshot_download('AI-ModelScope/clip-vit-base-patch32', cache_dir=r'{model_dir}')\"\n\n"
+                f"下载位置：{model_path}\n\n"
+                "下载完成后重启应用即可。"
+            )
+
+            msg = QMessageBox()
+            msg.setWindowTitle("下载失败")
+            msg.setText("CLIP 模型下载失败")
+            msg.setInformativeText(error_msg)
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
 
         progress.close()
 
     def _show_manual_download_instructions(self, model_dir: Path) -> None:
         """Show manual download instructions."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton, QApplication
-        from ..agent.infrastructure.clip_downloader import get_download_instructions
 
-        instructions = get_download_instructions(model_dir)
+        model_path = model_dir / "clip-vit-base-patch32"
+
+        instructions = (
+            "手动下载 CLIP 模型\n"
+            "========================================\n\n"
+            "下载位置（必须放这里）：\n"
+            f"{model_path}\n\n"
+            "方法1：使用 HuggingFace 镜像（推荐）\n"
+            "----------------------------------------\n"
+            "1. 打开命令行（CMD 或 PowerShell）\n"
+            "2. 执行以下命令：\n\n"
+            "pip install huggingface_hub\n"
+            "set HF_ENDPOINT=https://hf-mirror.com\n"
+            f"python -c \"from huggingface_hub import snapshot_download; snapshot_download('openai/clip-vit-base-patch32', local_dir=r'{model_path}')\"\n\n"
+            "方法2：使用 ModelScope（国内镜像）\n"
+            "----------------------------------------\n"
+            "1. 打开命令行\n"
+            "2. 执行以下命令：\n\n"
+            "pip install modelscope\n"
+            f"python -c \"from modelscope import snapshot_download; snapshot_download('AI-ModelScope/clip-vit-base-patch32', cache_dir=r'{model_dir}')\"\n\n"
+            "方法3：手动下载文件\n"
+            "----------------------------------------\n"
+            "1. 访问 https://hf-mirror.com/openai/clip-vit-base-patch32\n"
+            "2. 下载所有文件\n"
+            f"3. 放到 {model_path} 目录下\n\n"
+            "下载完成后重启应用即可使用语义搜索。"
+        )
 
         dialog = QDialog()
         dialog.setWindowTitle("手动下载 CLIP 模型")
-        dialog.setMinimumSize(600, 400)
+        dialog.setMinimumSize(700, 500)
 
         layout = QVBoxLayout(dialog)
 
         text_edit = QTextEdit()
         text_edit.setPlainText(instructions)
         text_edit.setReadOnly(True)
+        text_edit.setStyleSheet("font-family: Consolas, monospace;")
         layout.addWidget(text_edit)
+
+        # Button row
+        btn_layout = QHBoxLayout()
 
         copy_btn = QPushButton("复制命令到剪贴板")
         copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(instructions))
-        layout.addWidget(copy_btn)
+        btn_layout.addWidget(copy_btn)
+
+        open_folder_btn = QPushButton("打开下载目录")
+        open_folder_btn.clicked.connect(lambda: os.startfile(str(model_path)) if os.name == 'nt' else None)
+        btn_layout.addWidget(open_folder_btn)
 
         close_btn = QPushButton("关闭")
         close_btn.clicked.connect(dialog.close)
-        layout.addWidget(close_btn)
+        btn_layout.addWidget(close_btn)
+
+        layout.addLayout(btn_layout)
 
         dialog.exec()
 
