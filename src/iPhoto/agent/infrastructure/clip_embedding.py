@@ -78,6 +78,13 @@ class CLIPEmbeddingService:
             import torch
             from PIL import Image
 
+            # Register HEIF/HEIC support
+            try:
+                from pillow_heif import register_heif_opener
+                register_heif_opener()
+            except ImportError:
+                pass
+
             # Load image
             image = Image.open(image_path).convert("RGB")
 
@@ -104,6 +111,13 @@ class CLIPEmbeddingService:
         """Generate embeddings for multiple images."""
         if not self._ensure_loaded():
             return [None] * len(image_paths)
+
+        # Register HEIF/HEIC support once for batch
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except ImportError:
+            pass
 
         results = []
         for path in image_paths:
