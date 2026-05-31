@@ -1106,23 +1106,27 @@ class MainCoordinator(QObject):
         # Run search in background thread
         from PySide6.QtCore import QThread, Signal
 
+        # Get paths before starting thread
+        project_root = Path(__file__).resolve().parents[3]
+        model_dir = project_root / 'extension' / 'models' / 'clip-vit-base-patch32'
+        library_root = Path(self._context.library.root()) if hasattr(self._context, 'library') else Path.cwd()
+
         class SearchThread(QThread):
             finished = Signal(object, str)  # results or None, error
 
-            def __init__(self, query_text):
+            def __init__(self, query_text, model_path, lib_root):
                 super().__init__()
                 self._query = query_text
+                self._model_dir = model_path
+                self._library_root = lib_root
 
             def run(self):
                 try:
-                    from src.iPhoto.agent.infrastructure.clip_embedding import CLIPEmbeddingService
-                    from src.iPhoto.cache.index_store.embedding_repository import get_embedding_repository
-                    from pathlib import Path
-                    import time
+                    from iPhoto.agent.infrastructure.clip_embedding import CLIPEmbeddingService
+                    from iPhoto.cache.index_store.embedding_repository import get_embedding_repository
 
                     # 1. Load model
-                    model_dir = Path('extension/models/clip-vit-base-patch32')
-                    service = CLIPEmbeddingService(model_dir=model_dir)
+                    service = CLIPEmbeddingService(model_dir=self._model_dir)
                     service._ensure_loaded()
 
                     if not service.is_loaded():
@@ -1130,7 +1134,7 @@ class MainCoordinator(QObject):
                         return
 
                     # 2. Load embeddings
-                    embedding_repo = get_embedding_repository(Path('D:/APPLE'))
+                    embedding_repo = get_embedding_repository(self._library_root)
                     all_embeddings = embedding_repo.get_all_embeddings()
 
                     if not all_embeddings:
@@ -1170,7 +1174,7 @@ class MainCoordinator(QObject):
             else:
                 QTimer.singleShot(0, lambda: self._display_search_results_raw([], query))
 
-        self._search_thread = SearchThread(query)
+        self._search_thread = SearchThread(query, model_dir, library_root)
         self._search_thread.finished.connect(on_finished)
         self._search_thread.start()
 
