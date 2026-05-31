@@ -81,13 +81,15 @@ class GalleryPageWidget(QWidget):
         # Show grid view by default
         self._stack.setCurrentWidget(self.grid_view)
 
-    def show_loading_message(self, message: str) -> None:
+    def show_loading_message(self, message: str, sub_message: str = "正在使用 AI 搜索照片...") -> None:
         """Show a loading message in the gallery area.
 
         Args:
-            message: The message to display.
+            message: The main message to display.
+            sub_message: The sub message to display.
         """
         self._loading_label.setText(message)
+        self._loading_sublabel.setText(sub_message)
         self._stack.setCurrentWidget(self._loading_widget)
 
     def hide_loading_message(self) -> None:

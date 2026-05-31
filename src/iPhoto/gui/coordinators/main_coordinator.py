@@ -1100,43 +1100,47 @@ class MainCoordinator(QObject):
         # Show immediate feedback in grid view
         self._show_search_loading(query)
 
-        # Get the search service from the library session
-        library_session = getattr(self._context, "library_session", None)
-        if library_session is None:
-            self._status_bar.show_message("无法搜索：未找到图库")
-            return
-
-        search_service = library_session.get_search_service()
-        if search_service is None:
-            self._status_bar.show_message("搜索服务初始化失败")
-            return
-
-        # Run search in background
+        # Run entire search in background (including model loading)
         from PySide6.QtCore import QRunnable, Slot
 
         class SearchWorker(QRunnable):
-            def __init__(self, service, query_text, callback):
+            def __init__(self, library_session, query_text, callback):
                 super().__init__()
                 self.setAutoDelete(True)
-                self._service = service
+                self._library_session = library_session
                 self._query = query_text
                 self._callback = callback
 
             @Slot()
             def run(self):
                 try:
-                    results = self._service.search(self._query, top_k=50)
-                    self._callback(results)
+                    # Get search service (this may load CLIP model)
+                    search_service = self._library_session.get_search_service()
+                    if search_service is None:
+                        self._callback(None, "搜索服务初始化失败")
+                        return
+
+                    # Run search
+                    results = search_service.search(self._query, top_k=50)
+                    self._callback(results, None)
                 except Exception as e:
                     logging.getLogger(__name__).error("Search failed: %s", e)
-                    self._callback([])
+                    self._callback(None, str(e))
 
-        def on_search_complete(results):
+        def on_search_complete(results, error):
             # Update UI on main thread
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(0, lambda: self._display_search_results(results, query))
+            if error:
+                QTimer.singleShot(0, lambda: self._display_search_error(error))
+            else:
+                QTimer.singleShot(0, lambda: self._display_search_results(results, query))
 
-        worker = SearchWorker(search_service, query, on_search_complete)
+        library_session = getattr(self._context, "library_session", None)
+        if library_session is None:
+            self._status_bar.show_message("无法搜索：未找到图库")
+            return
+
+        worker = SearchWorker(library_session, query, on_search_complete)
         QThreadPool.globalInstance().start(worker)
 
     def _show_search_loading(self, query: str) -> None:
@@ -1178,6 +1182,14 @@ class MainCoordinator(QObject):
         self._gallery_vm.show_search_results(asset_ids)
 
         self._status_bar.show_message(f"找到 {len(results)} 张与 '{query}' 相关的照片")
+
+    def _display_search_error(self, error: str) -> None:
+        """Display search error in the grid view."""
+        ui = self._window.ui
+        if hasattr(ui, 'gallery_page'):
+            ui.gallery_page.hide_loading_message()
+
+        self._status_bar.show_message(f"搜索失败: {error}")
 
     def _handle_semantic_search_toggle(self, enabled: bool) -> None:
         """Handle semantic search toggle.
