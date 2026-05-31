@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+import time
+
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QStackedWidget, QToolButton, QVBoxLayout, QWidget
 
 from ..icon import load_icon
@@ -120,9 +122,22 @@ class GalleryPageWidget(QWidget):
         self._loading_sublabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         loading_content_layout.addWidget(self._loading_sublabel)
 
+        # Elapsed time label
+        self._elapsed_label = QLabel("")
+        self._elapsed_label.setStyleSheet("font-size: 11px; color: palette(mid);")
+        self._elapsed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._elapsed_label.hide()
+        loading_content_layout.addWidget(self._elapsed_label)
+
         loading_layout.addWidget(loading_content, 1)
 
         self._stack.addWidget(self._loading_widget)
+
+        # Timer for elapsed time
+        self._loading_start_time = 0
+        self._elapsed_timer = QTimer(self)
+        self._elapsed_timer.timeout.connect(self._update_elapsed_time)
+        self._loading_dots = 0
 
         # Show grid view by default
         self._stack.setCurrentWidget(self.grid_view)
@@ -142,7 +157,29 @@ class GalleryPageWidget(QWidget):
             self._progress_bar.show()
         else:
             self._progress_bar.hide()
+
+        # Start elapsed timer
+        self._loading_start_time = time.time()
+        self._elapsed_label.show()
+        self._elapsed_label.setText("已等待 0 秒...")
+        self._elapsed_timer.start(1000)  # Update every second
+        self._loading_dots = 0
+
         self._stack.setCurrentWidget(self._loading_widget)
+
+    def _update_elapsed_time(self) -> None:
+        """Update the elapsed time display."""
+        if self._loading_start_time > 0:
+            elapsed = int(time.time() - self._loading_start_time)
+            self._elapsed_label.setText(f"已等待 {elapsed} 秒...")
+
+            # Animate dots in sublabel
+            self._loading_dots = (self._loading_dots + 1) % 4
+            dots = "." * self._loading_dots
+            current_text = self._loading_sublabel.text()
+            # Remove trailing dots and add new ones
+            base_text = current_text.rstrip(".")
+            self._loading_sublabel.setText(f"{base_text}{dots}")
 
     def update_progress(self, current: int, total: int, message: str = None) -> None:
         """Update the progress bar.
@@ -170,6 +207,9 @@ class GalleryPageWidget(QWidget):
     def hide_loading_message(self) -> None:
         """Hide the loading message and show the grid view."""
         self._progress_bar.hide()
+        self._elapsed_label.hide()
+        self._elapsed_timer.stop()
+        self._loading_start_time = 0
         self._stack.setCurrentWidget(self.grid_view)
 
     def _on_search_back_clicked(self) -> None:
