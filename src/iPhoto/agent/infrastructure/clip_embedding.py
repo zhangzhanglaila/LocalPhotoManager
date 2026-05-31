@@ -15,6 +15,13 @@ _LOGGER = logging.getLogger(__name__)
 _MODEL_ID = "openai/clip-vit-base-patch32"
 _EMBEDDING_DIMENSION = 512
 
+# Register HEIF/HEIC support once at module level
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
+
 
 class CLIPEmbeddingService:
     """CLIP embedding service using transformers.
@@ -53,13 +60,18 @@ class CLIPEmbeddingService:
 
                 _LOGGER.info("Loading CLIP model from %s", self._model_dir)
 
-                # Load model
-                self._model = CLIPModel.from_pretrained(str(self._model_dir))
+                # Load model with optimizations
+                self._model = CLIPModel.from_pretrained(
+                    str(self._model_dir),
+                    torch_dtype=torch.float32,  # Use float32 for CPU
+                )
                 self._processor = CLIPProcessor.from_pretrained(str(self._model_dir))
                 self._tokenizer = CLIPTokenizer.from_pretrained(str(self._model_dir))
 
-                # Set to eval mode
+                # Set to eval mode and optimize
                 self._model.eval()
+                if hasattr(torch, 'set_float32_matmul_precision'):
+                    torch.set_float32_matmul_precision('medium')
 
                 self._loaded = True
                 _LOGGER.info("CLIP model loaded successfully")
@@ -77,13 +89,6 @@ class CLIPEmbeddingService:
         try:
             import torch
             from PIL import Image
-
-            # Register HEIF/HEIC support
-            try:
-                from pillow_heif import register_heif_opener
-                register_heif_opener()
-            except ImportError:
-                pass
 
             # Load image
             image = Image.open(image_path).convert("RGB")
@@ -111,13 +116,6 @@ class CLIPEmbeddingService:
         """Generate embeddings for multiple images."""
         if not self._ensure_loaded():
             return [None] * len(image_paths)
-
-        # Register HEIF/HEIC support once for batch
-        try:
-            from pillow_heif import register_heif_opener
-            register_heif_opener()
-        except ImportError:
-            pass
 
         results = []
         for path in image_paths:
