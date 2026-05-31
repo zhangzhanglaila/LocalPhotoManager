@@ -25,7 +25,7 @@ class SearchInput(QLineEdit):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setPlaceholderText(tr("search.placeholder", default="Search photos..."))
+        self.setPlaceholderText(tr("search.placeholder", default="搜索照片（如：海边、黄色、狗）..."))
         self.setClearButtonEnabled(True)
         self.setMinimumWidth(200)
         self.setMaximumWidth(400)
@@ -72,10 +72,23 @@ class MainHeaderWidget(QWidget):
 
         layout.addWidget(self.menu_bar)
 
-        # Add search input
+        # Add search input with icon
+        search_container = QWidget(self)
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(4)
+
+        # Search icon
+        self.search_icon = QLabel("🔍", self)
+        self.search_icon.setStyleSheet("font-size: 14px;")
+        search_layout.addWidget(self.search_icon)
+
+        # Search input
         self.search_input = SearchInput(self)
         self.search_input.search_submitted.connect(self.search_requested.emit)
-        layout.addWidget(self.search_input)
+        search_layout.addWidget(self.search_input)
+
+        layout.addWidget(search_container)
 
         layout.addSpacerItem(
             QSpacerItem(
