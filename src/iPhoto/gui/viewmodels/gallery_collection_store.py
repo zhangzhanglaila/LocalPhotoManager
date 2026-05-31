@@ -55,10 +55,10 @@ class GalleryAssetQuerySurface(Protocol):
 class GalleryCollectionStore:
     """Pure Python gallery data store with viewport-aware caching."""
 
-    INITIAL_VISIBLE_ROWS = 80
-    MIN_WINDOW_SIZE = 300
-    MAX_WINDOW_SIZE = 2000
-    WINDOW_MULTIPLIER = 4
+    INITIAL_VISIBLE_ROWS = 50
+    MIN_WINDOW_SIZE = 200
+    MAX_WINDOW_SIZE = 1000
+    WINDOW_MULTIPLIER = 3
     LOOKBEHIND_SCREENS = 1
     LOOKAHEAD_SCREENS = 2
     HYSTERESIS_RATIO = 0.25

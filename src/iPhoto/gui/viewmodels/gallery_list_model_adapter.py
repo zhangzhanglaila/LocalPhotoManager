@@ -33,7 +33,7 @@ class GalleryListModelAdapter(QAbstractListModel):
         self._store = store
         self._thumbnails = thumbnail_service
         self._edit_service_getter = edit_service_getter
-        self._thumb_size = QSize(512, 512)
+        self._thumb_size = QSize(256, 256)  # Reduced from 512 for better performance
         self._current_row = -1
         self._last_snapshot: Optional[tuple[int, int]] = None
         self._duration_cache: dict[Path, float] = {}
