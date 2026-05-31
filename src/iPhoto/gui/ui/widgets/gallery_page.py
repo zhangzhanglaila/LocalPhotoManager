@@ -93,61 +93,81 @@ class GalleryPageWidget(QWidget):
         loading_content = QWidget()
         loading_content_layout = QVBoxLayout(loading_content)
         loading_content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        loading_content_layout.setSpacing(16)
+        loading_content_layout.setSpacing(20)
+        loading_content_layout.setContentsMargins(40, 40, 40, 40)
 
-        self._loading_icon = QLabel("🔍")
+        # Step indicators
+        self._step_container = QWidget()
+        step_layout = QHBoxLayout(self._step_container)
+        step_layout.setSpacing(24)
+
+        self._step1_widget = self._create_step_widget("1", "加载 AI 模型")
+        self._step2_widget = self._create_step_widget("2", "生成照片索引")
+        step_layout.addWidget(self._step1_widget)
+        step_layout.addWidget(self._step2_widget)
+        loading_content_layout.addWidget(self._step_container, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # Status icon with animation
+        self._loading_icon = QLabel("⏳")
         self._loading_icon.setStyleSheet("font-size: 48px;")
         self._loading_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         loading_content_layout.addWidget(self._loading_icon)
 
+        # Main status text
         self._loading_label = QLabel("")
-        self._loading_label.setStyleSheet("font-size: 16px; color: palette(text);")
+        self._loading_label.setStyleSheet("font-size: 16px; font-weight: bold; color: palette(text);")
         self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         loading_content_layout.addWidget(self._loading_label)
 
-        # Progress bar
+        # Sub status text
+        self._loading_sublabel = QLabel("")
+        self._loading_sublabel.setStyleSheet("font-size: 13px; color: palette(mid);")
+        self._loading_sublabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_content_layout.addWidget(self._loading_sublabel)
+
+        # Progress bar (only for step 2)
         self._progress_bar = QProgressBar()
         self._progress_bar.setMinimum(0)
         self._progress_bar.setMaximum(100)
         self._progress_bar.setValue(0)
-        self._progress_bar.setMinimumWidth(300)
+        self._progress_bar.setMinimumWidth(350)
         self._progress_bar.setMaximumWidth(500)
+        self._progress_bar.setFixedHeight(20)
         self._progress_bar.setTextVisible(True)
-        self._progress_bar.setFormat("%p% (%v/%m)")
+        self._progress_bar.setFormat("%p%")
         self._progress_bar.hide()
         loading_content_layout.addWidget(self._progress_bar, 0, Qt.AlignmentFlag.AlignCenter)
 
-        self._loading_sublabel = QLabel("正在使用 AI 搜索照片...")
-        self._loading_sublabel.setStyleSheet("font-size: 12px; color: palette(mid);")
-        self._loading_sublabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        loading_content_layout.addWidget(self._loading_sublabel)
+        # Progress detail text
+        self._progress_detail = QLabel("")
+        self._progress_detail.setStyleSheet("font-size: 12px; color: palette(mid);")
+        self._progress_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._progress_detail.hide()
+        loading_content_layout.addWidget(self._progress_detail)
 
-        # Elapsed time label
+        # Elapsed time
         self._elapsed_label = QLabel("")
-        self._elapsed_label.setStyleSheet("font-size: 11px; color: palette(mid);")
+        self._elapsed_label.setStyleSheet("font-size: 12px; color: palette(mid);")
         self._elapsed_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._elapsed_label.hide()
         loading_content_layout.addWidget(self._elapsed_label)
 
         # Continue browsing button
         self._continue_button = QToolButton()
-        self._continue_button.setText("先去看照片 →")
+        self._continue_button.setText("先去看照片，后台继续")
         self._continue_button.setStyleSheet(
-            "QToolButton { font-size: 13px; padding: 8px 16px; "
+            "QToolButton { font-size: 13px; padding: 10px 24px; "
             "background-color: palette(highlight); color: palette(highlighted-text); "
-            "border-radius: 6px; }"
-            "QToolButton:hover { background-color: palette(highlight); opacity: 0.8; }"
+            "border-radius: 8px; font-weight: bold; }"
+            "QToolButton:hover { opacity: 0.85; }"
         )
         self._continue_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._continue_button.clicked.connect(self._on_continue_browsing)
-        self._continue_button.hide()
         loading_content_layout.addWidget(self._continue_button, 0, Qt.AlignmentFlag.AlignCenter)
 
         # Hint text
-        self._hint_label = QLabel("AI 索引生成后，搜索会非常快（0.1秒）")
-        self._hint_label.setStyleSheet("font-size: 11px; color: palette(mid); font-style: italic;")
+        self._hint_label = QLabel("💡 之后搜索只需 0.1 秒")
+        self._hint_label.setStyleSheet("font-size: 12px; color: palette(mid);")
         self._hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._hint_label.hide()
         loading_content_layout.addWidget(self._hint_label)
 
         loading_layout.addWidget(loading_content, 1)
@@ -215,11 +235,135 @@ class GalleryPageWidget(QWidget):
         self._continue_button.show()
         self._hint_label.show()
 
+    def _create_step_widget(self, number: str, label: str) -> QWidget:
+        """Create a step indicator widget."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Circle with number
+        circle = QLabel(number)
+        circle.setFixedSize(32, 32)
+        circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        circle.setStyleSheet(
+            "QLabel { border-radius: 16px; background-color: palette(mid); "
+            "color: palette(mid); font-weight: bold; font-size: 14px; }"
+        )
+        layout.addWidget(circle, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # Label
+        text = QLabel(label)
+        text.setStyleSheet("font-size: 11px; color: palette(mid);")
+        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(text)
+
+        # Store references for updating
+        widget._circle = circle
+        widget._text = label
+        return widget
+
+    def _update_step_status(self, step: int, status: str) -> None:
+        """Update step indicator status.
+
+        Args:
+            step: 1 or 2
+            status: "pending", "active", "done"
+        """
+        widget = self._step1_widget if step == 1 else self._step2_widget
+        circle = widget._circle
+
+        if status == "active":
+            circle.setStyleSheet(
+                "QLabel { border-radius: 16px; background-color: palette(highlight); "
+                "color: palette(highlighted-text); font-weight: bold; font-size: 14px; }"
+            )
+        elif status == "done":
+            circle.setText("✓")
+            circle.setStyleSheet(
+                "QLabel { border-radius: 16px; background-color: #34C759; "
+                "color: white; font-weight: bold; font-size: 14px; }"
+            )
+        else:  # pending
+            circle.setStyleSheet(
+                "QLabel { border-radius: 16px; background-color: palette(mid); "
+                "color: palette(mid); font-weight: bold; font-size: 14px; }"
+            )
+
+    def show_model_loading(self) -> None:
+        """Show model loading phase."""
+        self._update_step_status(1, "active")
+        self._update_step_status(2, "pending")
+        self._loading_icon.setText("⏳")
+        self._loading_label.setText("正在加载 AI 模型（约350MB）...")
+        self._loading_sublabel.setText("首次使用需要加载模型，之后会很快")
+        self._progress_bar.hide()
+        self._progress_detail.hide()
+        self._continue_button.show()
+        self._hint_label.show()
+        self._search_title_label.setText("初始化中")
+
+        # Start elapsed timer
+        self._loading_start_time = time.time()
+        self._elapsed_label.show()
+        self._elapsed_label.setText("已等待 0 秒...")
+        self._elapsed_timer.start(1000)
+        self._loading_dots = 0
+
+        self._stack.setCurrentWidget(self._loading_widget)
+
+    def show_embedding_progress(self, current: int, total: int) -> None:
+        """Show embedding generation phase with progress bar."""
+        self._update_step_status(1, "done")
+        self._update_step_status(2, "active")
+        self._loading_icon.setText("📸")
+        progress_pct = int(current / total * 100) if total > 0 else 0
+        self._loading_label.setText(f"正在为照片生成索引")
+        self._loading_sublabel.setText(f"已处理 {current} / {total} 张照片")
+        self._progress_bar.setMaximum(total)
+        self._progress_bar.setValue(current)
+        self._progress_bar.show()
+        self._progress_detail.setText(f"{progress_pct}% 完成")
+        self._progress_detail.show()
+        self._continue_button.show()
+        self._hint_label.show()
+
+    def show_loading_message(self, message: str, sub_message: str = "", show_progress: bool = False, show_continue: bool = True) -> None:
+        """Show a generic loading message."""
+        self._loading_label.setText(message)
+        self._loading_sublabel.setText(sub_message)
+        self._search_title_label.setText("搜索中")
+
+        if show_progress:
+            self._progress_bar.show()
+        else:
+            self._progress_bar.hide()
+
+        self._progress_detail.hide()
+        self._continue_button.setVisible(show_continue)
+        self._hint_label.setVisible(show_continue)
+
+        # Start elapsed timer
+        if self._loading_start_time == 0:
+            self._loading_start_time = time.time()
+            self._elapsed_label.show()
+            self._elapsed_label.setText("已等待 0 秒...")
+            self._elapsed_timer.start(1000)
+            self._loading_dots = 0
+
+        self._stack.setCurrentWidget(self._loading_widget)
+
+    def update_progress(self, current: int, total: int, message: str = None) -> None:
+        """Update progress bar."""
+        self._progress_bar.setMaximum(total)
+        self._progress_bar.setValue(current)
+        if message:
+            self._loading_label.setText(message)
+
     def _on_continue_browsing(self) -> None:
         """Handle continue browsing button click."""
-        # Hide the loading UI but keep the background task running
         self.hide_loading_message()
-        # Emit signal to notify that user wants to continue browsing
         self.searchBackRequested.emit()
 
     def _update_elapsed_time(self) -> None:
@@ -262,9 +406,13 @@ class GalleryPageWidget(QWidget):
     def hide_loading_message(self) -> None:
         """Hide the loading message and show the grid view."""
         self._progress_bar.hide()
+        self._progress_detail.hide()
         self._elapsed_label.hide()
         self._elapsed_timer.stop()
         self._loading_start_time = 0
+        # Reset step indicators
+        self._update_step_status(1, "pending")
+        self._update_step_status(2, "pending")
         self._stack.setCurrentWidget(self.grid_view)
 
     def _on_search_back_clicked(self) -> None:
