@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QActionGroup, QPalette
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMenuBar,
     QSizePolicy,
