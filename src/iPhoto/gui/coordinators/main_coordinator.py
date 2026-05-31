@@ -1200,6 +1200,11 @@ class MainCoordinator(QObject):
 
         asset_ids = [r["asset_id"] for r in results]
         self._gallery_vm.show_search_results(asset_ids)
+
+        # Scroll to top of results
+        if hasattr(ui, 'grid_view'):
+            ui.grid_view.scrollToTop()
+
         self._status_bar.show_message(f"找到 {len(results)} 张与 '{query}' 相关的照片")
 
     def _show_search_loading(self, query: str, sub_message: str = None, show_continue: bool = False) -> None:
