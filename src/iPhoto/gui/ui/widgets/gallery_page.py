@@ -48,6 +48,29 @@ class GalleryPageWidget(QWidget):
         self._header.hide()
         layout.addWidget(self._header)
 
+        # Search results header (hidden by default)
+        self._search_results_header = QWidget()
+        search_header_layout = QHBoxLayout(self._search_results_header)
+        search_header_layout.setContentsMargins(8, 8, 8, 8)
+
+        self._search_back_btn = QToolButton()
+        self._search_back_btn.setIcon(load_icon("chevron.left.svg"))
+        self._search_back_btn.setIconSize(HEADER_ICON_GLYPH_SIZE)
+        self._search_back_btn.setFixedSize(HEADER_BUTTON_SIZE)
+        self._search_back_btn.setAutoRaise(True)
+        self._search_back_btn.setToolTip("返回照片")
+        self._search_back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._search_back_btn.clicked.connect(self._on_search_back_clicked)
+        search_header_layout.addWidget(self._search_back_btn)
+
+        self._search_results_label = QLabel("搜索结果")
+        self._search_results_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        search_header_layout.addWidget(self._search_results_label)
+        search_header_layout.addStretch()
+
+        self._search_results_header.hide()
+        layout.addWidget(self._search_results_header)
+
         # Stacked widget: grid view + loading view
         self._stack = QStackedWidget()
         layout.addWidget(self._stack)
@@ -270,6 +293,25 @@ class GalleryPageWidget(QWidget):
         self._progress_bar.hide()
         self._detail_label.hide()
         self._stack.setCurrentWidget(self.grid_view)
+
+    def show_search_results_header(self, query: str, count: int) -> None:
+        """Show search results header with back button.
+
+        Args:
+            query: The search query.
+            count: Number of results.
+        """
+        self._search_results_label.setText(f"搜索 \"{query}\" - {count} 个结果")
+        self._search_results_header.show()
+
+    def hide_search_results_header(self) -> None:
+        """Hide search results header."""
+        self._search_results_header.hide()
+
+    def _on_search_back_clicked(self) -> None:
+        """Handle back button click from search results."""
+        self.hide_search_results_header()
+        self.searchBackRequested.emit()
 
     # --- Internal ---
 

@@ -1194,6 +1194,10 @@ class MainCoordinator(QObject):
             self._status_bar.show_message(f"未找到与 '{query}' 相关的照片")
             return
 
+        # Show search results header with back button
+        if hasattr(ui, 'gallery_page'):
+            ui.gallery_page.show_search_results_header(query, len(results))
+
         asset_ids = [r["asset_id"] for r in results]
         self._gallery_vm.show_search_results(asset_ids)
         self._status_bar.show_message(f"找到 {len(results)} 张与 '{query}' 相关的照片")
@@ -1227,6 +1231,11 @@ class MainCoordinator(QObject):
 
     def _on_search_back(self) -> None:
         """Handle back button click during search."""
+        # Hide search results header
+        ui = self._window.ui
+        if hasattr(ui, 'gallery_page'):
+            ui.gallery_page.hide_search_results_header()
+
         # Return to normal gallery view
         self._gallery_vm.open_all_photos()
         self._status_bar.show_message("")
