@@ -43,18 +43,18 @@ class EmbeddingRepository:
         """Initialize the embedding repository."""
         self.library_root = library_root
         self.path = ensure_work_dir(library_root) / EMBEDDING_DB_NAME
-        self._conn: Optional[sqlite3.Connection] = None
+        self._local = threading.local()  # Thread-local connections
         self._cache: Optional[List[dict]] = None  # In-memory cache
         self._cache_dirty = True  # Whether cache needs refresh
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Get or create a database connection."""
-        if self._conn is None:
-            self._conn = sqlite3.connect(str(self.path), timeout=10.0)
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
-        return self._conn
+        """Get or create a thread-local database connection."""
+        if not hasattr(self._local, 'conn') or self._local.conn is None:
+            self._local.conn = sqlite3.connect(str(self.path), timeout=10.0)
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn.execute("PRAGMA synchronous=NORMAL")
+        return self._local.conn
 
     def _init_db(self) -> None:
         """Initialize the database schema."""
@@ -168,9 +168,9 @@ class EmbeddingRepository:
 
     def close(self) -> None:
         """Close the database connection."""
-        if self._conn is not None:
+        if hasattr(self._local, 'conn') and self._local.conn is not None:
             try:
-                self._conn.close()
+                self._local.conn.close()
             except Exception:
                 pass
-            self._conn = None
+            self._local.conn = None
