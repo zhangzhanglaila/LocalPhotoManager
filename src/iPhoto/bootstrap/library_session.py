@@ -137,8 +137,8 @@ class LibrarySession:
             if embedding_service is None or embedding_repo is None:
                 return None
 
-            if not embedding_service.is_loaded():
-                return None
+            # Note: Don't check is_loaded() here - model loads lazily on first use
+            # The search will trigger model loading when needed
 
             # Create search service with CLIP
             self._search_service = SearchService(
