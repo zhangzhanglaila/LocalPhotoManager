@@ -1313,20 +1313,23 @@ class MainCoordinator(QObject):
             @Slot()
             def run(self):
                 try:
-                    # Load CLIP model
-                    self._callback("loading_model", 0, 0, "正在加载 AI 模型...")
+                    # Step 1: Load CLIP model
+                    self._callback("loading_model", 0, 0, "正在加载 AI 模型（约350MB）...")
                     embedding_service = self._session.get_embedding_service()
                     if embedding_service is None or not embedding_service.is_loaded():
-                        self._callback("error", 0, 0, "AI 模型加载失败")
+                        self._callback("error", 0, 0, "AI 模型加载失败，请检查模型文件")
                         return
 
-                    # Get embedding repository
+                    self._callback("model_loaded", 0, 0, "AI 模型加载完成")
+
+                    # Step 2: Get embedding repository
                     embedding_repo = self._session.get_embedding_repository()
                     if embedding_repo is None:
                         self._callback("error", 0, 0, "数据库初始化失败")
                         return
 
-                    # Count images to process
+                    # Step 3: Count images to process
+                    self._callback("counting", 0, 0, "正在统计照片数量...")
                     all_assets = self._session.asset_runtime.assets.read_all()
                     image_assets = [a for a in all_assets if a.get("media_type") == 0]
                     asset_ids = [a["id"] for a in image_assets]
@@ -1336,7 +1339,9 @@ class MainCoordinator(QObject):
                         self._callback("done", 0, 0, "")
                         return
 
-                    # Start embedding generation
+                    self._callback("starting", len(pending_ids), len(pending_ids), f"共 {len(pending_ids)} 张照片需要处理")
+
+                    # Step 4: Start embedding generation
                     from iPhoto.agent.workers.embedding_worker import EmbeddingWorker
                     worker = EmbeddingWorker(
                         embedding_service=embedding_service,
@@ -1375,9 +1380,34 @@ class MainCoordinator(QObject):
             if hasattr(ui, 'gallery_page'):
                 ui.gallery_page.show_loading_message(
                     "正在加载 AI 模型...",
-                    "首次使用需要下载和加载 AI 模型，请稍后",
+                    message or "首次使用需要加载 AI 模型，请稍后",
                     show_progress=False
                 )
+
+        elif status_type == "model_loaded":
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.show_loading_message(
+                    "AI 模型加载完成",
+                    "正在准备生成索引...",
+                    show_progress=False
+                )
+
+        elif status_type == "counting":
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.show_loading_message(
+                    "正在统计照片...",
+                    message,
+                    show_progress=False
+                )
+
+        elif status_type == "starting":
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.show_loading_message(
+                    "开始生成索引...",
+                    message,
+                    show_progress=True
+                )
+                ui.gallery_page.update_progress(0, current, "开始生成索引...")
 
         elif status_type == "progress":
             progress_pct = int(current / total * 100) if total > 0 else 0
