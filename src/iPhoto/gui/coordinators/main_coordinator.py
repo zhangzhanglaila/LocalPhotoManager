@@ -374,10 +374,10 @@ class MainCoordinator(QObject):
         self._view_router.show_gallery()
         self._map_extension_download.maybe_prompt_on_startup()
 
-        # Auto-start embedding generation if enabled
+        # Auto-start embedding generation silently in background (no UI change)
         if self._context.settings.get("agent.semantic_search_enabled", False):
             from PySide6.QtCore import QTimer
-            QTimer.singleShot(3000, self._start_embedding_generation)  # Delay 3 seconds
+            QTimer.singleShot(5000, self._start_embedding_generation_silent)  # Delay 5 seconds
 
     def finish_startup(self):
         """Re-enable full tree-update cascade after startup sequence completes."""
@@ -1235,8 +1235,55 @@ class MainCoordinator(QObject):
                 tr("agent.disabled", default="Semantic search disabled")
             )
 
+    def _start_embedding_generation_silent(self) -> None:
+        """Start embedding generation silently in background (no UI change)."""
+        library_session = getattr(self._context, "library_session", None)
+        if library_session is None:
+            return
+
+        from PySide6.QtCore import QRunnable, Slot
+
+        class SilentWorker(QRunnable):
+            def __init__(self, session):
+                super().__init__()
+                self.setAutoDelete(True)
+                self._session = session
+
+            @Slot()
+            def run(self):
+                try:
+                    # Load CLIP model
+                    embedding_service = self._session.get_embedding_service()
+                    if embedding_service is None or not embedding_service.is_loaded():
+                        return
+
+                    # Get embedding repository
+                    embedding_repo = self._session.get_embedding_repository()
+                    if embedding_repo is None:
+                        return
+
+                    # Check if embeddings already exist
+                    if embedding_repo.count() > 0:
+                        return  # Already have embeddings
+
+                    # Start embedding generation
+                    from iPhoto.agent.workers.embedding_worker import EmbeddingWorker
+                    worker = EmbeddingWorker(
+                        embedding_service=embedding_service,
+                        embedding_repository=embedding_repo,
+                        asset_repository=self._session.asset_runtime.assets,
+                        library_root=self._session.library_root,
+                    )
+                    QThreadPool.globalInstance().start(worker)
+
+                except Exception as e:
+                    logging.getLogger(__name__).debug("Silent embedding generation failed: %s", e)
+
+        worker = SilentWorker(library_session)
+        QThreadPool.globalInstance().start(worker)
+
     def _start_embedding_generation(self) -> None:
-        """Start background embedding generation with progress UI."""
+        """Start background embedding generation with progress UI (when user searches)."""
         library_session = getattr(self._context, "library_session", None)
         if library_session is None:
             return
