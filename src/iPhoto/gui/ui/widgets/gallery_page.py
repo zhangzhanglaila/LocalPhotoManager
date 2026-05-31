@@ -72,12 +72,14 @@ class GalleryPageWidget(QWidget):
         """Create the loading view with status, progress, and buttons."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(60, 40, 60, 40)
-        layout.setSpacing(16)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Back button bar
-        back_bar = QHBoxLayout()
+        # Top bar with back button
+        top_bar = QWidget()
+        top_bar_layout = QHBoxLayout(top_bar)
+        top_bar_layout.setContentsMargins(8, 8, 8, 8)
+
         self._search_back_button = QToolButton()
         self._search_back_button.setIcon(load_icon("chevron.left.svg"))
         self._search_back_button.setIconSize(HEADER_ICON_GLYPH_SIZE)
@@ -86,36 +88,41 @@ class GalleryPageWidget(QWidget):
         self._search_back_button.setToolTip("返回照片")
         self._search_back_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._search_back_button.clicked.connect(self._on_back_clicked)
-        back_bar.addWidget(self._search_back_button)
+        top_bar_layout.addWidget(self._search_back_button)
 
         self._search_title = QLabel("搜索中")
         self._search_title.setStyleSheet("font-size: 14px; font-weight: bold;")
-        back_bar.addWidget(self._search_title)
-        back_bar.addStretch()
-        layout.addLayout(back_bar)
+        top_bar_layout.addWidget(self._search_title)
+        top_bar_layout.addStretch()
 
-        # Spacer
-        layout.addSpacing(20)
+        layout.addWidget(top_bar)
+
+        # Content area
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(60, 20, 60, 40)
+        content_layout.setSpacing(16)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Icon
         self._icon_label = QLabel("⏳")
         self._icon_label.setStyleSheet("font-size: 48px;")
         self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._icon_label)
+        content_layout.addWidget(self._icon_label)
 
         # Main status
         self._status_label = QLabel("")
         self._status_label.setStyleSheet("font-size: 16px; font-weight: bold; color: palette(text);")
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_label.setWordWrap(True)
-        layout.addWidget(self._status_label)
+        content_layout.addWidget(self._status_label)
 
         # Sub status
         self._sub_label = QLabel("")
         self._sub_label.setStyleSheet("font-size: 13px; color: palette(mid);")
         self._sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._sub_label.setWordWrap(True)
-        layout.addWidget(self._sub_label)
+        content_layout.addWidget(self._sub_label)
 
         # Progress bar
         self._progress_bar = QProgressBar()
@@ -128,20 +135,20 @@ class GalleryPageWidget(QWidget):
         self._progress_bar.setTextVisible(True)
         self._progress_bar.setFormat("%p%")
         self._progress_bar.hide()
-        layout.addWidget(self._progress_bar, 0, Qt.AlignmentFlag.AlignCenter)
+        content_layout.addWidget(self._progress_bar, 0, Qt.AlignmentFlag.AlignCenter)
 
         # Progress detail (current/total + ETA)
         self._detail_label = QLabel("")
         self._detail_label.setStyleSheet("font-size: 12px; color: palette(mid);")
         self._detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._detail_label.hide()
-        layout.addWidget(self._detail_label)
+        content_layout.addWidget(self._detail_label)
 
         # Elapsed time
         self._time_label = QLabel("")
         self._time_label.setStyleSheet("font-size: 12px; color: palette(mid);")
         self._time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._time_label)
+        content_layout.addWidget(self._time_label)
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -171,13 +178,15 @@ class GalleryPageWidget(QWidget):
         self._retry_btn.hide()
         btn_layout.addWidget(self._retry_btn)
 
-        layout.addLayout(btn_layout)
+        content_layout.addLayout(btn_layout)
 
         # Hint
         self._hint_label = QLabel("")
         self._hint_label.setStyleSheet("font-size: 11px; color: palette(mid); font-style: italic;")
         self._hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._hint_label)
+        content_layout.addWidget(self._hint_label)
+
+        layout.addWidget(content, 1)
 
         return widget
 

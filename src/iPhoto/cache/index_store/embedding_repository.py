@@ -44,6 +44,8 @@ class EmbeddingRepository:
         self.library_root = library_root
         self.path = ensure_work_dir(library_root) / EMBEDDING_DB_NAME
         self._conn: Optional[sqlite3.Connection] = None
+        self._cache: Optional[List[dict]] = None  # In-memory cache
+        self._cache_dirty = True  # Whether cache needs refresh
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -90,6 +92,7 @@ class EmbeddingRepository:
             (asset_id, embedding_bytes, len(embedding), model_name),
         )
         conn.commit()
+        self._cache_dirty = True  # Invalidate cache
 
     def store_embeddings_batch(
         self,
@@ -111,9 +114,14 @@ class EmbeddingRepository:
             data,
         )
         conn.commit()
+        self._cache_dirty = True  # Invalidate cache
 
     def get_all_embeddings(self) -> List[dict]:
-        """Get all stored embeddings."""
+        """Get all stored embeddings (with in-memory cache)."""
+        # Return cached results if available
+        if not self._cache_dirty and self._cache is not None:
+            return self._cache
+
         conn = self._get_conn()
         cursor = conn.execute("SELECT asset_id, embedding, dimension FROM embeddings")
 
@@ -125,6 +133,10 @@ class EmbeddingRepository:
                 "asset_id": asset_id,
                 "embedding": embedding,
             })
+
+        # Update cache
+        self._cache = results
+        self._cache_dirty = False
 
         return results
 
