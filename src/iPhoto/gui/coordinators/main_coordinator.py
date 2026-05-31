@@ -1106,6 +1106,9 @@ class MainCoordinator(QObject):
         """
         self._logger.info("Search requested: %s", query)
 
+        # First, switch to gallery view so user can see search results
+        self._view_router.show_gallery()
+
         # Show immediate feedback in grid view
         self._show_search_loading(query)
 
