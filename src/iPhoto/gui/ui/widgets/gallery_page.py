@@ -93,7 +93,7 @@ class GalleryPageWidget(QWidget):
         loading_content = QWidget()
         loading_content_layout = QVBoxLayout(loading_content)
         loading_content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        loading_content_layout.setSpacing(12)
+        loading_content_layout.setSpacing(16)
 
         self._loading_icon = QLabel("🔍")
         self._loading_icon.setStyleSheet("font-size: 48px;")
@@ -129,6 +129,27 @@ class GalleryPageWidget(QWidget):
         self._elapsed_label.hide()
         loading_content_layout.addWidget(self._elapsed_label)
 
+        # Continue browsing button
+        self._continue_button = QToolButton()
+        self._continue_button.setText("先去看照片 →")
+        self._continue_button.setStyleSheet(
+            "QToolButton { font-size: 13px; padding: 8px 16px; "
+            "background-color: palette(highlight); color: palette(highlighted-text); "
+            "border-radius: 6px; }"
+            "QToolButton:hover { background-color: palette(highlight); opacity: 0.8; }"
+        )
+        self._continue_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._continue_button.clicked.connect(self._on_continue_browsing)
+        self._continue_button.hide()
+        loading_content_layout.addWidget(self._continue_button, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # Hint text
+        self._hint_label = QLabel("AI 索引生成后，搜索会非常快（0.1秒）")
+        self._hint_label.setStyleSheet("font-size: 11px; color: palette(mid); font-style: italic;")
+        self._hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._hint_label.hide()
+        loading_content_layout.addWidget(self._hint_label)
+
         loading_layout.addWidget(loading_content, 1)
 
         self._stack.addWidget(self._loading_widget)
@@ -142,13 +163,14 @@ class GalleryPageWidget(QWidget):
         # Show grid view by default
         self._stack.setCurrentWidget(self.grid_view)
 
-    def show_loading_message(self, message: str, sub_message: str = "正在使用 AI 搜索照片...", show_progress: bool = False) -> None:
+    def show_loading_message(self, message: str, sub_message: str = "正在使用 AI 搜索照片...", show_progress: bool = False, show_continue: bool = False) -> None:
         """Show a loading message in the gallery area.
 
         Args:
             message: The main message to display.
             sub_message: The sub message to display.
             show_progress: Whether to show the progress bar.
+            show_continue: Whether to show the continue browsing button.
         """
         self._loading_label.setText(message)
         self._loading_sublabel.setText(sub_message)
@@ -158,6 +180,10 @@ class GalleryPageWidget(QWidget):
         else:
             self._progress_bar.hide()
 
+        # Show/hide continue button
+        self._continue_button.setVisible(show_continue)
+        self._hint_label.setVisible(show_continue)
+
         # Start elapsed timer
         self._loading_start_time = time.time()
         self._elapsed_label.show()
@@ -166,6 +192,13 @@ class GalleryPageWidget(QWidget):
         self._loading_dots = 0
 
         self._stack.setCurrentWidget(self._loading_widget)
+
+    def _on_continue_browsing(self) -> None:
+        """Handle continue browsing button click."""
+        # Hide the loading UI but keep the background task running
+        self.hide_loading_message()
+        # Emit signal to notify that user wants to continue browsing
+        self.searchBackRequested.emit()
 
     def _update_elapsed_time(self) -> None:
         """Update the elapsed time display."""

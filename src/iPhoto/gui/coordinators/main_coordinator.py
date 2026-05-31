@@ -1126,7 +1126,7 @@ class MainCoordinator(QObject):
         # Check if there are any embeddings
         if embedding_repo.count() == 0:
             # No embeddings yet, start generation first
-            self._show_search_loading(query, "首次搜索需要先生成索引，请稍后...")
+            self._show_search_loading(query, "首次搜索需要先生成索引，请稍后...", show_continue=True)
             self._start_embedding_generation()
             return
 
@@ -1165,7 +1165,7 @@ class MainCoordinator(QObject):
         worker = SearchWorker(library_session, query, on_search_complete)
         QThreadPool.globalInstance().start(worker)
 
-    def _show_search_loading(self, query: str, sub_message: str = None) -> None:
+    def _show_search_loading(self, query: str, sub_message: str = None, show_continue: bool = False) -> None:
         """Show loading state in the grid view area."""
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
@@ -1173,7 +1173,8 @@ class MainCoordinator(QObject):
             if hasattr(gallery_page, 'show_loading_message'):
                 gallery_page.show_loading_message(
                     f"正在搜索 \"{query}\"...",
-                    sub_message or "正在使用 AI 搜索照片..."
+                    sub_message or "正在使用 AI 搜索照片...",
+                    show_continue=show_continue
                 )
 
     def _display_search_results(self, results: list, query: str = "") -> None:
@@ -1381,7 +1382,8 @@ class MainCoordinator(QObject):
                 ui.gallery_page.show_loading_message(
                     "正在加载 AI 模型...",
                     message or "首次使用需要加载 AI 模型，请稍后",
-                    show_progress=False
+                    show_progress=False,
+                    show_continue=True  # Show "continue browsing" button during model loading
                 )
 
         elif status_type == "model_loaded":
