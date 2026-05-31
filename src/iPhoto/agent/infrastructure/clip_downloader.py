@@ -54,15 +54,33 @@ def download_model(
     if progress_callback:
         progress_callback(0, 100, "准备下载...")
 
+    # Check if huggingface_hub is installed
+    try:
+        import huggingface_hub
+    except ImportError:
+        _LOGGER.error("huggingface_hub not installed")
+        if progress_callback:
+            progress_callback(0, 100, "错误: huggingface_hub 未安装")
+        return False
+
     # Try using huggingface_hub with mirror
     try:
+        if progress_callback:
+            progress_callback(5, 100, "正在连接 HuggingFace 镜像...")
         return _download_with_huggingface_hub(model_path, progress_callback)
     except Exception as e:
         _LOGGER.warning("HuggingFace download failed: %s", e)
+        if progress_callback:
+            progress_callback(0, 100, f"HuggingFace 下载失败: {str(e)[:50]}")
 
     # Try using modelscope
     try:
+        import modelscope
+        if progress_callback:
+            progress_callback(5, 100, "正在尝试 ModelScope...")
         return _download_with_modelscope(model_dir, progress_callback)
+    except ImportError:
+        _LOGGER.warning("modelscope not installed")
     except Exception as e:
         _LOGGER.warning("ModelScope download failed: %s", e)
 

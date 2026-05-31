@@ -289,7 +289,7 @@ class LibrarySession:
 
     def _on_download_finished(self, success: bool, progress, model_dir: Path = None) -> None:
         """Handle download completion."""
-        from PySide6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QTextEdit, QPushButton, QApplication
+        from PySide6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QTextEdit, QPushButton, QApplication, QLabel, QHBoxLayout
 
         if success:
             progress.setLabelText("下载完成！")
