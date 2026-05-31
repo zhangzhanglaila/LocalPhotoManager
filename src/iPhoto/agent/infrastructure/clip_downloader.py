@@ -15,7 +15,10 @@ _MODEL_ID = "openai/clip-vit-base-patch32"
 
 def get_model_dir(library_root: Path) -> Path:
     """Get the model directory for CLIP."""
-    return library_root / "extension" / "models"
+    # Use project directory instead of library root
+    # This ensures the model is stored with the application, not with user's photos
+    project_dir = Path(__file__).resolve().parents[3]  # src/iPhoto/agent/infrastructure -> project root
+    return project_dir / "extension" / "models"
 
 
 def get_model_path(library_root: Path) -> Path:
