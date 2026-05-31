@@ -204,6 +204,7 @@ class SearchService:
             "media_type": None,
             "year": None,
             "month": None,
+            "raw_query": query_lower,  # Keep raw query for direct matching
         }
 
         # Translate Chinese to English
@@ -246,12 +247,16 @@ class SearchService:
         elif any(kw in query for kw in ["照片", "photo", "图片", "image"]):
             terms["media_type"] = "image"
 
-        # Extract remaining keywords
+        # Extract remaining keywords (English)
         remaining = query_lower.strip()
         if remaining:
-            # Split by spaces and common separators
             words = re.findall(r'[a-zA-Z]+', remaining)
             terms["keywords"].extend(words)
+
+        # Also add the original query as a keyword for direct matching
+        # This allows Chinese characters to be matched directly
+        if query_lower and query_lower not in terms["keywords"]:
+            terms["keywords"].append(query_lower)
 
         return terms
 
@@ -345,6 +350,21 @@ class SearchService:
                 if keyword in camera:
                     score += 0.5
                     continue
+
+        # Also check raw query directly (for Chinese characters)
+        raw_query = search_terms.get("raw_query", "")
+        if raw_query:
+            # Check filename
+            filename = asset.get("rel", "").lower()
+            if raw_query in filename:
+                score += 2.0  # Higher score for direct match
+                max_score += 2.0
+
+            # Check location
+            location = asset.get("location", "").lower()
+            if raw_query in location:
+                score += 2.0
+                max_score += 2.0
 
         # Normalize score
         if max_score > 0:
