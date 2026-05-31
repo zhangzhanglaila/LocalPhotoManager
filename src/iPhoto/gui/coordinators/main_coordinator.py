@@ -374,6 +374,11 @@ class MainCoordinator(QObject):
         self._view_router.show_gallery()
         self._map_extension_download.maybe_prompt_on_startup()
 
+        # Auto-start embedding generation if enabled
+        if self._context.settings.get("agent.semantic_search_enabled", False):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(3000, self._start_embedding_generation)  # Delay 3 seconds
+
     def finish_startup(self):
         """Re-enable full tree-update cascade after startup sequence completes."""
         self._startup_loading = False
@@ -1104,27 +1109,43 @@ class MainCoordinator(QObject):
         # Show immediate feedback in grid view
         self._show_search_loading(query)
 
-        # Run entire search in background (including model loading)
+        # Check if embeddings exist
+        library_session = getattr(self._context, "library_session", None)
+        if library_session is None:
+            self._display_search_error("未找到图库")
+            return
+
+        embedding_repo = library_session.get_embedding_repository()
+        if embedding_repo is None:
+            self._display_search_error("数据库初始化失败")
+            return
+
+        # Check if there are any embeddings
+        if embedding_repo.count() == 0:
+            # No embeddings yet, start generation first
+            self._show_search_loading(query, "首次搜索需要先生成索引，请稍后...")
+            self._start_embedding_generation()
+            return
+
+        # Run search in background
         from PySide6.QtCore import QRunnable, Slot
 
         class SearchWorker(QRunnable):
-            def __init__(self, library_session, query_text, callback):
+            def __init__(self, lib_session, query_text, callback):
                 super().__init__()
                 self.setAutoDelete(True)
-                self._library_session = library_session
+                self._lib_session = lib_session
                 self._query = query_text
                 self._callback = callback
 
             @Slot()
             def run(self):
                 try:
-                    # Get search service (this may load CLIP model)
-                    search_service = self._library_session.get_search_service()
+                    search_service = self._lib_session.get_search_service()
                     if search_service is None:
                         self._callback(None, "搜索服务初始化失败")
                         return
 
-                    # Run search
                     results = search_service.search(self._query, top_k=50)
                     self._callback(results, None)
                 except Exception as e:
@@ -1132,33 +1153,25 @@ class MainCoordinator(QObject):
                     self._callback(None, str(e))
 
         def on_search_complete(results, error):
-            # Update UI on main thread
             from PySide6.QtCore import QTimer
             if error:
                 QTimer.singleShot(0, lambda: self._display_search_error(error))
             else:
                 QTimer.singleShot(0, lambda: self._display_search_results(results, query))
 
-        library_session = getattr(self._context, "library_session", None)
-        if library_session is None:
-            self._status_bar.show_message("无法搜索：未找到图库")
-            return
-
         worker = SearchWorker(library_session, query, on_search_complete)
         QThreadPool.globalInstance().start(worker)
 
-    def _show_search_loading(self, query: str) -> None:
+    def _show_search_loading(self, query: str, sub_message: str = None) -> None:
         """Show loading state in the grid view area."""
-        # Get the grid view's parent (gallery page)
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
             gallery_page = ui.gallery_page
-            # Show a loading message in the gallery page
             if hasattr(gallery_page, 'show_loading_message'):
-                gallery_page.show_loading_message(f"正在搜索 \"{query}\"...")
-            else:
-                # Fallback: update status bar
-                self._status_bar.show_message(f"🔍 正在搜索: {query}...")
+                gallery_page.show_loading_message(
+                    f"正在搜索 \"{query}\"...",
+                    sub_message or "正在使用 AI 搜索照片..."
+                )
 
     def _display_search_results(self, results: list, query: str = "") -> None:
         """Display search results in the grid view.
@@ -1223,42 +1236,118 @@ class MainCoordinator(QObject):
             )
 
     def _start_embedding_generation(self) -> None:
-        """Start background embedding generation."""
+        """Start background embedding generation with progress UI."""
         library_session = getattr(self._context, "library_session", None)
         if library_session is None:
             return
 
-        embedding_service = library_session.get_embedding_service()
-        embedding_repo = library_session.get_embedding_repository()
-
-        if embedding_service is None or embedding_repo is None:
-            self._logger.warning("Cannot start embedding generation: services not available")
-            return
-
-        if not embedding_service.is_loaded():
-            self._logger.warning("CLIP model not loaded, skipping embedding generation")
-            return
-
-        # Start embedding worker in background
-        from iPhoto.agent.workers.embedding_worker import EmbeddingWorker
-
-        worker = EmbeddingWorker(
-            embedding_service=embedding_service,
-            embedding_repository=embedding_repo,
-            asset_repository=library_session.asset_runtime.assets,
-            library_root=library_session.library_root,
-        )
-
-        worker.signals.progress.connect(
-            lambda current, total, msg: self._status_bar.show_message(msg, 2000)
-        )
-        worker.signals.finished.connect(
-            lambda processed, failed: self._logger.info(
-                "Embedding generation complete: %d processed, %d failed", processed, failed
+        # Show progress in the gallery page
+        ui = self._window.ui
+        if hasattr(ui, 'gallery_page'):
+            ui.gallery_page.show_loading_message(
+                "正在初始化 AI 搜索...",
+                "首次使用需要为照片生成索引，之后搜索会很快"
             )
-        )
 
+        # Run model loading and embedding generation in background
+        from PySide6.QtCore import QRunnable, Slot
+
+        class InitWorker(QRunnable):
+            def __init__(self, session, callback):
+                super().__init__()
+                self.setAutoDelete(True)
+                self._session = session
+                self._callback = callback
+
+            @Slot()
+            def run(self):
+                try:
+                    # Load CLIP model
+                    self._callback("loading_model", 0, 0, "正在加载 AI 模型...")
+                    embedding_service = self._session.get_embedding_service()
+                    if embedding_service is None or not embedding_service.is_loaded():
+                        self._callback("error", 0, 0, "AI 模型加载失败")
+                        return
+
+                    # Get embedding repository
+                    embedding_repo = self._session.get_embedding_repository()
+                    if embedding_repo is None:
+                        self._callback("error", 0, 0, "数据库初始化失败")
+                        return
+
+                    # Count images to process
+                    all_assets = self._session.asset_runtime.assets.read_all()
+                    image_assets = [a for a in all_assets if a.get("media_type") == 0]
+                    asset_ids = [a["id"] for a in image_assets]
+                    pending_ids = embedding_repo.get_asset_ids_without_embeddings(asset_ids)
+
+                    if not pending_ids:
+                        self._callback("done", 0, 0, "")
+                        return
+
+                    # Start embedding generation
+                    from iPhoto.agent.workers.embedding_worker import EmbeddingWorker
+                    worker = EmbeddingWorker(
+                        embedding_service=embedding_service,
+                        embedding_repository=embedding_repo,
+                        asset_repository=self._session.asset_runtime.assets,
+                        library_root=self._session.library_root,
+                    )
+
+                    def on_progress(current, total, msg):
+                        self._callback("progress", current, total, msg)
+
+                    def on_finished(processed, failed):
+                        self._callback("done", processed, failed, "")
+
+                    worker.signals.progress.connect(on_progress)
+                    worker.signals.finished.connect(on_finished)
+                    worker.signals.error.connect(lambda err: self._callback("error", 0, 0, err))
+
+                    QThreadPool.globalInstance().start(worker)
+
+                except Exception as e:
+                    self._callback("error", 0, 0, str(e))
+
+        def on_status(status_type, current, total, message):
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self._handle_embedding_status(status_type, current, total, message))
+
+        worker = InitWorker(library_session, on_status)
         QThreadPool.globalInstance().start(worker)
+
+    def _handle_embedding_status(self, status_type: str, current: int, total: int, message: str) -> None:
+        """Handle embedding generation status updates."""
+        ui = self._window.ui
+
+        if status_type == "loading_model":
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.show_loading_message(
+                    "正在加载 AI 模型...",
+                    "首次使用需要下载和加载 AI 模型，请稍后"
+                )
+
+        elif status_type == "progress":
+            progress_pct = int(current / total * 100) if total > 0 else 0
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.show_loading_message(
+                    f"正在为照片生成索引... {progress_pct}%",
+                    f"已处理 {current}/{total} 张照片，之后搜索会很快"
+                )
+            self._status_bar.show_message(f"AI 索引生成中: {current}/{total} ({progress_pct}%)")
+
+        elif status_type == "done":
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.hide_loading_message()
+            if current > 0:
+                self._status_bar.show_message(f"AI 索引生成完成！共处理 {current} 张照片", 5000)
+            else:
+                self._status_bar.show_message("AI 索引已是最新", 3000)
+
+        elif status_type == "error":
+            if hasattr(ui, 'gallery_page'):
+                ui.gallery_page.hide_loading_message()
+            self._status_bar.show_message(f"AI 索引生成失败: {message}", 5000)
 
     def _handle_find_duplicates(self) -> None:
         """Handle find duplicates action."""
