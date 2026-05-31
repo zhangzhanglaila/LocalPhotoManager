@@ -1378,18 +1378,14 @@ class MainCoordinator(QObject):
         ui = self._window.ui
 
         if status_type == "loading_model":
+            # Phase 1: Model loading (no progress bar, just spinner + time)
             if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.show_loading_message(
-                    "正在加载 AI 模型...",
-                    message or "首次使用需要加载 AI 模型，请稍后",
-                    show_progress=False,
-                    show_continue=True  # Show "continue browsing" button during model loading
-                )
+                ui.gallery_page.show_model_loading()
 
         elif status_type == "model_loaded":
             if hasattr(ui, 'gallery_page'):
                 ui.gallery_page.show_loading_message(
-                    "AI 模型加载完成",
+                    "AI 模型加载完成 ✓",
                     "正在准备生成索引...",
                     show_progress=False
                 )
@@ -1403,22 +1399,21 @@ class MainCoordinator(QObject):
                 )
 
         elif status_type == "starting":
+            # Phase 2: Embedding generation (with progress bar)
             if hasattr(ui, 'gallery_page'):
                 ui.gallery_page.show_loading_message(
                     "开始生成索引...",
-                    message,
-                    show_progress=True
+                    f"共 {current} 张照片需要处理",
+                    show_progress=True,
+                    show_continue=True
                 )
                 ui.gallery_page.update_progress(0, current, "开始生成索引...")
 
         elif status_type == "progress":
-            progress_pct = int(current / total * 100) if total > 0 else 0
+            # Update progress bar
             if hasattr(ui, 'gallery_page'):
-                ui.gallery_page.update_progress(
-                    current,
-                    total,
-                    f"正在为照片生成索引... {progress_pct}%"
-                )
+                ui.gallery_page.show_embedding_progress(current, total)
+            progress_pct = int(current / total * 100) if total > 0 else 0
             self._status_bar.show_message(f"AI 索引生成中: {current}/{total} ({progress_pct}%)")
 
         elif status_type == "done":

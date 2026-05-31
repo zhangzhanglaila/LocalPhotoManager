@@ -175,6 +175,8 @@ class GalleryPageWidget(QWidget):
         self._loading_label.setText(message)
         self._loading_sublabel.setText(sub_message)
         self._search_title_label.setText("搜索中")
+
+        # Only show progress bar when show_progress is True (embedding phase)
         if show_progress:
             self._progress_bar.show()
         else:
@@ -192,6 +194,26 @@ class GalleryPageWidget(QWidget):
         self._loading_dots = 0
 
         self._stack.setCurrentWidget(self._loading_widget)
+
+    def show_model_loading(self) -> None:
+        """Show model loading phase (no progress bar, just spinner + time)."""
+        self.show_loading_message(
+            "正在加载 AI 模型（约350MB）...",
+            "这是首次使用，需要加载 AI 模型，之后会很快",
+            show_progress=False,
+            show_continue=True
+        )
+
+    def show_embedding_progress(self, current: int, total: int) -> None:
+        """Show embedding generation phase (with progress bar)."""
+        self._progress_bar.setMaximum(total)
+        self._progress_bar.setValue(current)
+        progress_pct = int(current / total * 100) if total > 0 else 0
+        self._loading_label.setText(f"正在为照片生成索引... {progress_pct}%")
+        self._loading_sublabel.setText(f"已处理 {current}/{total} 张照片")
+        self._progress_bar.show()
+        self._continue_button.show()
+        self._hint_label.show()
 
     def _on_continue_browsing(self) -> None:
         """Handle continue browsing button click."""
