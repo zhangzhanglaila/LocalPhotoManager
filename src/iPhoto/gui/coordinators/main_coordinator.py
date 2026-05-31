@@ -374,10 +374,7 @@ class MainCoordinator(QObject):
         self._view_router.show_gallery()
         self._map_extension_download.maybe_prompt_on_startup()
 
-        # Auto-start embedding generation silently in background (no UI change)
-        if self._context.settings.get("agent.semantic_search_enabled", False):
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(5000, self._start_embedding_generation_silent)  # Delay 5 seconds
+        # No auto-start - only load when user actually searches
 
     def finish_startup(self):
         """Re-enable full tree-update cascade after startup sequence completes."""
@@ -1097,73 +1094,99 @@ class MainCoordinator(QObject):
             )
 
     def _handle_search_requested(self, query: str) -> None:
-        """Handle semantic search request from the search input.
-
-        Parameters
-        ----------
-        query : str
-            The search query text.
-        """
+        """Handle semantic search request from the search input."""
         self._logger.info("Search requested: %s", query)
 
-        # First, switch to gallery view so user can see search results
+        # Switch to gallery view
         self._view_router.show_gallery()
 
-        # Show immediate feedback in grid view
+        # Show loading
         self._show_search_loading(query)
 
-        # Check if embeddings exist
-        library_session = getattr(self._context, "library_session", None)
-        if library_session is None:
-            self._display_search_error("未找到图库")
-            return
+        # Run search in background thread
+        from PySide6.QtCore import QThread, Signal
 
-        embedding_repo = library_session.get_embedding_repository()
-        if embedding_repo is None:
-            self._display_search_error("数据库初始化失败")
-            return
+        class SearchThread(QThread):
+            finished = Signal(object, str)  # results or None, error
 
-        # Check if there are any embeddings
-        if embedding_repo.count() == 0:
-            # No embeddings yet, start generation first
-            self._show_search_loading(query, "首次搜索需要先生成索引，请稍后...", show_continue=True)
-            self._start_embedding_generation()
-            return
-
-        # Run search in background
-        from PySide6.QtCore import QRunnable, Slot
-
-        class SearchWorker(QRunnable):
-            def __init__(self, lib_session, query_text, callback):
+            def __init__(self, query_text):
                 super().__init__()
-                self.setAutoDelete(True)
-                self._lib_session = lib_session
                 self._query = query_text
-                self._callback = callback
 
-            @Slot()
             def run(self):
                 try:
-                    search_service = self._lib_session.get_search_service()
-                    if search_service is None:
-                        self._callback(None, "搜索服务初始化失败")
+                    from src.iPhoto.agent.infrastructure.clip_embedding import CLIPEmbeddingService
+                    from src.iPhoto.cache.index_store.embedding_repository import get_embedding_repository
+                    from pathlib import Path
+                    import time
+
+                    # 1. Load model
+                    model_dir = Path('extension/models/clip-vit-base-patch32')
+                    service = CLIPEmbeddingService(model_dir=model_dir)
+                    service._ensure_loaded()
+
+                    if not service.is_loaded():
+                        self.finished.emit(None, "AI 模型加载失败")
                         return
 
-                    results = search_service.search(self._query, top_k=50)
-                    self._callback(results, None)
+                    # 2. Load embeddings
+                    embedding_repo = get_embedding_repository(Path('D:/APPLE'))
+                    all_embeddings = embedding_repo.get_all_embeddings()
+
+                    if not all_embeddings:
+                        self.finished.emit(None, "没有找到照片索引，请先生成索引")
+                        return
+
+                    # 3. Search
+                    query_embedding = service.encode_text(self._query)
+                    if query_embedding is None:
+                        self.finished.emit(None, "搜索编码失败")
+                        return
+
+                    results = []
+                    for item in all_embeddings:
+                        similarity = service.compute_similarity(query_embedding, item["embedding"])
+                        if similarity > 0.2:
+                            results.append({
+                                "asset_id": item["asset_id"],
+                                "score": float(similarity),
+                            })
+
+                    results.sort(key=lambda x: x["score"], reverse=True)
+                    results = results[:50]
+
+                    self.finished.emit(results, "")
+
                 except Exception as e:
                     logging.getLogger(__name__).error("Search failed: %s", e)
-                    self._callback(None, str(e))
+                    self.finished.emit(None, str(e))
 
-        def on_search_complete(results, error):
+        def on_finished(results, error):
             from PySide6.QtCore import QTimer
             if error:
                 QTimer.singleShot(0, lambda: self._display_search_error(error))
+            elif results:
+                QTimer.singleShot(0, lambda: self._display_search_results_raw(results, query))
             else:
-                QTimer.singleShot(0, lambda: self._display_search_results(results, query))
+                QTimer.singleShot(0, lambda: self._display_search_results_raw([], query))
 
-        worker = SearchWorker(library_session, query, on_search_complete)
-        QThreadPool.globalInstance().start(worker)
+        self._search_thread = SearchThread(query)
+        self._search_thread.finished.connect(on_finished)
+        self._search_thread.start()
+
+    def _display_search_results_raw(self, results: list, query: str) -> None:
+        """Display search results from raw dict format."""
+        ui = self._window.ui
+        if hasattr(ui, 'gallery_page'):
+            ui.gallery_page.hide_loading()
+
+        if not results:
+            self._status_bar.show_message(f"未找到与 '{query}' 相关的照片")
+            return
+
+        asset_ids = [r["asset_id"] for r in results]
+        self._gallery_vm.show_search_results(asset_ids)
+        self._status_bar.show_message(f"找到 {len(results)} 张与 '{query}' 相关的照片")
 
     def _show_search_loading(self, query: str, sub_message: str = None, show_continue: bool = False) -> None:
         """Show loading state in the grid view area."""
