@@ -232,6 +232,7 @@ __marimo__/
 /src/maps/tiles/*.tar*
 /src/maps/tiles/extension/
 /src/extension/models/
+/extension/
 /demo/face-cluster/runtime/
 /demo/face-cluster/state/
 /.codex

@@ -80,6 +80,52 @@ pip install insightface onnxruntime
 > sudo dnf install LibRaw-devel  # Fedora
 > ```
 
+### 搜索功能（CLIP 模型）
+
+语义搜索功能需要 CLIP 模型。**安装后首次搜索时会自动提示下载**，也可手动安装：
+
+```bash
+# 自动下载脚本
+python scripts/download_clip_model.py
+```
+
+或手动安装：
+```bash
+# 1. 下载模型（约 580MB）
+# GitHub: https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v1.0.0/clip-vit-base-patch32.zip
+
+# 2. 解压到项目目录
+unzip clip-vit-base-patch32.zip -d extension/models/
+```
+
+最终目录结构：
+```
+extension/models/clip-vit-base-patch32/
+├── config.json
+├── pytorch_model.bin      (578MB)
+├── tokenizer.json
+├── tokenizer_config.json
+├── vocab.json
+├── merges.txt
+├── preprocessor_config.json
+└── special_tokens_map.json
+```
+
+**使用方式：**
+- 启动应用后，在搜索框输入关键词（支持中文）
+- 首次搜索需要加载模型（约 10 秒）
+- 之后搜索瞬间出结果
+
+**支持的搜索示例：**
+| 中文 | 英文 |
+|------|------|
+| 树、花、山 | tree, flower, mountain |
+| 海边、日落 | beach, sunset |
+| 狗、猫 | dog, cat |
+| 美食、蛋糕 | food, cake |
+
+---
+
 ### 国内用户特别说明
 
 **人脸模型**下载较慢时，可手动下载：
