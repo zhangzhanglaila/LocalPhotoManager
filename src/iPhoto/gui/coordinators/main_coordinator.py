@@ -1211,8 +1211,8 @@ class MainCoordinator(QObject):
                             })
 
                     results.sort(key=lambda x: x["score"], reverse=True)
-                    results = results[:50]
 
+                    # Return all results (UI will handle pagination)
                     self.finished.emit(results, "")
 
                 except Exception as e:
@@ -1238,7 +1238,7 @@ class MainCoordinator(QObject):
         self._search_thread.start()
 
     def _display_search_results_raw(self, results: list, query: str) -> None:
-        """Display search results from raw dict format."""
+        """Display search results."""
         ui = self._window.ui
         if hasattr(ui, 'gallery_page'):
             ui.gallery_page.hide_loading()
@@ -1248,17 +1248,20 @@ class MainCoordinator(QObject):
             return
 
         # Show search results header with back button
+        total_count = len(results)
         if hasattr(ui, 'gallery_page'):
-            ui.gallery_page.show_search_results_header(query, len(results))
+            ui.gallery_page.show_search_results_header(query, total_count)
 
-        asset_ids = [r["asset_id"] for r in results]
+        # Show results (limit to 1000 for performance)
+        max_results = 1000
+        asset_ids = [r["asset_id"] for r in results[:max_results]]
         self._gallery_vm.show_search_results(asset_ids)
 
-        # Scroll to top of results
+        # Scroll to top
         if hasattr(ui, 'grid_view'):
             ui.grid_view.scrollToTop()
 
-        self._status_bar.show_message(f"找到 {len(results)} 张与 '{query}' 相关的照片")
+        self._status_bar.show_message(f"找到 {total_count} 张与 '{query}' 相关的照片")
 
     def _show_search_loading(self, query: str, sub_message: str = None, show_continue: bool = False) -> None:
         """Show loading state in the grid view area."""
