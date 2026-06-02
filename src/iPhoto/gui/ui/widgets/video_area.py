@@ -55,7 +55,11 @@ from ....config import (
 )
 from ....core.adjustment_mapping import normalise_video_trim, video_requires_adjusted_preview
 from ....gui.detail_profile import log_detail_profile
-from ....utils.ffmpeg import get_linux_180_prerotate_hint, probe_video_rotation
+from ....utils.ffmpeg import (
+    get_linux_180_prerotate_hint,
+    probe_media,
+    probe_video_rotation,
+)
 from ..palette import viewer_surface_color
 from .gl_image_viewer import GLImageViewer
 from .player_bar import PlayerBar
@@ -671,13 +675,23 @@ class VideoArea(QWidget):
         # *before* setting the source.  The renderer uses the probed value
         # as the primary rotation source (more reliable across platforms
         # than Qt's ``QVideoFrameFormat.rotation()``).
+        #
+        # ``probe_media()`` is LRU-cached, so if a background thread (e.g.
+        # ``PreviewWindow._prime_native_size_async``) already probed this
+        # file, the call below returns instantly from the cache.
         probe_started = time.perf_counter()
         cw_deg, raw_w, raw_h = probe_video_rotation(path)
         linux_180_hint = get_linux_180_prerotate_hint(path)
+        probe_elapsed_ms = (time.perf_counter() - probe_started) * 1000.0
+        if probe_elapsed_ms > 20.0:
+            _log.warning(
+                "Slow rotation probe (%.1f ms, likely cache miss) for %s",
+                probe_elapsed_ms, path.name,
+            )
         log_detail_profile(
             "video_area",
             "rotation_probe",
-            (time.perf_counter() - probe_started) * 1000.0,
+            probe_elapsed_ms,
             path=path.name,
             rotation_cw=cw_deg,
             raw_width=raw_w,
@@ -849,7 +863,15 @@ class VideoArea(QWidget):
         self._end_hold_display_ms = None
 
     def _queue_video_frame(self, frame: "QVideoFrame") -> None:
-        """Coalesce video-sink frames back onto the GUI event loop."""
+        """Coalesce video-sink frames and present the latest immediately.
+
+        Previous implementation deferred to the *next* GUI event-loop turn via
+        ``QTimer.singleShot(0, …)``, adding up to one vsync of extra latency
+        per frame.  The coalescing is now inline: if a presentation is already
+        pending the new frame simply replaces ``_pending_video_frame`` and the
+        in-flight flush will pick it up; otherwise we present directly without
+        deferral.
+        """
 
         if frame is None or not frame.isValid():
             return
@@ -871,12 +893,11 @@ class VideoArea(QWidget):
             )
         self._pending_video_frame = queued_frame
         if self._video_frame_dispatch_pending:
+            # A frame is already being processed — the latest value will be
+            # picked up when that processing finishes.
             return
         self._video_frame_dispatch_pending = True
-        # Keep latest-frame coalescing by deferring the flush to the next GUI
-        # turn. The queued frame wrapper is copied above so Linux backends can
-        # still retain short-lived zero-copy handles until presentation.
-        QTimer.singleShot(0, self._flush_pending_video_frame)
+        self._flush_pending_video_frame()
 
     def _flush_pending_video_frame(self) -> None:
         """Present the latest queued frame on the active preview surface."""

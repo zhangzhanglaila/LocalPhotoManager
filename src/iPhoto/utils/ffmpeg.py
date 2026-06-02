@@ -596,13 +596,20 @@ def get_linux_180_prerotate_hint(source: Path) -> bool:
     return _LINUX_180_HINT_CACHE.get(str(source.resolve()), False)
 
 
-def probe_media(source: Path) -> Dict[str, Any]:
-    """Return ffprobe metadata for *source*.
+@lru_cache(maxsize=256)
+def _probe_media_cached(
+    resolved_path: str,
+    mtime_ns: int,
+    size: int,
+) -> Dict[str, Any]:
+    """Cached backend for :func:`probe_media`."""
 
-    The JSON structure mirrors ffprobe's ``show_format`` and ``show_streams``
-    output. ``ExternalToolError`` is raised when the toolchain is unavailable or
-    returns an error.
-    """
+    del mtime_ns, size  # keys only; keep cache invalidated on file change
+    return _probe_media_uncached(Path(resolved_path))
+
+
+def _probe_media_uncached(source: Path) -> Dict[str, Any]:
+    """Run ffprobe and return raw metadata (no caching)."""
 
     command = [
         "ffprobe",
@@ -626,3 +633,26 @@ def probe_media(source: Path) -> Dict[str, Any]:
         return json.loads(process.stdout.decode("utf-8"))
     except json.JSONDecodeError as exc:
         raise ExternalToolError("ffprobe returned invalid JSON output") from exc
+
+
+def probe_media(source: Path) -> Dict[str, Any]:
+    """Return ffprobe metadata for *source*.
+
+    The JSON structure mirrors ffprobe's ``show_format`` and ``show_streams``
+    output.  Results are cached by ``(resolved_path, mtime_ns, size)`` so that
+    repeated calls for the same file (e.g. during scan → edit → playback)
+    reuse a single ffprobe invocation.  ``ExternalToolError`` is raised when
+    the toolchain is unavailable or returns an error.
+    """
+
+    try:
+        resolved = source.resolve()
+        stat = resolved.stat()
+    except OSError:
+        # Cannot stat — fall back to an uncached probe.
+        return _probe_media_uncached(source)
+
+    mtime_ns = getattr(stat, "st_mtime_ns", None)
+    if mtime_ns is None:
+        mtime_ns = int(stat.st_mtime * 1_000_000_000)
+    return _probe_media_cached(str(resolved), int(mtime_ns), int(stat.st_size))

@@ -433,9 +433,11 @@ class EditCoordinator(QObject):
         if self._session is None:
             return
         self._emit_video_trim_diag("start_video_edit_load", source=source)
-        self._video_frame_step_ms = self._probe_video_frame_step_ms(source)
+        # Probe once and extract both fields to avoid duplicate ffprobe calls.
+        video_meta = self._read_video_meta_safe(source)
+        self._video_frame_step_ms = self._frame_step_ms_from_meta(video_meta)
         self._video_color_stats = None
-        self._pending_video_duration_sec = self._probe_video_duration_sec(source)
+        self._pending_video_duration_sec = self._duration_sec_from_meta(video_meta)
         self._video_trim_thumbnail_timer.stop()
         self._video_sidebar_preview_timer.stop()
         self._ui.video_area.set_edit_mode_active(True)
@@ -1115,12 +1117,25 @@ class EditCoordinator(QObject):
         )
 
     def _probe_video_frame_step_ms(self, source: Path) -> int:
-        try:
-            info = read_video_meta(source)
-        except Exception:
-            _LOGGER.debug("Failed to probe frame rate for %s", source, exc_info=True)
-            return _DEFAULT_VIDEO_FRAME_STEP_MS
+        info = self._read_video_meta_safe(source)
+        return self._frame_step_ms_from_meta(info)
 
+    def _probe_video_duration_sec(self, source: Path) -> float | None:
+        info = self._read_video_meta_safe(source)
+        return self._duration_sec_from_meta(info)
+
+    @staticmethod
+    def _read_video_meta_safe(source: Path) -> dict[str, object]:
+        """Return video metadata dict (empty on failure)."""
+
+        try:
+            return read_video_meta(source)
+        except Exception:
+            _LOGGER.debug("Failed to probe video meta for %s", source, exc_info=True)
+            return {}
+
+    @staticmethod
+    def _frame_step_ms_from_meta(info: dict[str, object]) -> int:
         try:
             frame_rate = float(info.get("frame_rate"))
         except (TypeError, ValueError):
@@ -1129,13 +1144,8 @@ class EditCoordinator(QObject):
             return _DEFAULT_VIDEO_FRAME_STEP_MS
         return max(int(round(1000.0 / frame_rate)), 1)
 
-    def _probe_video_duration_sec(self, source: Path) -> float | None:
-        try:
-            info = read_video_meta(source)
-        except Exception:
-            _LOGGER.debug("Failed to probe duration for %s", source, exc_info=True)
-            return None
-
+    @staticmethod
+    def _duration_sec_from_meta(info: dict[str, object]) -> float | None:
         try:
             duration_sec = float(info.get("dur") or info.get("duration") or 0.0)
         except (AttributeError, TypeError, ValueError):
