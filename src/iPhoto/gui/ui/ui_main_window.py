@@ -9,8 +9,10 @@ from PySide6.QtCore import QCoreApplication, QMetaObject, QSize, Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
+    QPushButton,
     QSizeGrip,
     QSizePolicy,
     QStackedLayout,
@@ -251,8 +253,29 @@ class Ui_MainWindow(object):
         map_layout = QVBoxLayout(map_page)
         map_layout.setContentsMargins(0, 0, 0, 0)
         map_layout.setSpacing(0)
-        map_layout.addWidget(self.map_view)
+        # Map toolbar (top bar with filter buttons)
+        self._map_toolbar = QWidget()
+        map_toolbar_layout = QHBoxLayout(self._map_toolbar)
+        map_toolbar_layout.setContentsMargins(8, 4, 8, 4)
+        map_toolbar_layout.setSpacing(4)
+        self._btn_person_filter = QPushButton("👤 按人物筛选")
+        self._btn_person_filter.setCheckable(True)
+        self._btn_person_filter.setFixedHeight(28)
+        self._btn_trail_toggle = QPushButton("🗺️ 显示轨迹")
+        self._btn_trail_toggle.setCheckable(True)
+        self._btn_trail_toggle.setFixedHeight(28)
+        map_toolbar_layout.addStretch()
+        map_toolbar_layout.addWidget(self._btn_person_filter)
+        map_toolbar_layout.addWidget(self._btn_trail_toggle)
+        map_toolbar_layout.addStretch()
+        self._map_toolbar.hide()  # Shown when map is active
+        map_layout.addWidget(self._map_toolbar)
+        map_layout.addWidget(self.map_view, 1)
         self.map_page = map_page
+
+        # Person filter panel for map (created lazily, hidden by default)
+        self._person_map_panel = None
+        self._person_filter_visible = False
 
         self.view_stack.addWidget(self.gallery_page)
         self.view_stack.addWidget(self.people_page)
