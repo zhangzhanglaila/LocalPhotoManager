@@ -161,6 +161,27 @@ class MediaController(QObject):
 
         self._player.setPosition(max(0, position_ms))
 
+    def seamless_restart(self) -> None:
+        """Restart playback from the beginning with minimal latency.
+
+        For in-memory sources (QBuffer) the buffer position is reset and
+        the source is re-attached, avoiding the ``seek(0)`` pipeline flush
+        that causes a visible stutter on short clips (e.g. Live Photos).
+        Falls back to ``stop()`` + ``play()`` for file-backed sources.
+        """
+
+        if self._memory_buffer is not None and self._memory_buffer.isOpen():
+            self._player.stop()
+            self._memory_buffer.seek(0)
+            self._player.setSourceDevice(
+                self._memory_buffer,
+                QUrl.fromLocalFile(str(self._current_source)),
+            )
+            self._player.play()
+        else:
+            self._player.stop()
+            self._player.play()
+
     def set_volume(self, volume: int) -> None:
         """Set the audio volume to *volume* (0-100)."""
 

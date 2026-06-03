@@ -700,8 +700,7 @@ class PreviewWindow(QWidget):
                     )
             elif status == QMediaPlayer.MediaStatus.EndOfMedia:
                 # Fallback — if the pre-emptive check missed, restart here.
-                self._media.seek(0)
-                self._media.play()
+                self._media.seamless_restart()
         except Exception:
             pass
 
@@ -717,9 +716,8 @@ class PreviewWindow(QWidget):
                 )
             except (RuntimeError, TypeError):
                 pass
-            self._media.seek(0)
-            self._media.play()
-            # Reconnect after a short delay so the seek(0) position event
+            self._media.seamless_restart()
+            # Reconnect after a short delay so the restart position event
             # does not immediately re-trigger this handler.
             QTimer.singleShot(100, lambda: self._safe_reconnect_loop())
 
