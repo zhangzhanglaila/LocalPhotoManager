@@ -679,21 +679,77 @@ class PreviewWindow(QWidget):
             self._do_close()
 
     def _on_media_status_changed(self, status: object) -> None:
-        """Loop video playback when it reaches the end."""
+        """Loop video playback when it reaches the end.
+
+        Qt 6 ``QMediaPlayer`` does not support seamless looping — entering
+        ``EndOfMedia`` pauses the pipeline, and a subsequent ``seek(0)``
+        + ``play()`` causes a visible stutter.  To mitigate this we use a
+        *pre-emptive loop*: once the media reaches ``LoadedMedia`` we
+        record the duration, and a ``positionChanged`` handler restarts
+        playback a small margin before the actual end.
+        """
         try:
             from PySide6.QtMultimedia import QMediaPlayer
-            if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            if status == QMediaPlayer.MediaStatus.LoadedMedia:
+                dur = self._media._player.duration()
+                if dur > 0:
+                    self._loop_restart_margin_ms = max(50, int(dur * 0.05))
+                    self._loop_duration_ms = dur
+                    self._media._player.positionChanged.connect(
+                        self._maybe_preemptive_loop,
+                    )
+            elif status == QMediaPlayer.MediaStatus.EndOfMedia:
+                # Fallback — if the pre-emptive check missed, restart here.
                 self._media.seek(0)
                 self._media.play()
         except Exception:
             pass
 
+    def _maybe_preemptive_loop(self, position: int) -> None:
+        """Restart playback just before the end to avoid the EndOfMedia stall."""
+
+        dur = getattr(self, "_loop_duration_ms", 0)
+        margin = getattr(self, "_loop_restart_margin_ms", 50)
+        if dur > 0 and position >= dur - margin:
+            try:
+                self._media._player.positionChanged.disconnect(
+                    self._maybe_preemptive_loop,
+                )
+            except (RuntimeError, TypeError):
+                pass
+            self._media.seek(0)
+            self._media.play()
+            # Reconnect after a short delay so the seek(0) position event
+            # does not immediately re-trigger this handler.
+            QTimer.singleShot(100, lambda: self._safe_reconnect_loop())
+
     def _do_close(self) -> None:
         self._close_timer.stop()
+        self._disconnect_loop_handler()
         self._media.unload()
         self._rhi_popup.close_preview()
         self._frame.video_view().show_video_mode()
         self.hide()
+
+    def _disconnect_loop_handler(self) -> None:
+        """Disconnect the pre-emptive loop handler to avoid leaks."""
+
+        try:
+            self._media._player.positionChanged.disconnect(
+                self._maybe_preemptive_loop,
+            )
+        except (RuntimeError, TypeError):
+            pass
+
+    def _safe_reconnect_loop(self) -> None:
+        """Reconnect the pre-emptive loop handler after a seek(0)."""
+
+        try:
+            self._media._player.positionChanged.connect(
+                self._maybe_preemptive_loop,
+            )
+        except (RuntimeError, TypeError):
+            pass
 
     def _clamp_to_screen(self, origin: QPoint, *, size: Optional[QSize] = None) -> QPoint:
         screen = self._rhi_popup.screen() if self._using_rhi_popup else self.screen()
