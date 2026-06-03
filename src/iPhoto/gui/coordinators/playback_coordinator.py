@@ -605,7 +605,18 @@ class PlaybackCoordinator(QObject):
                 self._hide_face_name_overlay(clear_annotations=False)
                 self._player_view.show_live_badge()
                 self._player_view.set_live_replay_enabled(True)
-                self._autoplay_live_motion(presentation)
+                # Defer _autoplay_live_motion to the next event-loop
+                # iteration so that any pending playbackFinished signal
+                # from the *previous* Live Photo's motion video is
+                # processed first.  At this point _active_live_motion is
+                # still None (cleared above), so the stale signal
+                # handler returns early instead of triggering a second,
+                # conflicting load_video() call that would leave the
+                # QMediaPlayer stuck on Windows/WMF.
+                QTimer.singleShot(
+                    0,
+                    lambda p=presentation: self._autoplay_live_motion(p),
+                )
             else:
                 self._player_view.hide_live_badge()
                 self._player_view.set_live_replay_enabled(False)
