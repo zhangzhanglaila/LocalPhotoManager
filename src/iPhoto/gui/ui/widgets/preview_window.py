@@ -855,24 +855,6 @@ class PreviewWindow(QWidget):
                 self._native_size_seeded = True
                 return
 
-        # ``probe_media()`` is LRU-cached, so ``_probe_native_size`` is
-        # typically a near-instant dict lookup.  Call it synchronously to avoid
-        # the layout flash caused by the popup opening at a 16:9 default size
-        # and then resizing once the background probe completes.
-        try:
-            display_width, display_height = self._probe_native_size(source)
-        except Exception:
-            display_width, display_height = 0.0, 0.0
-        if display_width > 0.0 and display_height > 0.0:
-            self._native_size_probe_cache[source_key] = (display_width, display_height)
-            self._current_native_size = QSizeF(display_width, display_height)
-            self._native_size_seeded_from_probe = True
-            self._native_size_seeded = True
-            return
-
-        # Cache miss (first access, stale probe cache) — fall back to the
-        # background executor so the GUI thread is not blocked by a slow
-        # ffprobe subprocess.
         self._probe_future = self._probe_executor.submit(self._probe_native_size, source)
         self._probe_future.add_done_callback(
             lambda future, rid=request_id, sk=source_key: self._on_probe_future_done(
