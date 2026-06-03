@@ -635,6 +635,20 @@ def _probe_media_uncached(source: Path) -> Dict[str, Any]:
         raise ExternalToolError("ffprobe returned invalid JSON output") from exc
 
 
+def _probe_media_cache_key(source: Path) -> tuple[str, int, int] | None:
+    """Return the LRU-cache key for *source*, or ``None`` if unresolvable."""
+
+    try:
+        resolved = source.resolve()
+        stat = resolved.stat()
+    except OSError:
+        return None
+    mtime_ns = getattr(stat, "st_mtime_ns", None)
+    if mtime_ns is None:
+        mtime_ns = int(stat.st_mtime * 1_000_000_000)
+    return (str(resolved), int(mtime_ns), int(stat.st_size))
+
+
 def probe_media(source: Path) -> Dict[str, Any]:
     """Return ffprobe metadata for *source*.
 
@@ -645,14 +659,7 @@ def probe_media(source: Path) -> Dict[str, Any]:
     the toolchain is unavailable or returns an error.
     """
 
-    try:
-        resolved = source.resolve()
-        stat = resolved.stat()
-    except OSError:
-        # Cannot stat — fall back to an uncached probe.
+    key = _probe_media_cache_key(source)
+    if key is None:
         return _probe_media_uncached(source)
-
-    mtime_ns = getattr(stat, "st_mtime_ns", None)
-    if mtime_ns is None:
-        mtime_ns = int(stat.st_mtime * 1_000_000_000)
-    return _probe_media_cached(str(resolved), int(mtime_ns), int(stat.st_size))
+    return _probe_media_cached(*key)
