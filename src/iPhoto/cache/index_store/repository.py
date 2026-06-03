@@ -245,7 +245,10 @@ class AssetRepository:
                     chunk = unique_rels[offset : offset + _SQLITE_PARAM_CHUNK_SIZE]
                     placeholders = ", ".join(["?"] * len(chunk))
                     cursor = conn.execute(
-                        f"SELECT * FROM assets WHERE rel IN ({placeholders})",
+                        f"SELECT rel, id, bytes, ts, face_status, "
+                        f"is_favorite, original_rel_path, original_album_id, "
+                        f"original_album_subpath, live_role, live_partner_rel "
+                        f"FROM assets WHERE rel IN ({placeholders})",
                         chunk,
                     )
                     for db_row in cursor:

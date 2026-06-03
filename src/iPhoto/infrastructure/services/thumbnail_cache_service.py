@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from pathlib import Path
 import shutil
 from typing import Dict, Optional, Set
@@ -87,7 +88,7 @@ class ThumbnailCacheService(QObject):
         self._edit_service: EditServicePort | None = None
 
         # In-memory cache with size limit
-        self._memory_cache: Dict[str, QPixmap] = {}
+        self._memory_cache: OrderedDict[str, QPixmap] = OrderedDict()
         self._max_memory_items = 500  # Reduced from 1000 to save memory
 
         self._pending_tasks: Set[str] = set()
@@ -124,6 +125,7 @@ class ThumbnailCacheService(QObject):
 
         # 1. Memory Check
         if key in self._memory_cache:
+            self._memory_cache.move_to_end(key)
             return self._memory_cache[key]
 
         # 2. Throttle: don't queue too many tasks
@@ -225,9 +227,10 @@ class ThumbnailCacheService(QObject):
         return hashlib.md5(s.encode('utf-8')).hexdigest()
 
     def _add_to_memory(self, key: str, pixmap: QPixmap):
-        if len(self._memory_cache) > self._max_memory_items:
-            # Simple eviction: remove random item (first)
-            self._memory_cache.pop(next(iter(self._memory_cache)))
+        if key in self._memory_cache:
+            self._memory_cache.move_to_end(key)
+        elif len(self._memory_cache) >= self._max_memory_items:
+            self._memory_cache.popitem(last=False)
         self._memory_cache[key] = pixmap
 
     def _render_thumbnail(self, path: Path, size: QSize) -> Optional[QImage]:

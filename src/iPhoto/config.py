@@ -57,7 +57,7 @@ PREVIEW_WINDOW_CORNER_RADIUS: Final[int] = 18
 # Maximum number of bytes to preload into memory for the active video. When the
 # file on disk is smaller than this threshold the media controller will stream
 # it from RAM to make seeking as responsive as possible.
-VIDEO_MEMORY_CACHE_MAX_BYTES: Final[int] = 512 * 1024 * 1024
+VIDEO_MEMORY_CACHE_MAX_BYTES: Final[int] = 128 * 1024 * 1024
 
 # When a video finishes playing we step backwards by this many milliseconds and
 # pause so that the last frame remains visible instead of flashing to black.

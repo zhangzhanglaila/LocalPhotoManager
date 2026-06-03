@@ -63,7 +63,7 @@ def generate_cache_path(library_root: Path, abs_path: Path, size: QSize, stamp: 
     # Use absolute path for global uniqueness
     path_str = str(abs_path.resolve())
     digest = hashlib.blake2b(path_str.encode("utf-8"), digest_size=20).hexdigest()
-    filename = f"{digest}_{stamp}_{size.width()}x{size.height()}.png"
+    filename = f"{digest}_{stamp}_{size.width()}x{size.height()}.jpg"
     return ensure_work_dir(library_root) / "thumbs" / filename
 
 
@@ -72,7 +72,7 @@ def write_cache(canvas: QImage, path: Path) -> bool:  # pragma: no cover - worke
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = path.with_suffix(path.suffix + ".tmp")
-        if canvas.save(str(tmp_path), "PNG"):
+        if canvas.save(str(tmp_path), "JPEG", 85):
             safe_unlink(path)
             try:
                 tmp_path.replace(path)

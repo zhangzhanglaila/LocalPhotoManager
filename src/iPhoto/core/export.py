@@ -327,7 +327,7 @@ def export_asset(
             if image is not None:
                 final_dest = destination_path.with_suffix(suffix)
                 final_dest = get_unique_destination(final_dest)
-                image.save(str(final_dest), qt_fmt, 100)
+                image.save(str(final_dest), qt_fmt, 95)
                 return True
             else:
                 _LOGGER.error(

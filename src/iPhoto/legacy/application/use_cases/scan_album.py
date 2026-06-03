@@ -103,7 +103,7 @@ class ScanAlbumUseCase:
         added_count = 0
         updated_count = 0
         batch: List[Path] = []
-        BATCH_SIZE = 50
+        BATCH_SIZE = 200
 
         def process_batch(paths: List[Path]):
             nonlocal added_count, updated_count

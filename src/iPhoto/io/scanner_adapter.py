@@ -153,7 +153,7 @@ def process_media_paths(
         return
 
     # Process in batches
-    BATCH_SIZE = 50
+    BATCH_SIZE = 200
     for i in range(0, len(all_paths), BATCH_SIZE):
         batch = all_paths[i : i + BATCH_SIZE]
 
@@ -228,7 +228,7 @@ def scan_album(
     discoverer.start()
 
     batch = []
-    BATCH_SIZE = 50
+    BATCH_SIZE = 200
     total_processed = 0
 
     def process_batch_rows(paths: List[Path]) -> Iterator[Dict[str, Any]]:
