@@ -543,6 +543,11 @@ class MainCoordinator(QObject):
             ui.map_view.assetActivated.connect(self._on_map_asset_activated)
             ui.map_view.clusterActivated.connect(self._on_cluster_activated)
 
+        # Map feature buttons (in sidebar, under Location)
+        if hasattr(ui, "sidebar"):
+            ui.sidebar.btn_person_filter.clicked.connect(self._on_person_filter_toggled)
+            ui.sidebar.btn_trail_toggle.clicked.connect(self._on_trail_toggle_toggled)
+
         # Menus
         ui.open_album_action.triggered.connect(self._handle_open_album_dialog)
         ui.rescan_action.triggered.connect(self._status_bar.begin_scan)
@@ -1212,6 +1217,24 @@ class MainCoordinator(QObject):
 
                     results.sort(key=lambda x: x["score"], reverse=True)
 
+                    # OCR text search (if available)
+                    try:
+                        from iPhoto.ai.db.ocr_database import get_ocr_repository
+                        ocr_repo = get_ocr_repository(self._library_root)
+                        ocr_hits = ocr_repo.search(self._query, limit=200)
+                        seen_ids = {r["asset_id"] for r in results}
+                        for hit in ocr_hits:
+                            if hit.asset_id not in seen_ids:
+                                results.append({
+                                    "asset_id": hit.asset_id,
+                                    "score": min(hit.confidence, 1.0),
+                                    "source": "ocr",
+                                })
+                                seen_ids.add(hit.asset_id)
+                        results.sort(key=lambda x: x["score"], reverse=True)
+                    except Exception:
+                        pass
+
                     # Return all results (UI will handle pagination)
                     self.finished.emit(results, "")
 
@@ -1742,6 +1765,51 @@ class MainCoordinator(QObject):
         """Handle single-asset map activation inside the Location context."""
 
         self._navigation.open_location_asset(rel)
+
+    def _on_person_filter_toggled(self, checked: bool) -> None:
+        """Toggle person filter panel on the map."""
+        ui = self._window.ui
+        if not hasattr(ui, "map_view"):
+            return
+        if checked:
+            people_service = getattr(self, "_playback_people_service", None)
+            if people_service is None:
+                try:
+                    from iPhoto.people.service import PeopleService
+                    people_service = PeopleService()
+                except Exception:
+                    ui.sidebar.btn_person_filter.setChecked(False)
+                    return
+            ui.map_view.show_person_filter(people_service)
+        else:
+            ui.map_view.hide_person_filter()
+
+    def _on_trail_toggle_toggled(self, checked: bool) -> None:
+        """Toggle trail/timeline display on the map."""
+        ui = self._window.ui
+        if not hasattr(ui, "map_view"):
+            return
+        if checked:
+            try:
+                from iPhoto.application.services.trail_service import TrailService
+                library = getattr(self._context, "library", None)
+                if library is None:
+                    ui.sidebar.btn_trail_toggle.setChecked(False)
+                    return
+                geotagged = library.get_geotagged_assets()
+                if not geotagged:
+                    ui.sidebar.btn_trail_toggle.setChecked(False)
+                    return
+                trail_service = TrailService()
+                trail = trail_service.build_trail(geotagged, granularity="day")
+                ui.map_view.set_trail(trail)
+                ui.map_view._trail_service = trail_service
+                ui.map_view._trail_geotagged = geotagged
+            except Exception as e:
+                self._logger.warning("Failed to build trail: %s", e)
+                ui.sidebar.btn_trail_toggle.setChecked(False)
+        else:
+            ui.map_view.clear_trail()
 
     def _on_people_cluster_activated(self, person_id: str) -> None:
         QTimer.singleShot(0, lambda: self._open_people_cluster(person_id))

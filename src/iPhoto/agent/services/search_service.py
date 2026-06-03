@@ -29,6 +29,7 @@ class SearchService:
         embedding_service,
         asset_repository,
         embedding_repository,
+        ocr_repository=None,
     ) -> None:
         """Initialize the search service.
 
@@ -40,10 +41,14 @@ class SearchService:
             Repository for accessing asset data.
         embedding_repository : object
             Repository for storing and retrieving embeddings.
+        ocr_repository : object, optional
+            OCR repository for text-based search.
+            Repository for storing and retrieving embeddings.
         """
         self._embedding_service = embedding_service
         self._asset_repository = asset_repository
         self._embedding_repository = embedding_repository
+        self._ocr_repository = ocr_repository
 
     def search(
         self,
@@ -106,6 +111,24 @@ class SearchService:
                     asset_rel="",
                     score=float(similarity),
                 ))
+
+        # OCR text search (if available)
+        if self._ocr_repository is not None:
+            try:
+                ocr_hits = self._ocr_repository.search(query, limit=top_k)
+                seen_ids = {r.asset_id for r in results}
+                for hit in ocr_hits:
+                    if hit.asset_id not in seen_ids:
+                        results.append(SearchResult(
+                            asset_id=hit.asset_id,
+                            asset_rel=hit.asset_rel,
+                            score=min(hit.confidence, 1.0),
+                            caption=hit.snippet,
+                            metadata={"source": "ocr"},
+                        ))
+                        seen_ids.add(hit.asset_id)
+            except Exception:
+                pass
 
         # Sort by similarity (highest first)
         results.sort(key=lambda x: x.score, reverse=True)

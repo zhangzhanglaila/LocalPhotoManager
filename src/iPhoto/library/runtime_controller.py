@@ -104,6 +104,7 @@ class LibraryRuntimeController(
         # Scanner State
         self._current_scanner_worker: Optional[ScannerWorker] = None
         self._current_face_scanner: Optional[FaceScanWorker] = None
+        self._current_ocr_scanner = None
         self._scan_thread_pool = QThreadPool.globalInstance()
         self._live_scan_buffer: List[Dict] = []
         self._live_scan_root: Optional[Path] = None
@@ -300,6 +301,9 @@ class LibraryRuntimeController(
                     "detaching without terminate() to avoid DB corruption."
                 )
             self._current_face_scanner = None
+        if self._current_ocr_scanner is not None:
+            self._current_ocr_scanner.cancel()
+            self._current_ocr_scanner = None
         self._unbind_people_index_coordinator()
 
     def face_scan_status_message(self) -> str | None:

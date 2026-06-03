@@ -26,8 +26,10 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
+    QToolButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -251,6 +253,39 @@ class AlbumSidebar(QWidget):
         layout.setSpacing(SIDEBAR_LAYOUT_SPACING)
         layout.addWidget(self._title)
         layout.addWidget(self._tree, stretch=1)
+
+        # Map feature buttons (shown only when Location is selected)
+        self._map_buttons = QWidget(self)
+        map_btn_layout = QHBoxLayout(self._map_buttons)
+        map_btn_layout.setContentsMargins(4, 2, 4, 2)
+        map_btn_layout.setSpacing(4)
+
+        self.btn_person_filter = QToolButton(self._map_buttons)
+        self.btn_person_filter.setText("👤 人物")
+        self.btn_person_filter.setCheckable(True)
+        self.btn_person_filter.setAutoRaise(True)
+        self.btn_person_filter.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.btn_person_filter.setFixedHeight(22)
+        self.btn_person_filter.setStyleSheet(
+            "QToolButton { font-size: 11px; padding: 1px 4px; border: none; }"
+            "QToolButton:checked { background: #d0d0d0; border-radius: 3px; }"
+        )
+        map_btn_layout.addWidget(self.btn_person_filter)
+
+        self.btn_trail_toggle = QToolButton(self._map_buttons)
+        self.btn_trail_toggle.setText("🗺️ 轨迹")
+        self.btn_trail_toggle.setCheckable(True)
+        self.btn_trail_toggle.setAutoRaise(True)
+        self.btn_trail_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.btn_trail_toggle.setFixedHeight(22)
+        self.btn_trail_toggle.setStyleSheet(
+            "QToolButton { font-size: 11px; padding: 1px 4px; border: none; }"
+            "QToolButton:checked { background: #d0d0d0; border-radius: 3px; }"
+        )
+        map_btn_layout.addWidget(self.btn_trail_toggle)
+
+        layout.addWidget(self._map_buttons)
+        self._map_buttons.hide()
 
         # Apply the initial manual minimum width so the splitter respects the configured
         # constraint during user-driven resizing.  This call also covers the case where Qt

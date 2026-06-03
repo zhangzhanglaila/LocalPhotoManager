@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QPushButton,
     QSizeGrip,
     QSizePolicy,
     QStackedLayout,
@@ -250,27 +249,16 @@ class Ui_MainWindow(object):
         map_page = QWidget()
         map_page.setObjectName("locationMapPage")
         _configure_opaque_widget_background(map_page, "#88a8c2")
-        map_layout = QVBoxLayout(map_page)
-        map_layout.setContentsMargins(0, 0, 0, 0)
-        map_layout.setSpacing(0)
-        # Map toolbar (top bar with filter buttons)
-        self._map_toolbar = QWidget()
-        map_toolbar_layout = QHBoxLayout(self._map_toolbar)
-        map_toolbar_layout.setContentsMargins(8, 4, 8, 4)
-        map_toolbar_layout.setSpacing(4)
-        self._btn_person_filter = QPushButton("👤 按人物筛选")
-        self._btn_person_filter.setCheckable(True)
-        self._btn_person_filter.setFixedHeight(28)
-        self._btn_trail_toggle = QPushButton("🗺️ 显示轨迹")
-        self._btn_trail_toggle.setCheckable(True)
-        self._btn_trail_toggle.setFixedHeight(28)
-        map_toolbar_layout.addStretch()
-        map_toolbar_layout.addWidget(self._btn_person_filter)
-        map_toolbar_layout.addWidget(self._btn_trail_toggle)
-        map_toolbar_layout.addStretch()
-        self._map_toolbar.hide()  # Shown when map is active
-        map_layout.addWidget(self._map_toolbar)
-        map_layout.addWidget(self.map_view, 1)
+        map_page_layout = QVBoxLayout(map_page)
+        map_page_layout.setContentsMargins(0, 0, 0, 0)
+        map_page_layout.setSpacing(0)
+        # Splitter: map on left, person panel on right (added dynamically)
+        self._map_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._map_splitter.addWidget(self.map_view)
+        self._map_splitter.setStretchFactor(0, 1)
+        self._map_splitter.setStretchFactor(1, 0)
+        self._map_splitter.setCollapsible(0, False)
+        map_page_layout.addWidget(self._map_splitter, 1)
         self.map_page = map_page
 
         # Person filter panel for map (created lazily, hidden by default)

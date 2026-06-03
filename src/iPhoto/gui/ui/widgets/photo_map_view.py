@@ -304,6 +304,17 @@ class PhotoMapView(QWidget):
         self._layout = layout
         self._requested_map_source = map_source
         self._map_runtime = map_runtime
+
+        # Trail/timeline support
+        from .trail_layer import TrailLayer
+        from .timeline_slider import TimelineSlider
+        self._trail_layer = TrailLayer()
+        self._timeline_slider = TimelineSlider()
+        self._trail_layer_visible = False
+
+        # Person filter support
+        self._person_filter_panel = None
+        self._person_filter = None
         self._map_runtime_capabilities = (
             map_runtime.capabilities() if map_runtime is not None else None
         )
@@ -629,6 +640,122 @@ class PhotoMapView(QWidget):
         self._marker_controller.thumbnailUpdated.connect(self._overlay.set_thumbnail)
         self._marker_controller.thumbnailsInvalidated.connect(self._overlay.clear_pixmaps)
         if self._assets_library_root is not None:
+            self._marker_controller.set_assets(self._assets, self._assets_library_root)
+
+        # Add timeline slider at the bottom (hidden by default)
+        self._layout.addWidget(self._timeline_slider)
+        self._timeline_slider.hide()
+        self._timeline_slider.rangeChanged.connect(self._on_timeline_range_changed)
+        self._timeline_slider.granularityChanged.connect(self._on_timeline_granularity_changed)
+
+    # ------------------------------------------------------------------
+    # Trail / Timeline support
+    # ------------------------------------------------------------------
+
+    def set_trail(self, trail_data) -> None:
+        """Set trail data and show the timeline slider."""
+        from ..models.trail_models import TrailData
+        if not isinstance(trail_data, TrailData):
+            return
+        self._trail_layer.set_trail(trail_data)
+        self._trail_layer_visible = True
+        if trail_data.is_empty:
+            self._timeline_slider.hide()
+        else:
+            self._timeline_slider.show()
+            if trail_data.start_date and trail_data.end_date:
+                self._timeline_slider.set_date_range(trail_data.start_date, trail_data.end_date)
+        if self._map_widget_built:
+            self.request_full_update()
+
+    def clear_trail(self) -> None:
+        """Clear trail data and hide the timeline slider."""
+        self._trail_layer.clear()
+        self._trail_layer_visible = False
+        self._timeline_slider.hide()
+        if self._map_widget_built:
+            self.request_full_update()
+
+    def _on_timeline_range_changed(self, start, end) -> None:
+        if hasattr(self, '_trail_service') and hasattr(self, '_trail_geotagged'):
+            trail = self._trail_service.build_trail(
+                self._trail_geotagged, date_from=start, date_to=end,
+                granularity=self._timeline_slider.granularity)
+            self._trail_layer.set_trail(trail)
+            self.request_full_update()
+
+    def _on_timeline_granularity_changed(self, granularity: str) -> None:
+        if hasattr(self, '_trail_service') and hasattr(self, '_trail_geotagged'):
+            trail = self._trail_service.build_trail(
+                self._trail_geotagged,
+                date_from=self._timeline_slider.current_start,
+                date_to=self._timeline_slider.current_end,
+                granularity=granularity)
+            self._trail_layer.set_trail(trail)
+            self.request_full_update()
+
+    # ------------------------------------------------------------------
+    # Person filter support
+    # ------------------------------------------------------------------
+
+    def show_person_filter(self, people_service) -> None:
+        """Show the person filter panel on the right side of the map splitter."""
+        from .person_map_panel import PersonMapPanel
+        from iPhoto.application.services.person_map_filter import PersonMapFilter
+
+        if self._person_filter_panel is not None:
+            return
+
+        self._person_filter = PersonMapFilter(people_service)
+        if self._assets:
+            self._person_filter.set_all_geotagged(self._assets)
+
+        self._person_filter_panel = PersonMapPanel(people_service)
+        self._person_filter_panel.personSelected.connect(self._on_person_selected)
+        self._person_filter_panel.personDeselected.connect(self._on_person_deselected)
+        self._person_filter_panel.setMinimumWidth(180)
+        self._person_filter_panel.setMaximumWidth(280)
+
+        splitter = self._find_map_splitter()
+        if splitter is not None:
+            splitter.addWidget(self._person_filter_panel)
+            total = splitter.width()
+            splitter.setSizes([max(total - 200, 400), 200])
+
+    def hide_person_filter(self) -> None:
+        """Hide the person filter panel."""
+        if self._person_filter_panel is None:
+            return
+        self._person_filter_panel.personSelected.disconnect()
+        self._person_filter_panel.personDeselected.disconnect()
+        self._person_filter_panel.hide()
+        self._person_filter_panel.setParent(None)
+        self._person_filter_panel.deleteLater()
+        self._person_filter_panel = None
+        self._person_filter = None
+
+    def _find_map_splitter(self):
+        """Find the QSplitter that contains this map view."""
+        from PySide6.QtWidgets import QApplication, QSplitter
+        widget = self
+        while widget is not None:
+            if isinstance(widget, QSplitter):
+                return widget
+            widget = widget.parent()
+        for tl in QApplication.topLevelWidgets():
+            if hasattr(tl, 'ui') and hasattr(tl.ui, '_map_splitter'):
+                return tl.ui._map_splitter
+        return None
+
+    def _on_person_selected(self, person_id: str) -> None:
+        if self._person_filter is None:
+            return
+        filtered = self._person_filter.filter_by_person(person_id)
+        if self._map_widget_built:
+            self._marker_controller.set_assets(filtered, self._assets_library_root)
+
+    def _on_person_deselected(self) -> None:
+        if self._map_widget_built and self._assets_library_root:
             self._marker_controller.set_assets(self._assets, self._assets_library_root)
 
     def _teardown_map_widget(self) -> None:

@@ -88,6 +88,9 @@ class ScanCoordinatorMixin:
         if self._current_face_scanner is not None:
             self._current_face_scanner.cancel()
             self._current_face_scanner = None
+        if self._current_ocr_scanner is not None:
+            self._current_ocr_scanner.cancel()
+            self._current_ocr_scanner = None
 
         self._live_scan_root = root
         self._live_scan_buffer.clear()
@@ -129,11 +132,23 @@ class ScanCoordinatorMixin:
             face_worker.finished.connect(self._on_face_scan_finished)
             self._current_face_scanner = face_worker
 
+        # Create OCR worker if AI dependencies are available
+        ocr_library_root = self.root() if self.root() is not None else root
+        ocr_worker = self._create_ocr_worker(ocr_library_root)
+        if ocr_worker is not None:
+            ocr_worker.signals.progress.connect(self._on_ocr_progress)
+            ocr_worker.signals.finished.connect(self._on_ocr_finished)
+            self._current_ocr_scanner = ocr_worker
+        else:
+            self._current_ocr_scanner = None
+
         # Release lock before starting the worker
         del locker
 
         if not _skip_face:
             face_worker.start()
+        if self._current_ocr_scanner is not None:
+            self._scan_thread_pool.start(self._current_ocr_scanner)
         self._scan_thread_pool.start(worker)
 
     def stop_scanning(self) -> None:
@@ -148,6 +163,9 @@ class ScanCoordinatorMixin:
         if self._current_face_scanner is not None:
             self._current_face_scanner.cancel()
             self._current_face_scanner = None
+        if self._current_ocr_scanner is not None:
+            self._current_ocr_scanner.cancel()
+            self._current_ocr_scanner = None
 
     def is_scanning_path(self, path: Path) -> bool:
         """Return True if the given path is covered by the active scan."""
@@ -329,6 +347,8 @@ class ScanCoordinatorMixin:
         self.invalidate_geotagged_assets_cache()
         if self._current_face_scanner is not None:
             self._current_face_scanner.enqueue_rows(chunk)
+        if self._current_ocr_scanner is not None:
+            self._current_ocr_scanner.enqueue_rows(chunk)
         self.scanChunkReady.emit(root, chunk)
 
     def _on_scan_finished(self, root: Path, rows: List[dict]) -> None:
@@ -341,6 +361,7 @@ class ScanCoordinatorMixin:
         self._current_scanner_worker = None
         self._live_scan_root = None
         face_scanner = self._current_face_scanner
+        ocr_scanner = self._current_ocr_scanner
         del locker
 
         if worker is None:
@@ -349,6 +370,8 @@ class ScanCoordinatorMixin:
             return
         if face_scanner is not None:
             face_scanner.finish_input()
+        if ocr_scanner is not None:
+            ocr_scanner.finish_input()
 
         if worker.cancelled:
             self.scanFinished.emit(root, True)
@@ -411,3 +434,32 @@ class ScanCoordinatorMixin:
 
     def _on_face_scan_finished(self) -> None:
         self._current_face_scanner = None
+
+    # ------------------------------------------------------------------
+    # OCR integration
+    # ------------------------------------------------------------------
+
+    def _create_ocr_worker(self, library_root: Path):
+        """Create an OCR worker if AI dependencies are available."""
+        try:
+            from ..ai.ocr.ocr_engine import OCREngine
+            from ..ai.db.ocr_database import get_ocr_repository
+            from ..ai.workers.ocr_worker import OCRWorker
+
+            ocr_repo = get_ocr_repository(library_root)
+            ocr_engine = OCREngine()
+            return OCRWorker(ocr_engine, ocr_repo, library_root)
+        except ImportError:
+            LOGGER.debug("OCR dependencies not available, skipping OCR scan")
+            return None
+        except Exception as exc:
+            LOGGER.warning("Failed to create OCR worker: %s", exc)
+            return None
+
+    def _on_ocr_progress(self, processed: int, total: int) -> None:
+        pass
+
+    def _on_ocr_finished(self, processed: int, failed: int) -> None:
+        self._current_ocr_scanner = None
+        if processed > 0:
+            LOGGER.info("OCR scan complete: %d images processed, %d failed", processed, failed)

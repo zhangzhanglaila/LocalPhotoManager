@@ -58,6 +58,11 @@ agent = [
     "transformers>=4.35",
     "ollama>=0.3",
 ]
+ai = [
+    "onnxruntime>=1.17.0,<2",
+    "rapidocr-onnxruntime>=1.3.0,<2",
+    "huggingface-hub>=0.20.0,<1",
+]
 
 [project.scripts]
 iphoto = "iPhoto.cli:app"

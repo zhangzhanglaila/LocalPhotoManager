@@ -217,6 +217,12 @@ class NavigationCoordinator(QObject):
 
     def _handle_static_node(self, name: str) -> None:
         normalized = name.casefold()
+
+        # Show/hide map feature buttons based on whether Location is selected
+        sidebar = getattr(self, "_sidebar", None)
+        if sidebar is not None and hasattr(sidebar, "_map_buttons"):
+            sidebar._map_buttons.setVisible(normalized == "location")
+
         # Also check against translated header names so that translated
         # sidebar titles (e.g. "相册" for "Albums") are recognised.
         if normalized == "all photos":
