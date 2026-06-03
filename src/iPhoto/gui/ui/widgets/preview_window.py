@@ -717,9 +717,9 @@ class PreviewWindow(QWidget):
             except (RuntimeError, TypeError):
                 pass
             self._media.seamless_restart()
-            # Reconnect after a short delay so the restart position event
-            # does not immediately re-trigger this handler.
-            QTimer.singleShot(100, lambda: self._safe_reconnect_loop())
+            # After stop()+play(), the player emits a LoadedMedia status
+            # which reconnects this handler via _on_media_status_changed.
+            # No timer-based reconnect needed.
 
     def _do_close(self) -> None:
         self._close_timer.stop()
@@ -739,15 +739,6 @@ class PreviewWindow(QWidget):
         except (RuntimeError, TypeError):
             pass
 
-    def _safe_reconnect_loop(self) -> None:
-        """Reconnect the pre-emptive loop handler after a seek(0)."""
-
-        try:
-            self._media._player.positionChanged.connect(
-                self._maybe_preemptive_loop,
-            )
-        except (RuntimeError, TypeError):
-            pass
 
     def _clamp_to_screen(self, origin: QPoint, *, size: Optional[QSize] = None) -> QPoint:
         screen = self._rhi_popup.screen() if self._using_rhi_popup else self.screen()
