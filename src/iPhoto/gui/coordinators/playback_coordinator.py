@@ -582,6 +582,12 @@ class PlaybackCoordinator(QObject):
             if self._player_view.video_area.has_video():
                 self._player_view.video_area.stop()
             self._player_view.show_image_surface()
+            # Reset _defer_still_updates left over from a previous Live
+            # Photo's _autoplay_live_motion.  Without this, the async
+            # image worker for the new photo would see the flag as True
+            # and stash the decoded still into _pending_still instead of
+            # rendering it — producing a white surface.
+            self._player_view.defer_still_updates(False)
             display_started = time.perf_counter()
             self._player_view.display_image(source)
             log_detail_profile(
