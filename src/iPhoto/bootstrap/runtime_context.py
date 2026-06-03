@@ -161,11 +161,25 @@ class RuntimeContext:
                     self.library.root(),
                 )
                 if not self.library.is_scanning_path(candidate):
-                    self.facade.scan_root_async(
-                        candidate,
-                        include=DEFAULT_INCLUDE,
-                        exclude=DEFAULT_EXCLUDE,
-                    )
+                    # Skip the full filesystem scan if the persistent index
+                    # database already exists.  The gallery loads its initial
+                    # data directly from the DB, so a scan is only needed for
+                    # first-time indexing or when the user explicitly requests
+                    # a rescan.
+                    from ..utils.pathutils import resolve_work_dir
+                    work_dir = resolve_work_dir(candidate)
+                    db_path = (work_dir / "global_index.db") if work_dir is not None else None
+                    if db_path is not None and db_path.exists():
+                        _logger.info(
+                            "resume_startup_tasks: index DB exists (%s), skipping scan",
+                            db_path,
+                        )
+                    else:
+                        self.facade.scan_root_async(
+                            candidate,
+                            include=DEFAULT_INCLUDE,
+                            exclude=DEFAULT_EXCLUDE,
+                        )
             except LibraryError as exc:
                 _logger.error("resume_startup_tasks: bind_path failed: %s", exc)
                 self.library.errorRaised.emit(str(exc))
