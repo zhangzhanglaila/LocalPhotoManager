@@ -93,7 +93,6 @@ class GalleryCollectionStore:
         self._pending_scan_rels: set[str] = set()
         self._pending_scan_sort_keys: set[tuple[str, str]] = set()
         self._direct_mode = False
-        self._gallery_has_data = False
 
         # Async loading state
         self._load_worker: Optional[GalleryLoadWorker] = None
@@ -483,12 +482,10 @@ class GalleryCollectionStore:
         self._pending_scan_refresh = True
 
         if self._visible_range is None:
-            # Gallery has no visible range yet — only reload if the DB was
-            # empty (first-time scan).  If the gallery already loaded from
-            # the persistent DB, the chunk arriving from a background
-            # incremental scan should NOT force a full reload.
-            if not self._gallery_has_data:
-                self._load_initial_window()
+            # Gallery was empty on first load — reload the initial window so
+            # newly scanned rows appear without requiring the user to navigate
+            # away and back.
+            self._load_initial_window()
             return
 
         visible_first, visible_last = self._visible_range
@@ -578,7 +575,6 @@ class GalleryCollectionStore:
         old_total = self._total_count
         self._row_cache = row_cache
         self._total_count = total
-        self._gallery_has_data = total > 0
 
         if total <= 0:
             self._reset_window_state()
