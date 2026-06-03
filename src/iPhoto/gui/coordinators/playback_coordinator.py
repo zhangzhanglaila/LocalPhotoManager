@@ -682,10 +682,14 @@ class PlaybackCoordinator(QObject):
     def _handle_playback_finished(self) -> None:
         if not self._active_live_motion or not self._active_live_still:
             return
-        # Loop: replay the live photo motion automatically.
+        # Loop: replay the live photo motion by seeking to start.
+        # Re-calling _autoplay_live_motion() would re-load the entire video
+        # (probe + setSource + seek), causing two visible stutters per loop.
+        # A simple setPosition(0) keeps the decoder pipeline alive.
         presentation = self._current_presentation
         if presentation is not None and presentation.is_live:
-            self._autoplay_live_motion(presentation)
+            self._player_view.video_area.seek(0)
+            self._player_view.video_area.play()
             return
         still = self._active_live_still
         self._active_live_motion = None

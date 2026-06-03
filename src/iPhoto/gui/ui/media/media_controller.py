@@ -164,15 +164,14 @@ class MediaController(QObject):
     def seamless_restart(self) -> None:
         """Restart playback from the beginning with minimal latency.
 
-        ``stop()`` resets QMediaPlayer's internal position to 0;
-        ``play()`` resumes from the start.  We intentionally do **not**
-        call ``setSourceDevice()`` or ``setSource()`` again — that would
-        tear down and rebuild the entire demuxer/decoder pipeline,
-        causing a visible multi-frame stall at the loop point.
+        ``stop()`` + ``play()`` causes two visual glitches: the stop
+        freezes the last frame for one vsync, then play() re-initialises
+        the render pipeline.  Using ``setPosition(0)`` while the player
+        is still in ``PlayingState`` avoids both — the decoder seeks to
+        the first keyframe and resumes without a pipeline teardown.
         """
 
-        self._player.stop()
-        self._player.play()
+        self._player.setPosition(0)
 
     def set_volume(self, volume: int) -> None:
         """Set the audio volume to *volume* (0-100)."""
