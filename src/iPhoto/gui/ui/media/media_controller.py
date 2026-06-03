@@ -169,9 +169,19 @@ class MediaController(QObject):
         the render pipeline.  Using ``setPosition(0)`` while the player
         is still in ``PlayingState`` avoids both — the decoder seeks to
         the first keyframe and resumes without a pipeline teardown.
+
+        Signals are temporarily blocked during the seek so that
+        ``nativeSizeChanged`` / ``durationChanged`` do not trigger
+        layout recalculations that would add a visible stutter.
         """
 
+        # Block QMediaPlayer signals during the seek to prevent
+        # nativeSizeChanged / durationChanged from triggering layout
+        # recalculations.  QVideoSink.videoFrameChanged is on a
+        # separate object and is NOT affected by this call.
+        self._player.blockSignals(True)
         self._player.setPosition(0)
+        self._player.blockSignals(False)
 
     def set_volume(self, volume: int) -> None:
         """Set the audio volume to *volume* (0-100)."""
