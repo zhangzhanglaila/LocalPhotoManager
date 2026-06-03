@@ -159,6 +159,10 @@ class VideoArea(QWidget):
         self._pending_video_frame: QVideoFrame | None = None
         self._last_presented_video_frame: QVideoFrame | None = None
         self._video_frame_dispatch_pending = False
+        self._frame_dispatch_coalesce_timer = QTimer(self)
+        self._frame_dispatch_coalesce_timer.setSingleShot(True)
+        self._frame_dispatch_coalesce_timer.setInterval(2)
+        self._frame_dispatch_coalesce_timer.timeout.connect(self._flush_pending_video_frame)
         self._diag_queued_frame_count = 0
         self._diag_presented_frame_count = 0
         self._profile_load_started_at: float | None = None
@@ -863,7 +867,14 @@ class VideoArea(QWidget):
         self._end_hold_display_ms = None
 
     def _queue_video_frame(self, frame: "QVideoFrame") -> None:
-        """Coalesce video-sink frames back onto the GUI event loop."""
+        """Coalesce video-sink frames onto the GUI event loop.
+
+        Uses a 2ms coalesce timer instead of ``QTimer.singleShot(0)`` to
+        batch rapid successive frames while keeping latency minimal.
+        ``singleShot(0)`` defers to the *next* event-loop turn which can
+        add a full vsync of jitter and cause visible stutter on short clips
+        (e.g. 1.7 s Live Photos at 19 fps).
+        """
 
         if frame is None or not frame.isValid():
             return
@@ -887,10 +898,7 @@ class VideoArea(QWidget):
         if self._video_frame_dispatch_pending:
             return
         self._video_frame_dispatch_pending = True
-        # Keep latest-frame coalescing by deferring the flush to the next GUI
-        # turn. The queued frame wrapper is copied above so Linux backends can
-        # still retain short-lived zero-copy handles until presentation.
-        QTimer.singleShot(0, self._flush_pending_video_frame)
+        self._frame_dispatch_coalesce_timer.start()
 
     def _flush_pending_video_frame(self) -> None:
         """Present the latest queued frame on the active preview surface."""
