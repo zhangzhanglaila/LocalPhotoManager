@@ -863,15 +863,7 @@ class VideoArea(QWidget):
         self._end_hold_display_ms = None
 
     def _queue_video_frame(self, frame: "QVideoFrame") -> None:
-        """Coalesce video-sink frames and present the latest immediately.
-
-        Previous implementation deferred to the *next* GUI event-loop turn via
-        ``QTimer.singleShot(0, …)``, adding up to one vsync of extra latency
-        per frame.  The coalescing is now inline: if a presentation is already
-        pending the new frame simply replaces ``_pending_video_frame`` and the
-        in-flight flush will pick it up; otherwise we present directly without
-        deferral.
-        """
+        """Coalesce video-sink frames back onto the GUI event loop."""
 
         if frame is None or not frame.isValid():
             return
@@ -893,11 +885,12 @@ class VideoArea(QWidget):
             )
         self._pending_video_frame = queued_frame
         if self._video_frame_dispatch_pending:
-            # A frame is already being processed — the latest value will be
-            # picked up when that processing finishes.
             return
         self._video_frame_dispatch_pending = True
-        self._flush_pending_video_frame()
+        # Keep latest-frame coalescing by deferring the flush to the next GUI
+        # turn. The queued frame wrapper is copied above so Linux backends can
+        # still retain short-lived zero-copy handles until presentation.
+        QTimer.singleShot(0, self._flush_pending_video_frame)
 
     def _flush_pending_video_frame(self) -> None:
         """Present the latest queued frame on the active preview surface."""
