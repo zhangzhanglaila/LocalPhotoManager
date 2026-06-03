@@ -666,15 +666,6 @@ class PlaybackCoordinator(QObject):
         self._active_live_motion = motion_path
         self._active_live_still = presentation.path
         self._hide_face_name_overlay(clear_annotations=False)
-        # Do NOT call defer_still_updates(True) here.  ``display_image()``
-        # in the caller is asynchronous — the still-image worker has been
-        # submitted to the thread pool but has not completed yet.  Setting
-        # ``_defer_still_updates`` now would prevent the worker callback
-        # from ever rendering the still, leaving a white surface.
-        # Instead, defer both the still-suppression and the video surface
-        # switch to ``_start_live_motion_playback`` which fires on the
-        # next event-loop turn, giving the still-image worker a chance to
-        # complete first.
         self._trim_in_ms = 0
         self._trim_out_ms = 0
         QTimer.singleShot(0, lambda: self._start_live_motion_playback(
@@ -688,8 +679,6 @@ class PlaybackCoordinator(QObject):
 
         if self._active_live_motion != motion_path:
             return  # user already navigated away
-        # Now it is safe to suppress further still updates — the image
-        # surface has had one event-loop turn to pick up the decoded still.
         self._player_view.defer_still_updates(True)
         self._player_view.show_video_surface(interactive=False)
         self._player_view.video_area.load_video(
