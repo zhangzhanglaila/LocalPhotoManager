@@ -661,18 +661,34 @@ class PlaybackCoordinator(QObject):
         self._active_live_still = presentation.path
         self._hide_face_name_overlay(clear_annotations=False)
         self._player_view.defer_still_updates(True)
-        self._player_view.show_video_surface(interactive=False)
+        # Defer switching to the video surface and loading the motion clip
+        # until the next event-loop turn.  ``display_image()`` above is
+        # asynchronous — the still-image worker has been submitted to the
+        # thread pool but has not completed yet.  Switching to the video
+        # surface immediately would show a stale/blank frame while the
+        # still is still loading, producing a visible white flash on
+        # Live Photo → Live Photo transitions.
         self._trim_in_ms = 0
         self._trim_out_ms = 0
+        QTimer.singleShot(0, lambda: self._start_live_motion_playback(
+            motion_path, presentation.info,
+        ))
+
+    def _start_live_motion_playback(
+        self, motion_path: Path, info: dict,
+    ) -> None:
+        """Actually load and play the live-motion video clip."""
+
+        if self._active_live_motion != motion_path:
+            return  # user already navigated away
+        self._player_view.show_video_surface(interactive=False)
         self._player_view.video_area.load_video(
             motion_path,
             adjustments=None,
             trim_range_ms=None,
             adjusted_preview=False,
         )
-        # Seek to the still-image frame so the video starts on the same
-        # picture the user saw as the thumbnail, rather than frame 0.
-        still_time = presentation.info.get("still_image_time")
+        still_time = info.get("still_image_time")
         if isinstance(still_time, (int, float)):
             self._player_view.video_area.seek(int(still_time * 1000))
         self._player_view.video_area.play()
