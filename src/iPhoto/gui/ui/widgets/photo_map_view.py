@@ -766,11 +766,19 @@ class PhotoMapView(QWidget):
                 self._overlay._buffer_dirty = True
 
     def clear_trail(self) -> None:
-        """Clear trail data and hide the timeline slider."""
+        """Clear trail data, hide the timeline slider, and restore all markers."""
         self._trail_layer.clear()
         self._trail_layer_visible = False
         self._ensure_trail_unregistered()
         self._timeline_slider.hide()
+        # Restore all markers (they may have been filtered by timeline range).
+        if self._map_widget_built and self._assets_library_root is not None:
+            if self._active_person_id and self._person_filter:
+                self._person_filter.set_all_geotagged(self._assets)
+                filtered = self._person_filter.filter_by_person(self._active_person_id)
+                self._marker_controller.set_assets(filtered, self._assets_library_root)
+            else:
+                self._marker_controller.set_assets(self._assets, self._assets_library_root)
         if self._map_widget_built:
             self.request_full_update()
             if hasattr(self._overlay, '_buffer_dirty'):
@@ -782,7 +790,10 @@ class PhotoMapView(QWidget):
                 self._trail_geotagged, date_from=start, date_to=end,
                 granularity=self._timeline_slider.granularity)
             self._trail_layer.set_trail(trail)
-            self.request_full_update()
+        # Also filter map markers to only show photos within the selected
+        # date range, so the map reflects the timeline selection.
+        self._apply_timeline_marker_filter(start, end)
+        self.request_full_update()
 
     def _on_timeline_granularity_changed(self, granularity: str) -> None:
         if hasattr(self, '_trail_service') and hasattr(self, '_trail_geotagged'):
@@ -792,7 +803,41 @@ class PhotoMapView(QWidget):
                 date_to=self._timeline_slider.current_end,
                 granularity=granularity)
             self._trail_layer.set_trail(trail)
+            self._apply_timeline_marker_filter(
+                self._timeline_slider.current_start,
+                self._timeline_slider.current_end,
+            )
             self.request_full_update()
+
+    def _filter_assets_by_date(
+        self, start, end, assets: list | None = None
+    ) -> list:
+        """Return assets whose timestamp falls within [*start*, *end*]."""
+        source = assets if assets is not None else self._assets
+        result: list = []
+        for a in source:
+            ts = None
+            if a.still_image_time is not None:
+                ts = a.still_image_time
+            elif a.timestamp is not None:
+                ts = a.timestamp
+            if ts is not None and start.timestamp() <= ts <= end.timestamp():
+                result.append(a)
+        return result
+
+    def _apply_timeline_marker_filter(self, start, end) -> None:
+        """Update map markers to show only assets in the selected date range."""
+        if not self._map_widget_built or not self._assets:
+            return
+        library_root = self._assets_library_root
+        if library_root is None:
+            return
+        filtered = self._filter_assets_by_date(start, end)
+        # Preserve active person filter on top of the date filter.
+        if self._active_person_id and self._person_filter:
+            self._person_filter.set_all_geotagged(filtered)
+            filtered = self._person_filter.filter_by_person(self._active_person_id)
+        self._marker_controller.set_assets(filtered, library_root)
 
     # ------------------------------------------------------------------
     # Person filter support
