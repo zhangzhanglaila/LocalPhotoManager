@@ -27,6 +27,7 @@ class TrailSegment:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     color: tuple[int, int, int] = (66, 133, 244)  # RGB, default blue
+    line_width: int = 2  # px, long trails get 3px
 
     def __post_init__(self) -> None:
         if self.points and self.start_time is None:
