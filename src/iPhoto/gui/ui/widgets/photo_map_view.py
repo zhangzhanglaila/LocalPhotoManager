@@ -315,6 +315,7 @@ class PhotoMapView(QWidget):
         # Person filter support
         self._person_filter_panel = None
         self._person_filter = None
+        self._active_person_id: str | None = None
         self._map_runtime_capabilities = (
             map_runtime.capabilities() if map_runtime is not None else None
         )
@@ -445,7 +446,14 @@ class PhotoMapView(QWidget):
         self._assets = list(assets)
         self._assets_library_root = library_root
         if self._map_widget_built:
-            self._marker_controller.set_assets(self._assets, library_root)
+            # Re-apply person filter if one is active, so that background
+            # scan updates do not overwrite the user's selection.
+            if self._active_person_id and self._person_filter:
+                self._person_filter.set_all_geotagged(self._assets)
+                filtered = self._person_filter.filter_by_person(self._active_person_id)
+                self._marker_controller.set_assets(filtered, library_root)
+            else:
+                self._marker_controller.set_assets(self._assets, library_root)
 
     def clear(self) -> None:
         """Remove all markers from the map."""
@@ -733,6 +741,7 @@ class PhotoMapView(QWidget):
         self._person_filter_panel.deleteLater()
         self._person_filter_panel = None
         self._person_filter = None
+        self._active_person_id = None
 
     def _find_map_splitter(self):
         """Find the QSplitter that contains this map view."""
@@ -750,11 +759,13 @@ class PhotoMapView(QWidget):
     def _on_person_selected(self, person_id: str) -> None:
         if self._person_filter is None:
             return
+        self._active_person_id = person_id
         filtered = self._person_filter.filter_by_person(person_id)
         if self._map_widget_built:
             self._marker_controller.set_assets(filtered, self._assets_library_root)
 
     def _on_person_deselected(self) -> None:
+        self._active_person_id = None
         if self._map_widget_built and self._assets_library_root:
             self._marker_controller.set_assets(self._assets, self._assets_library_root)
 

@@ -77,7 +77,8 @@ class OCREngine:
 
             regions: list[OCRRegion] = []
             for box, text, confidence in result:
-                # Filter by confidence
+                # Filter by confidence (rapidocr may return str)
+                confidence = float(confidence)
                 if confidence < OCR_CONFIDENCE_THRESHOLD:
                     continue
 
