@@ -491,6 +491,7 @@ class ScanCoordinatorMixin:
 
     def _on_face_scan_finished(self) -> None:
         self._current_face_scanner = None
+        self.faceScanStatusChanged.emit("Face scan complete.")
 
     # ------------------------------------------------------------------
     # OCR integration

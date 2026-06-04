@@ -627,6 +627,11 @@ class MainCoordinator(QObject):
                 self._playback.handle_people_snapshot_committed
             )
             self._context.library.faceScanStatusChanged.connect(ui.people_page.set_status_message)
+            # Also surface face scan progress in the main status bar so the
+            # user can see it without switching to the People dashboard.
+            self._context.library.faceScanStatusChanged.connect(
+                lambda msg: self._status_bar.show_message(msg)
+            )
 
         # Sidebar checkbox filtering
         ui.sidebar.albumCheckStateChanged.connect(self._on_album_check_state_changed)
