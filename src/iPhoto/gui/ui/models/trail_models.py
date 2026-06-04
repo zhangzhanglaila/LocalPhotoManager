@@ -17,6 +17,7 @@ class TrailPoint:
     longitude: float
     timestamp: datetime
     thumbnail_path: Optional[str] = None
+    location_name: Optional[str] = None
 
 
 @dataclass

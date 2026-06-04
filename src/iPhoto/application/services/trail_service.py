@@ -93,6 +93,7 @@ class TrailService:
                 latitude=a.latitude,
                 longitude=a.longitude,
                 timestamp=ts,
+                location_name=a.location_name,
             )
             for a, ts in filtered
         ]
