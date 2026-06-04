@@ -460,14 +460,22 @@ class PhotoMapView(QWidget):
         self._assets = list(assets)
         self._assets_library_root = library_root
         if self._map_widget_built:
-            # Re-apply person filter if one is active, so that background
-            # scan updates do not overwrite the user's selection.
+            filtered = list(self._assets)
+
+            # Re-apply person filter if active
             if self._active_person_id and self._person_filter:
-                self._person_filter.set_all_geotagged(self._assets)
+                self._person_filter.set_all_geotagged(filtered)
                 filtered = self._person_filter.filter_by_person(self._active_person_id)
-                self._marker_controller.set_assets(filtered, library_root)
-            else:
-                self._marker_controller.set_assets(self._assets, library_root)
+
+            # Re-apply timeline date filter if active.  This prevents the
+            # filter from being lost when the gallery refreshes (e.g.
+            # returning from photo detail view).
+            if self._trail_layer_visible:
+                start = self._timeline_slider.current_start
+                end = self._timeline_slider.current_end
+                filtered = self._filter_assets_by_date(start, end, filtered)
+
+            self._marker_controller.set_assets(filtered, library_root)
 
     def clear(self) -> None:
         """Remove all markers from the map."""

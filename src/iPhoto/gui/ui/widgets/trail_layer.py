@@ -103,7 +103,7 @@ class TrailLayer:
 
         r, g, b = segment.color
         color = QColor(r, g, b, int(255 * self._opacity))
-        pen = QPen(color, 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        pen = QPen(color, 3.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
 
