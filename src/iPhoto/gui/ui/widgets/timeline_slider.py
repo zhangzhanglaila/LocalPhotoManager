@@ -510,16 +510,9 @@ class TimelineSlider(QWidget):
             tr, self.TRACK_HEIGHT // 2, self.TRACK_HEIGHT // 2,
         )
 
-        # Active range (between handles)
+        # Arrow handles — filled with a bold outline for clarity.
         sx = self._value_to_x(self._current_start)
         ex = self._value_to_x(self._current_end)
-        active = QRect(sx, tr.top(), max(ex - sx, 0), tr.height())
-        painter.setBrush(QColor("#356CB4"))
-        painter.drawRoundedRect(
-            active, self.TRACK_HEIGHT // 2, self.TRACK_HEIGHT // 2,
-        )
-
-        # Arrow handles — filled with a bold outline for clarity.
         handle_pen = QPen(QColor("#1D4ED8"), 2.0)
         handle_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(handle_pen)
