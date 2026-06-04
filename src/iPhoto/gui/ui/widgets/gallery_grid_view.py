@@ -21,6 +21,11 @@ class GalleryGridView(AssetGrid):
     # Gap between grid items (provides 1px padding on each side)
     ITEM_GAP = 2
 
+    # Safety margin to prevent layout engine from dropping columns due to rounding
+    # errors or strict boundary checks. This accounts for frame borders and
+    # potential internal margins.
+    SAFETY_MARGIN = 10
+
     def __init__(self, parent=None) -> None:  # type: ignore[override]
         super().__init__(parent)
         self._selection_mode_enabled = False
@@ -38,10 +43,7 @@ class GalleryGridView(AssetGrid):
         self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        # Always reserve space for the vertical scrollbar so that
-        # viewport().width() is stable and grid columns never get
-        # clipped by a scrollbar that appears after layout.
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setWordWrap(False)
         self.setSelectionRectVisible(False)
 
@@ -216,14 +218,17 @@ class GalleryGridView(AssetGrid):
         # Determine how many columns can fit with the minimum size constraint.
         # We model the grid cell as (item_width + gap), which provides 1px padding
         # on each side of the item, resulting in a visual 2px gutter between items.
-        #
-        # The vertical scrollbar is always on (ScrollBarAlwaysOn), so
-        # viewport().width() already excludes it — no race condition.
-        # Use floor division (//) to guarantee cell_size * num_cols never
-        # exceeds the viewport width.
-        cell_step = self.MIN_ITEM_WIDTH + self.ITEM_GAP
-        num_cols = max(1, viewport_width // cell_step)
-        cell_size = max(1, viewport_width // num_cols)
+        # We subtract SAFETY_MARGIN to align with the cell_size calculation below,
+        # ensuring we don't calculate a column count that immediately fails the
+        # minimum size check.
+        available_width = viewport_width - self.SAFETY_MARGIN
+        num_cols = max(1, int(available_width / (self.MIN_ITEM_WIDTH + self.ITEM_GAP)))
+
+        # Calculate the expanded cell size that will fill the available width.
+        # We subtract SAFETY_MARGIN from the viewport width to prevent the layout
+        # engine from dropping the last column due to rounding errors or strict
+        # boundary checks.
+        cell_size = int((viewport_width - self.SAFETY_MARGIN) / num_cols)
         new_item_width = cell_size - self.ITEM_GAP
         if new_item_width < self.MIN_ITEM_WIDTH:
             return  # Don't update if it would make items too small
