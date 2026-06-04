@@ -11,6 +11,7 @@ from PySide6.QtCore import (
     QRect,
     QRegularExpression,
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import (
@@ -38,9 +39,12 @@ from PySide6.QtWidgets import (
 
 
 class _SpinEdit(QLineEdit):
-    """A compact spin-edit that shows up/down arrows on hover."""
+    """A compact spin-edit with up/down arrows that support long-press repeat."""
 
     valueChanged = Signal()
+
+    _REPEAT_INITIAL_MS = 400   # delay before repeat starts
+    _REPEAT_INTERVAL_MS = 60   # interval between repeats
 
     def __init__(
         self,
@@ -64,21 +68,58 @@ class _SpinEdit(QLineEdit):
         self.setValidator(QRegularExpressionValidator(rx, self))
         self.editingFinished.connect(self._on_edit_finished)
 
-        # Up/down buttons (tiny, shown on hover via parent layout)
+        # Long-press repeat timer
+        self._repeat_timer = QTimer(self)
+        self._repeat_timer.setSingleShot(False)
+        self._repeat_step = 0  # +1 or -1
+
+        # Up button
         self._btn_up = QToolButton()
         self._btn_up.setArrowType(Qt.ArrowType.UpArrow)
-        self._btn_up.setFixedSize(12, 10)
+        self._btn_up.setFixedSize(14, 12)
         self._btn_up.setAutoRaise(True)
         self._btn_up.setStyleSheet("QToolButton { border: none; }")
-        self._btn_up.clicked.connect(self._step_up)
+        self._btn_up.pressed.connect(self._on_up_pressed)
+        self._btn_up.released.connect(self._on_repeat_released)
 
+        # Down button
         self._btn_down = QToolButton()
         self._btn_down.setArrowType(Qt.ArrowType.DownArrow)
-        self._btn_down.setFixedSize(12, 10)
+        self._btn_down.setFixedSize(14, 12)
         self._btn_down.setAutoRaise(True)
         self._btn_down.setStyleSheet("QToolButton { border: none; }")
-        self._btn_down.clicked.connect(self._step_down)
+        self._btn_down.pressed.connect(self._on_down_pressed)
+        self._btn_down.released.connect(self._on_repeat_released)
 
+    # -- long-press repeat ------------------------------------------------
+    def _on_up_pressed(self) -> None:
+        self._step_up()
+        self._repeat_step = +1
+        self._repeat_timer.timeout.connect(self._repeat_tick)
+        self._repeat_timer.start(self._REPEAT_INITIAL_MS)
+
+    def _on_down_pressed(self) -> None:
+        self._step_down()
+        self._repeat_step = -1
+        self._repeat_timer.timeout.connect(self._repeat_tick)
+        self._repeat_timer.start(self._REPEAT_INITIAL_MS)
+
+    def _on_repeat_released(self) -> None:
+        self._repeat_timer.stop()
+        try:
+            self._repeat_timer.timeout.disconnect(self._repeat_tick)
+        except (TypeError, RuntimeError):
+            pass
+        self._repeat_step = 0
+
+    def _repeat_tick(self) -> None:
+        self._repeat_timer.setInterval(self._REPEAT_INTERVAL_MS)
+        if self._repeat_step > 0:
+            self._step_up()
+        elif self._repeat_step < 0:
+            self._step_down()
+
+    # -- value logic -----------------------------------------------------
     def _step_up(self) -> None:
         val = int(self.text() or str(self._min))
         if val < self._max:
@@ -316,7 +357,7 @@ class TimelineSlider(QWidget):
     rangeChanged = Signal(datetime, datetime)
     granularityChanged = Signal(str)
 
-    HANDLE_SIZE = 11
+    HANDLE_SIZE = 12
     TRACK_HEIGHT = 6
     HANDLE_HIT_PADDING = 6
 
@@ -478,8 +519,10 @@ class TimelineSlider(QWidget):
             active, self.TRACK_HEIGHT // 2, self.TRACK_HEIGHT // 2,
         )
 
-        # Arrow handles
-        painter.setPen(QPen(QColor("#356CB4"), 1.5))
+        # Arrow handles — filled with a bold outline for clarity.
+        handle_pen = QPen(QColor("#1D4ED8"), 2.0)
+        handle_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(handle_pen)
         painter.setBrush(QColor("#FFFFFF"))
 
         # Left handle: ◀ pointing right (toward the range)
@@ -493,27 +536,28 @@ class TimelineSlider(QWidget):
     def _draw_arrow(
         painter: QPainter, cx: int, cy: int, size: int, *, pointing_right: bool,
     ) -> None:
-        """Draw a triangular arrow handle at (*cx*, *cy*)."""
+        """Draw a filled triangular arrow handle at (*cx*, *cy*)."""
         half = size
         if pointing_right:
-            # Right-pointing triangle: ▶
+            # ▶  points to the right
             points = [
-                QPoint(cx - half // 2, cy - half),
-                QPoint(cx + half // 2, cy),
-                QPoint(cx - half // 2, cy + half),
+                QPoint(cx - half * 3 // 5, cy - half),
+                QPoint(cx + half * 3 // 5, cy),
+                QPoint(cx - half * 3 // 5, cy + half),
             ]
         else:
-            # Left-pointing triangle: ◀
+            # ◀  points to the left
             points = [
-                QPoint(cx + half // 2, cy - half),
-                QPoint(cx - half // 2, cy),
-                QPoint(cx + half // 2, cy + half),
+                QPoint(cx + half * 3 // 5, cy - half),
+                QPoint(cx - half * 3 // 5, cy),
+                QPoint(cx + half * 3 // 5, cy + half),
             ]
         path = QPainterPath()
         path.moveTo(points[0])
         path.lineTo(points[1])
         path.lineTo(points[2])
         path.closeSubpath()
+        # Draw filled shape with border
         painter.drawPath(path)
 
     # ------------------------------------------------------------------
