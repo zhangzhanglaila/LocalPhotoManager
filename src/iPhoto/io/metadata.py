@@ -230,10 +230,17 @@ def read_image_meta_with_exiftool(
                         info["mime"] = Image.MIME.get(img.format, None)
                 if need_dt_fallback:
                     exif_payload = img.getexif() if hasattr(img, "getexif") else None
-        except UnidentifiedImageError as exc:
-            raise ExternalToolError(f"Unable to read image metadata for {path}") from exc
-        except OSError as exc:
-            raise ExternalToolError(f"OS error while reading {path}: {exc}") from exc
+        except UnidentifiedImageError:
+            LOGGER.debug(
+                "Pillow cannot open %s (format may require pillow-heif or similar plugin); "
+                "using exiftool metadata only.",
+                path,
+            )
+        except OSError:
+            LOGGER.debug(
+                "Pillow encountered an OS error opening %s; using exiftool metadata only.",
+                path,
+            )
 
     if info["dt"] is None and exif_payload:
         fallback_dt = exif_payload.get(36867) or exif_payload.get(306)

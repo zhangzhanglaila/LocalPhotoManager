@@ -112,6 +112,8 @@ class LibraryRuntimeController(
         self._geotagged_assets_cache: Optional[List[GeotaggedAsset]] = None
         self._geotagged_assets_cache_root: Optional[Path] = None
         self._face_scan_status_message: Optional[str] = None
+        self._face_scan_pending_start: bool = False
+        self._ocr_scan_pending_start: bool = False
         self._people_index_coordinator: PeopleIndexCoordinator | None = None
         self._library_session: "LibrarySession | None" = None
         self._owns_library_session = False

@@ -65,8 +65,13 @@ class ScanCoordinatorMixin:
 
     def start_scanning(self, root: Path, include: Iterable[str], exclude: Iterable[str]) -> None:
         """Start a background scan for the given root directory.
-        
+
         All scanned assets are written to the global database at the library root.
+
+        Face and OCR scanning are deferred until the file scan completes to avoid
+        resource contention (CPU, memory, disk I/O) during the initial filesystem
+        walk.  Rows are queued into the workers during the scan so they are ready
+        to process once the file scan finishes.
         """
         # Prepare signals outside the lock
         signals = ScannerSignals()
@@ -109,7 +114,9 @@ class ScanCoordinatorMixin:
         self.faceScanStatusChanged.emit("")
         face_library_root = self.root() if self.root() is not None else root
 
-        # Skip face scan when disk space is critically low to avoid SQLite crashes.
+        # Skip face scan when disk space is critically low to avoid SQLite crashes,
+        # or when the user has disabled automatic face scanning via env var.
+        import os as _os
         import shutil as _shutil
         _skip_face = False
         try:
@@ -118,10 +125,28 @@ class ScanCoordinatorMixin:
         except OSError:
             pass
 
+        # Allow disabling auto face scan via IPHOTO_SKIP_FACE_SCAN=1 env var.
+        if not _skip_face and _os.environ.get("IPHOTO_SKIP_FACE_SCAN", "").strip().lower() in {
+            "1", "true", "yes", "on",
+        }:
+            _skip_face = True
+            self.faceScanStatusChanged.emit(
+                "Face scan disabled (IPHOTO_SKIP_FACE_SCAN=1)."
+            )
+
         if _skip_face:
-            self.faceScanStatusChanged.emit("Face scan skipped: disk space low.")
+            self.faceScanStatusChanged.emit(
+                "Face scan skipped."
+                if not self._face_scan_status_message
+                else ""
+            )
             self._current_face_scanner = None
         else:
+            # Create the face worker but DO NOT start its thread yet.
+            # Rows will be queued via enqueue_rows() during the file scan,
+            # and the worker thread will be started after the file scan
+            # finishes (see _on_scan_finished).  This avoids CPU/memory/IO
+            # contention between the file scanner and the AI face detector.
             face_worker = FaceScanWorker(
                 face_library_root,
                 self,
@@ -132,7 +157,8 @@ class ScanCoordinatorMixin:
             face_worker.finished.connect(self._on_face_scan_finished)
             self._current_face_scanner = face_worker
 
-        # Create OCR worker if AI dependencies are available
+        # Create OCR worker if AI dependencies are available.
+        # Same pattern as face worker: create now, start after file scan.
         ocr_library_root = self.root() if self.root() is not None else root
         ocr_worker = self._create_ocr_worker(ocr_library_root)
         if ocr_worker is not None:
@@ -142,13 +168,16 @@ class ScanCoordinatorMixin:
         else:
             self._current_ocr_scanner = None
 
+        # Record that face/OCR workers are pending start (will be started in
+        # _on_scan_finished after the file scan completes).
+        self._face_scan_pending_start = not _skip_face
+        self._ocr_scan_pending_start = self._current_ocr_scanner is not None
+
         # Release lock before starting the worker
         del locker
 
-        if not _skip_face:
-            face_worker.start()
-        if self._current_ocr_scanner is not None:
-            self._scan_thread_pool.start(self._current_ocr_scanner)
+        # Only start the file scanner immediately.  Face and OCR workers will
+        # be started in _on_scan_finished after the filesystem walk completes.
         self._scan_thread_pool.start(worker)
 
     def stop_scanning(self) -> None:
@@ -166,6 +195,8 @@ class ScanCoordinatorMixin:
         if self._current_ocr_scanner is not None:
             self._current_ocr_scanner.cancel()
             self._current_ocr_scanner = None
+        self._face_scan_pending_start = False
+        self._ocr_scan_pending_start = False
 
     def is_scanning_path(self, path: Path) -> bool:
         """Return True if the given path is covered by the active scan."""
@@ -374,9 +405,14 @@ class ScanCoordinatorMixin:
             ocr_scanner.finish_input()
 
         if worker.cancelled:
+            # Clean up pending face/OCR workers if the scan was cancelled.
+            self._face_scan_pending_start = False
+            self._ocr_scan_pending_start = False
             self.scanFinished.emit(root, True)
             return
         if worker.failed:
+            self._face_scan_pending_start = False
+            self._ocr_scan_pending_start = False
             self.scanFinished.emit(root, False)
             return
 
@@ -396,6 +432,25 @@ class ScanCoordinatorMixin:
         # main thread while downstream listeners start refreshing.
         self._scan_thread_pool.start(_PairingWorker(root, scan_service))
 
+        # --- Start deferred AI workers after file scan completes ---
+        # Face and OCR scanning were deferred to avoid resource contention
+        # with the filesystem walk.  Now that the file scan is done, start
+        # them so they process the rows that were queued during the scan.
+        if (
+            face_scanner is not None
+            and getattr(self, "_face_scan_pending_start", False)
+        ):
+            self._face_scan_pending_start = False
+            face_scanner.start()
+            self.faceScanStatusChanged.emit("Scanning faces...")
+
+        if (
+            ocr_scanner is not None
+            and getattr(self, "_ocr_scan_pending_start", False)
+        ):
+            self._ocr_scan_pending_start = False
+            self._scan_thread_pool.start(ocr_scanner)
+
     def _on_scan_error(self, root: Path, message: str) -> None:
         locker = QMutexLocker(self._scan_buffer_lock)
         self._current_scanner_worker = None
@@ -403,6 +458,8 @@ class ScanCoordinatorMixin:
         del locker
         if face_scanner is not None:
             face_scanner.finish_input()
+        self._face_scan_pending_start = False
+        self._ocr_scan_pending_start = False
         self.errorRaised.emit(message)
         self.scanFinished.emit(root, False)
 

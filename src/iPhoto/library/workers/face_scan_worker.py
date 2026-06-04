@@ -33,8 +33,9 @@ class FaceScanWorker(QThread):
     statusChanged = Signal(str)
     downloadProgress = Signal(int, int)
 
-    BATCH_SIZE = 4
-    QUEUE_TARGET_SIZE = 16
+    BATCH_SIZE = 2
+    QUEUE_TARGET_SIZE = 8
+    BATCH_IDLE_MS = 50  # brief pause between batches to let the UI breathe
 
     def __init__(
         self,
@@ -86,7 +87,14 @@ class FaceScanWorker(QThread):
                 pass
 
     def _run_impl(self) -> None:
-        self._prime_pending_rows()
+        # Deferred startup: rows are queued by the file scanner via enqueue_rows().
+        # We do NOT call _prime_pending_rows() here because:
+        # 1. It would immediately pull ALL pending rows from the DB at once,
+        #    causing a huge spike in CPU/memory usage.
+        # 2. The file scanner already enqueued all discovered rows during its
+        #    scan, so _top_up_pending_rows() below will gradually pull any
+        #    remaining rows as the queue drains.
+        # 3. This avoids competing with the file scanner for DB and disk I/O.
         if self._cancelled:
             return
 
@@ -123,6 +131,8 @@ class FaceScanWorker(QThread):
                         LOGGER.warning("Failed to top up pending rows on drain", exc_info=True)
                     if self._queue.empty():
                         return
+                # Brief idle to avoid busy-waiting and let the UI thread breathe.
+                self.msleep(self.BATCH_IDLE_MS)
                 continue
 
             try:
@@ -141,6 +151,9 @@ class FaceScanWorker(QThread):
                     self._queued_ids.discard(asset_id)
                 if committed:
                     self.peopleIndexUpdated.emit()
+                # Brief pause between batches to reduce CPU/IO pressure and let
+                # the UI thread process events.
+                self.msleep(self.BATCH_IDLE_MS)
             except PeopleSnapshotCommittedError as exc:
                 LOGGER.error("Face scan bookkeeping failed after commit: %s", exc, exc_info=True)
                 for asset_id in [str(row.get("id") or "") for row in batch if row.get("id")]:
