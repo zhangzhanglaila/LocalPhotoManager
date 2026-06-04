@@ -701,33 +701,35 @@ class PhotoMapView(QWidget):
 
     def _trail_tooltip_at(self, screen_pos) -> str | None:
         """Return a tooltip string if the mouse is near a trail segment."""
-        if not self._trail_layer_visible or self._trail_data is None:
+        try:
+            if not self._trail_layer_visible:
+                return None
+            trail = getattr(self._trail_layer, '_trail_data', None)
+            if trail is None:
+                return None
+            project_fn = getattr(self._map_widget, "project_lonlat", None)
+            if project_fn is None:
+                return None
+            idx = self._trail_layer.segment_at_point(
+                QPointF(screen_pos), project_fn, threshold=16.0,
+            )
+            if idx is None or idx >= len(trail.segments):
+                return None
+            seg = trail.segments[idx]
+            if not seg.points:
+                return None
+            start_pt = seg.points[0]
+            end_pt = seg.points[-1]
+            start_time = start_pt.timestamp.strftime("%Y-%m-%d %H:%M")
+            end_time = end_pt.timestamp.strftime("%Y-%m-%d %H:%M")
+            start_loc = f"({start_pt.latitude:.4f}, {start_pt.longitude:.4f})"
+            end_loc = f"({end_pt.latitude:.4f}, {end_pt.longitude:.4f})"
+            return (
+                f"{start_time} → {end_time}\n"
+                f"{start_loc} → {end_loc}"
+            )
+        except Exception:
             return None
-        project_fn = getattr(self._map_widget, "project_lonlat", None)
-        if project_fn is None:
-            return None
-        idx = self._trail_layer.segment_at_point(
-            QPointF(screen_pos), project_fn, threshold=16.0,
-        )
-        if idx is None or idx >= len(self._trail_data.segments):
-            return None
-        seg = self._trail_data.segments[idx]
-        if not seg.points:
-            return None
-        start_pt = seg.points[0]
-        end_pt = seg.points[-1]
-        start_time = start_pt.timestamp.strftime("%Y-%m-%d %H:%M")
-        end_time = end_pt.timestamp.strftime("%Y-%m-%d %H:%M")
-        start_loc = f"({start_pt.latitude:.4f}, {start_pt.longitude:.4f})"
-        end_loc = f"({end_pt.latitude:.4f}, {end_pt.longitude:.4f})"
-        return (
-            f"{start_time} → {end_time}\n"
-            f"{start_loc} → {end_loc}"
-        )
-
-    @property
-    def _trail_data(self):
-        return self._trail_layer._trail_data if hasattr(self, '_trail_layer') else None
 
     # ------------------------------------------------------------------
     # Trail / Timeline support

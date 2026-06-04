@@ -42,6 +42,31 @@ class TrailLayer:
         """Set the trail opacity (0.0 to 1.0)."""
         self._opacity = max(0.0, min(1.0, opacity))
 
+    def segment_at_point(
+        self, screen_pos: QPointF, project_fn, threshold: float = 16.0,
+    ) -> int | None:
+        """Return the index of the segment nearest to *screen_pos*."""
+        if self._trail_data is None:
+            return None
+        best_idx: int | None = None
+        best_dist = threshold
+        for idx in self._visible_segments:
+            if idx >= len(self._trail_data.segments):
+                continue
+            seg = self._trail_data.segments[idx]
+            for tp in seg.points:
+                try:
+                    pt = project_fn(tp.longitude, tp.latitude)
+                except Exception:
+                    continue
+                if pt is None:
+                    continue
+                d = math.hypot(screen_pos.x() - pt.x(), screen_pos.y() - pt.y())
+                if d < best_dist:
+                    best_dist = d
+                    best_idx = idx
+        return best_idx
+
     def paint(
         self,
         painter: QPainter,
