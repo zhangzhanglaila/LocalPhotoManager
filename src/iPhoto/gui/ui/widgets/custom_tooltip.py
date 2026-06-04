@@ -143,7 +143,12 @@ class FloatingToolTip(QWidget):
         width = min(text_rect.width(), available_width) + 2 * (
             self._padding + self._border_width
         )
-        height = text_rect.height() + 2 * (self._padding + self._border_width)
+        # Add extra line height as safety margin — some platforms misreport
+        # boundingRect height for multi-line text with TextWordWrap.
+        line_height = metrics.lineSpacing()
+        height = text_rect.height() + line_height + 2 * (
+            self._padding + self._border_width
+        )
         return QSize(width, height)
 
     def minimumSizeHint(self) -> QSize:  # noqa: D401 - mirrors :meth:`sizeHint`
