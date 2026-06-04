@@ -535,6 +535,18 @@ class PhotoMapView(QWidget):
                         self._last_tooltip_text = label
                     else:
                         self._tooltip.show_text(global_pos, label)
+                elif self._trail_layer_visible:
+                    # Check if hovering over a trail segment
+                    label = self._trail_tooltip_at(mouse_event.position())
+                    if label:
+                        global_pos = self._map_event_target.mapToGlobal(
+                            mouse_event.position().toPoint()
+                        )
+                        self._tooltip.show_text(global_pos, label)
+                        self._last_tooltip_text = label
+                    elif self._last_tooltip_text:
+                        self._tooltip.hide_tooltip()
+                        self._last_tooltip_text = ""
                 else:
                     if self._last_tooltip_text:
                         self._tooltip.hide_tooltip()
@@ -686,6 +698,36 @@ class PhotoMapView(QWidget):
         self._timeline_slider.hide()
         self._timeline_slider.rangeChanged.connect(self._on_timeline_range_changed)
         self._timeline_slider.granularityChanged.connect(self._on_timeline_granularity_changed)
+
+    def _trail_tooltip_at(self, screen_pos) -> str | None:
+        """Return a tooltip string if the mouse is near a trail segment."""
+        if not self._trail_layer_visible or self._trail_data is None:
+            return None
+        project_fn = getattr(self._map_widget, "project_lonlat", None)
+        if project_fn is None:
+            return None
+        idx = self._trail_layer.segment_at_point(
+            QPointF(screen_pos), project_fn, threshold=16.0,
+        )
+        if idx is None or idx >= len(self._trail_data.segments):
+            return None
+        seg = self._trail_data.segments[idx]
+        if not seg.points:
+            return None
+        start_pt = seg.points[0]
+        end_pt = seg.points[-1]
+        start_time = start_pt.timestamp.strftime("%Y-%m-%d %H:%M")
+        end_time = end_pt.timestamp.strftime("%Y-%m-%d %H:%M")
+        start_loc = f"({start_pt.latitude:.4f}, {start_pt.longitude:.4f})"
+        end_loc = f"({end_pt.latitude:.4f}, {end_pt.longitude:.4f})"
+        return (
+            f"{start_time} → {end_time}\n"
+            f"{start_loc} → {end_loc}"
+        )
+
+    @property
+    def _trail_data(self):
+        return self._trail_layer._trail_data if hasattr(self, '_trail_layer') else None
 
     # ------------------------------------------------------------------
     # Trail / Timeline support
