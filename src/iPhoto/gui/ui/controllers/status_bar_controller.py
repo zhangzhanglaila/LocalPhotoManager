@@ -75,12 +75,13 @@ class StatusBarController(QObject):
             # calling :meth:`begin_scan`; bootstrap the UI lazily.
             self.begin_scan()
 
-        if total < 0:
+        if total <= 0:
+            # total < 0  → discovery thread hasn't started counting yet
+            # total == 0, current == 0 → discovery just started, no files found *yet*
+            # In both cases show the generic "counting" message.  The
+            # "no files" case is handled by handle_scan_finished instead.
             self._progress_bar.setRange(0, 0)
             self.show_message(tr("status.scanning_counting"))
-        elif total == 0:
-            self._progress_bar.setRange(0, 0)
-            self.show_message(tr("status.scanning_no_files"))
         else:
             self._progress_bar.setRange(0, total)
             self._progress_bar.setValue(max(0, min(current, total)))
