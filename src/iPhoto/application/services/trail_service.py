@@ -62,9 +62,13 @@ class TrailService:
 
         # Convert epoch timestamps to datetime and filter out assets
         # that have no valid timestamp.
+        # Prefer ``still_image_time`` (Live Photo hero-frame time), falling
+        # back to the generic ``timestamp`` field (file mtime / EXIF date).
         def _ts(a):
             if a.still_image_time is not None:
                 return datetime.fromtimestamp(a.still_image_time)
+            if a.timestamp is not None:
+                return datetime.fromtimestamp(a.timestamp)
             return None
 
         filtered = [(a, _ts(a)) for a in geotagged_assets]

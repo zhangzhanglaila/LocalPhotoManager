@@ -218,6 +218,7 @@ def test_reload_current_selection_replays_direct_assets_after_rebind(tmp_path: P
             is_image=True,
             is_video=False,
             still_image_time=None,
+            timestamp=None,
             duration=None,
             location_name="Paris",
             live_photo_group_id=None,

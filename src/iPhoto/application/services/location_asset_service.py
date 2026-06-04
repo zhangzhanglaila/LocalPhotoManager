@@ -85,6 +85,14 @@ def geotagged_asset_from_row(
     else:
         still_image_value = None
 
+    # General-purpose epoch timestamp (seconds since 1970-01-01).
+    # The index stores ``ts`` as microseconds; convert to float seconds.
+    row_ts = row.get("ts")
+    if isinstance(row_ts, (int, float)):
+        timestamp_value: float | None = float(row_ts) / 1_000_000.0
+    else:
+        timestamp_value = None
+
     duration = row.get("dur")
     if isinstance(duration, (int, float)):
         duration_value: float | None = float(duration)
@@ -115,6 +123,7 @@ def geotagged_asset_from_row(
         is_image=is_image,
         is_video=is_video,
         still_image_time=still_image_value,
+        timestamp=timestamp_value,
         duration=duration_value,
         location_name=location_name,
         live_photo_group_id=live_group_id,

@@ -81,6 +81,7 @@ def test_geotagged_asset_dto_marks_live_photo_and_partner(tmp_path: Path) -> Non
         is_image=True,
         is_video=False,
         still_image_time=None,
+        timestamp=None,
         duration=1.2,
         location_name="San Francisco",
         live_photo_group_id="live-1",

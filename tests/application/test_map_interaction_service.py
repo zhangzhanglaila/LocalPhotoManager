@@ -18,6 +18,7 @@ def _asset(tmp_path: Path, rel: str) -> GeotaggedAsset:
         is_image=True,
         is_video=False,
         still_image_time=None,
+        timestamp=None,
         duration=None,
         location_name=None,
         live_photo_group_id=None,

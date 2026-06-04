@@ -85,6 +85,7 @@ class GeotaggedAsset:
     is_image: bool
     is_video: bool
     still_image_time: Optional[float]
+    timestamp: Optional[float]
     duration: Optional[float]
     location_name: Optional[str]
     live_photo_group_id: Optional[str]
