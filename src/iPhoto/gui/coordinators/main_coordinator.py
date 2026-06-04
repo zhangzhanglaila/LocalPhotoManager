@@ -1800,21 +1800,42 @@ class MainCoordinator(QObject):
                 library = getattr(self._context, "library", None)
                 if library is None:
                     ui.sidebar.btn_trail_toggle.setChecked(False)
+                    self._status_bar.show_message(
+                        "Trail unavailable: no library bound.", 4000
+                    )
                     return
                 geotagged = library.get_geotagged_assets()
                 if not geotagged:
                     ui.sidebar.btn_trail_toggle.setChecked(False)
+                    self._status_bar.show_message(
+                        "No geotagged photos found — trail needs photos with GPS data.", 5000
+                    )
                     return
                 trail_service = TrailService()
                 trail = trail_service.build_trail(geotagged, granularity="day")
+                if trail.is_empty:
+                    ui.sidebar.btn_trail_toggle.setChecked(False)
+                    self._status_bar.show_message(
+                        "Trail is empty — photos may lack valid timestamps.", 5000
+                    )
+                    return
                 ui.map_view.set_trail(trail)
                 ui.map_view._trail_service = trail_service
                 ui.map_view._trail_geotagged = geotagged
+                self._status_bar.show_message(
+                    f"Trail: {trail.total_photos} photos, "
+                    f"{len(trail.segments)} segments",
+                    4000,
+                )
             except Exception as e:
                 self._logger.warning("Failed to build trail: %s", e)
                 ui.sidebar.btn_trail_toggle.setChecked(False)
+                self._status_bar.show_message(
+                    f"Failed to build trail: {e}", 5000
+                )
         else:
             ui.map_view.clear_trail()
+            self._status_bar.show_message("Trail hidden.", 2000)
 
     def _on_people_cluster_activated(self, person_id: str) -> None:
         QTimer.singleShot(0, lambda: self._open_people_cluster(person_id))
