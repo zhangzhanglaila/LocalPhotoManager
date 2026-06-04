@@ -46,7 +46,7 @@ class FloatingToolTip(QWidget):
     """
 
     _CURSOR_OFFSET = QPoint(14, 22)
-    _MAX_WIDTH = 400
+    _MAX_WIDTH = 500
 
     def __init__(self, parent: QWidget | None = None) -> None:
         # ``Qt.Tool`` keeps the popup as an independent window while still
