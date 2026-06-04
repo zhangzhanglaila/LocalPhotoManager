@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from logging import getLogger
 from pathlib import Path
-from typing import Dict, Iterable, Optional, cast
+from typing import Callable, Dict, Iterable, Optional, cast
 
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt, QEvent, Signal, Slot
 from ....i18n import tr
@@ -91,6 +91,9 @@ class _MarkerLayer(QWidget):
         self._clusters: list[_MarkerCluster] = []
         self._pixmaps: Dict[str, QPixmap] = {}
         self._placeholder = self._create_placeholder()
+        # Optional extra paint callback (e.g. trail layer) invoked during
+        # paintEvent after the marker clusters have been drawn.
+        self._extra_paint_fn: Callable[[QPainter], None] | None = None
         self._badge_font = QFont()
         self._badge_font.setBold(True)
         self._badge_font.setPointSize(9)
@@ -163,6 +166,9 @@ class _MarkerLayer(QWidget):
             self._buffer_dirty = False
         painter = QPainter(self)
         painter.drawPixmap(0, 0, self._back_buffer)
+        # Draw extra layers (e.g. trail) on top of the marker buffer.
+        if self._extra_paint_fn is not None:
+            self._extra_paint_fn(painter)
         painter.end()
 
     def _paint_cluster(self, painter: QPainter, cluster: _MarkerCluster) -> None:
@@ -309,6 +315,8 @@ class PhotoMapView(QWidget):
         from .trail_layer import TrailLayer
         from .timeline_slider import TimelineSlider
         self._trail_layer = TrailLayer()
+        self._trail_paint_callback = None
+        self._trail_registered = False
         self._timeline_slider = TimelineSlider()
         self._trail_layer_visible = False
 
@@ -439,6 +447,12 @@ class PhotoMapView(QWidget):
         """Return the last emitted runtime diagnostics line."""
 
         return self._runtime_diagnostics
+
+    def request_full_update(self) -> None:
+        """Delegate a full repaint to the underlying map widget."""
+
+        if self._map_widget_built:
+            self._map_widget.request_full_update()
 
     def set_assets(self, assets: Iterable[GeotaggedAsset], library_root: Path) -> None:
         """Replace the asset catalogue shown on the map."""
@@ -602,6 +616,10 @@ class PhotoMapView(QWidget):
             logger.info("Photo map runtime capability: %s", self._map_runtime_capabilities.status_message)
         self._layout.addWidget(self._map_widget)
 
+        # Trail paint callback -- wraps TrailLayer.paint() with the map
+        # widget's project_lonlat so it can draw on any QPainter.
+        self._trail_paint_callback = self._make_trail_paint_callback()
+
         if self._overlay_attachment.supports_post_render(self._map_widget):
             self._overlay = _GLMarkerLayer(self._map_widget)
             self._overlay_attachment.attach(
@@ -610,6 +628,7 @@ class PhotoMapView(QWidget):
             )
         else:
             self._overlay = _MarkerLayer(self)
+            self._overlay._extra_paint_fn = self._trail_paint_callback
             self._overlay_attachment.attach(
                 self._map_widget,
                 callback=None,
@@ -660,6 +679,52 @@ class PhotoMapView(QWidget):
     # Trail / Timeline support
     # ------------------------------------------------------------------
 
+    def _make_trail_paint_callback(self) -> Callable[[QPainter], None]:
+        """Return a closure that paints the trail layer onto *painter*.
+
+        The closure captures ``self._map_widget`` (which must already exist)
+        so that ``project_lonlat`` can convert geographic coordinates to the
+        widget-local coordinate space used by the painter.
+        """
+        map_widget = self._map_widget
+        trail_layer = self._trail_layer
+
+        def _paint_trail(painter: QPainter) -> None:
+            if not self._trail_layer_visible:
+                return
+            viewport = QRectF(map_widget.rect())
+            trail_layer.paint(painter, map_widget.project_lonlat, viewport)
+
+        return _paint_trail
+
+    def _ensure_trail_registered(self) -> None:
+        """Register the trail paint callback with the map widget if needed.
+
+        For the GL post-render path the callback is added as a separate
+        painter.  For the QWidget fallback path it is wired through the
+        ``_MarkerLayer._extra_paint_fn`` hook set during
+        ``_build_map_widget``.
+        """
+        if self._trail_registered:
+            return
+        if not self._map_widget_built:
+            return
+        if self._overlay_attachment.supports_post_render(self._map_widget):
+            add_painter = getattr(self._map_widget, "add_post_render_painter", None)
+            if callable(add_painter):
+                add_painter(self._trail_paint_callback)
+        self._trail_registered = True
+
+    def _ensure_trail_unregistered(self) -> None:
+        """Remove the trail paint callback from the map widget."""
+        if not self._trail_registered:
+            return
+        if self._map_widget_built and self._overlay_attachment.supports_post_render(self._map_widget):
+            remove_painter = getattr(self._map_widget, "remove_post_render_painter", None)
+            if callable(remove_painter):
+                remove_painter(self._trail_paint_callback)
+        self._trail_registered = False
+
     def set_trail(self, trail_data) -> None:
         """Set trail data and show the timeline slider."""
         from ..models.trail_models import TrailData
@@ -667,6 +732,7 @@ class PhotoMapView(QWidget):
             return
         self._trail_layer.set_trail(trail_data)
         self._trail_layer_visible = True
+        self._ensure_trail_registered()
         if trail_data.is_empty:
             self._timeline_slider.hide()
         else:
@@ -675,14 +741,20 @@ class PhotoMapView(QWidget):
                 self._timeline_slider.set_date_range(trail_data.start_date, trail_data.end_date)
         if self._map_widget_built:
             self.request_full_update()
+            # Invalidate the QWidget overlay buffer so the trail is redrawn.
+            if hasattr(self._overlay, '_buffer_dirty'):
+                self._overlay._buffer_dirty = True
 
     def clear_trail(self) -> None:
         """Clear trail data and hide the timeline slider."""
         self._trail_layer.clear()
         self._trail_layer_visible = False
+        self._ensure_trail_unregistered()
         self._timeline_slider.hide()
         if self._map_widget_built:
             self.request_full_update()
+            if hasattr(self._overlay, '_buffer_dirty'):
+                self._overlay._buffer_dirty = True
 
     def _on_timeline_range_changed(self, start, end) -> None:
         if hasattr(self, '_trail_service') and hasattr(self, '_trail_geotagged'):

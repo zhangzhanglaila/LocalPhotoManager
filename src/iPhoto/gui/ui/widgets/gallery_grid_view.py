@@ -21,10 +21,12 @@ class GalleryGridView(AssetGrid):
     # Gap between grid items (provides 1px padding on each side)
     ITEM_GAP = 2
 
-    # Safety margin to prevent layout engine from dropping columns due to rounding
-    # errors or strict boundary checks. This accounts for frame borders and
-    # potential internal margins.
-    SAFETY_MARGIN = 10
+    # Safety margin to prevent layout engine from dropping columns due to
+    # rounding errors or strict boundary checks.  The int() truncation in
+    # the cell-size calculation can lose up to (num_cols - 1) pixels, and
+    # QListView may enforce strict <= viewport_width checks.  24 px keeps
+    # the grid comfortably inside the viewport for up to ~12 columns.
+    SAFETY_MARGIN = 24
 
     def __init__(self, parent=None) -> None:  # type: ignore[override]
         super().__init__(parent)
