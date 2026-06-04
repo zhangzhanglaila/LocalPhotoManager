@@ -711,7 +711,7 @@ class PhotoMapView(QWidget):
             if project_fn is None:
                 return None
             idx = self._trail_layer.segment_at_point(
-                QPointF(screen_pos), project_fn, threshold=16.0,
+                QPointF(screen_pos), project_fn, threshold=24.0,
             )
             if idx is None or idx >= len(trail.segments):
                 return None
@@ -722,11 +722,11 @@ class PhotoMapView(QWidget):
             end_pt = seg.points[-1]
             start_time = start_pt.timestamp.strftime("%Y-%m-%d %H:%M")
             end_time = end_pt.timestamp.strftime("%Y-%m-%d %H:%M")
-            start_loc = f"({start_pt.latitude:.4f}, {start_pt.longitude:.4f})"
-            end_loc = f"({end_pt.latitude:.4f}, {end_pt.longitude:.4f})"
+            start_loc = f"({start_pt.latitude:.2f}, {start_pt.longitude:.2f})"
+            end_loc = f"({end_pt.latitude:.2f}, {end_pt.longitude:.2f})"
             return (
-                f"{start_time} → {end_time}\n"
-                f"{start_loc} → {end_loc}"
+                f"{start_time} -> {end_time}\n"
+                f"{start_loc} -> {end_loc}"
             )
         except Exception:
             return None
