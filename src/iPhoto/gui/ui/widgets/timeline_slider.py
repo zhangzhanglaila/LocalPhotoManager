@@ -9,6 +9,7 @@ from PySide6.QtCore import (
     QDate,
     QPoint,
     QRect,
+    QRegularExpression,
     Qt,
     Signal,
 )
@@ -17,97 +18,292 @@ from PySide6.QtGui import (
     QColor,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPen,
+    QPolygon,
+    QRegularExpressionValidator,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QCalendarWidget,
-    QDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
+    QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 
-class _DateLabel(QLabel):
-    """Clickable date label that opens a calendar popup for manual editing."""
+class _SpinEdit(QLineEdit):
+    """A compact spin-edit that shows up/down arrows on hover."""
+
+    valueChanged = Signal()
+
+    def __init__(
+        self,
+        value: int,
+        min_val: int,
+        max_val: int,
+        width: int,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(str(value), parent)
+        self._min = min_val
+        self._max = max_val
+        self.setFixedWidth(width)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet(
+            "QLineEdit { font-size: 11px; border: 1px solid #D0D5DD; "
+            "border-radius: 3px; padding: 1px 2px; background: #fff; }"
+            "QLineEdit:focus { border-color: #356CB4; }"
+        )
+        rx = QRegularExpression(r"\d+")
+        self.setValidator(QRegularExpressionValidator(rx, self))
+        self.editingFinished.connect(self._on_edit_finished)
+
+        # Up/down buttons (tiny, shown on hover via parent layout)
+        self._btn_up = QToolButton()
+        self._btn_up.setArrowType(Qt.ArrowType.UpArrow)
+        self._btn_up.setFixedSize(12, 10)
+        self._btn_up.setAutoRaise(True)
+        self._btn_up.setStyleSheet("QToolButton { border: none; }")
+        self._btn_up.clicked.connect(self._step_up)
+
+        self._btn_down = QToolButton()
+        self._btn_down.setArrowType(Qt.ArrowType.DownArrow)
+        self._btn_down.setFixedSize(12, 10)
+        self._btn_down.setAutoRaise(True)
+        self._btn_down.setStyleSheet("QToolButton { border: none; }")
+        self._btn_down.clicked.connect(self._step_down)
+
+    def _step_up(self) -> None:
+        val = int(self.text() or str(self._min))
+        if val < self._max:
+            self.setText(str(val + 1))
+            self.valueChanged.emit()
+
+    def _step_down(self) -> None:
+        val = int(self.text() or str(self._min))
+        if val > self._min:
+            self.setText(str(val - 1))
+            self.valueChanged.emit()
+
+    def _on_edit_finished(self) -> None:
+        try:
+            val = int(self.text() or "0")
+        except ValueError:
+            val = self._min
+        val = max(self._min, min(self._max, val))
+        self.setText(str(val))
+        self.valueChanged.emit()
+
+    def value(self) -> int:
+        try:
+            return max(self._min, min(self._max, int(self.text() or "0")))
+        except ValueError:
+            return self._min
+
+    def set_value(self, val: int) -> None:
+        self.setText(str(max(self._min, min(self._max, val))))
+
+
+class _DateEditor(QWidget):
+    """Inline date editor: YYYY ↑↓ / MM ↑↓ / DD ↑↓ + calendar popup.
+
+    No dialog window — the calendar appears as a popup anchored below
+    the editor and auto-closes on selection or focus loss.
+    """
 
     dateChanged = Signal(datetime)
+    _CAL_POPUP = None  # class-level singleton to avoid multiple popups
 
     def __init__(self, dt: datetime, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._dt = dt
-        self._update_text()
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(
-            "QLabel { font-size: 11px; color: #356CB4; padding: 2px 6px; "
-            "border: 1px solid transparent; border-radius: 4px; }"
-            "QLabel:hover { border-color: #356CB4; background: rgba(53,108,180,0.06); }"
-        )
-        self.setFixedWidth(88)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+
+        # Year (4-digit)
+        y_wrap = QVBoxLayout()
+        y_wrap.setContentsMargins(0, 0, 0, 0)
+        y_wrap.setSpacing(0)
+        self._year_edit = _SpinEdit(self._dt.year, 1970, 2099, 42)
+        y_wrap.addWidget(self._year_edit._btn_up, 0, Qt.AlignmentFlag.AlignCenter)
+        y_wrap.addWidget(self._year_edit)
+        y_wrap.addWidget(self._year_edit._btn_down, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addLayout(y_wrap)
+
+        dash1 = QLabel("-")
+        dash1.setStyleSheet("font-size: 11px; color: #999; padding: 0 1px;")
+        dash1.setFixedWidth(6)
+        layout.addWidget(dash1)
+
+        # Month
+        m_wrap = QVBoxLayout()
+        m_wrap.setContentsMargins(0, 0, 0, 0)
+        m_wrap.setSpacing(0)
+        self._month_edit = _SpinEdit(self._dt.month, 1, 12, 26)
+        m_wrap.addWidget(self._month_edit._btn_up, 0, Qt.AlignmentFlag.AlignCenter)
+        m_wrap.addWidget(self._month_edit)
+        m_wrap.addWidget(self._month_edit._btn_down, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addLayout(m_wrap)
+
+        dash2 = QLabel("-")
+        dash2.setStyleSheet("font-size: 11px; color: #999; padding: 0 1px;")
+        dash2.setFixedWidth(6)
+        layout.addWidget(dash2)
+
+        # Day
+        d_wrap = QVBoxLayout()
+        d_wrap.setContentsMargins(0, 0, 0, 0)
+        d_wrap.setSpacing(0)
+        max_day = self._days_in_month(self._dt.year, self._dt.month)
+        self._day_edit = _SpinEdit(self._dt.day, 1, max_day, 26)
+        d_wrap.addWidget(self._day_edit._btn_up, 0, Qt.AlignmentFlag.AlignCenter)
+        d_wrap.addWidget(self._day_edit)
+        d_wrap.addWidget(self._day_edit._btn_down, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addLayout(d_wrap)
+
+        # Calendar icon button
+        self._cal_btn = QToolButton()
+        self._cal_btn.setText("📅")
+        self._cal_btn.setFixedSize(18, 18)
+        self._cal_btn.setAutoRaise(True)
+        self._cal_btn.setStyleSheet("QToolButton { border: none; font-size: 11px; }")
+        self._cal_btn.clicked.connect(self._toggle_calendar)
+        layout.addWidget(self._cal_btn)
+
+        # Connect change signals
+        self._year_edit.valueChanged.connect(self._on_field_changed)
+        self._month_edit.valueChanged.connect(self._on_field_changed)
+        self._day_edit.valueChanged.connect(self._on_field_changed)
+
+        self.setFixedHeight(42)
 
     def set_date(self, dt: datetime) -> None:
         self._dt = dt
-        self._update_text()
+        self._year_edit.set_value(dt.year)
+        self._month_edit.set_value(dt.month)
+        self._day_edit.set_value(dt.day)
+        self._update_day_range()
 
     def date(self) -> datetime:
         return self._dt
 
-    def _update_text(self) -> None:
-        self.setText(self._dt.strftime("%Y-%m-%d"))
+    def _on_field_changed(self) -> None:
+        y = self._year_edit.value()
+        m = self._month_edit.value()
+        max_day = self._days_in_month(y, m)
+        d = min(self._day_edit.value(), max_day)
+        self._day_edit._max = max_day
+        if self._day_edit.value() > max_day:
+            self._day_edit.set_value(d)
+        new_dt = datetime(y, m, d)
+        if new_dt != self._dt:
+            self._dt = new_dt
+            self.dateChanged.emit(new_dt)
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._show_calendar()
-        super().mousePressEvent(event)
+    def _update_day_range(self) -> None:
+        max_day = self._days_in_month(self._dt.year, self._dt.month)
+        self._day_edit._max = max_day
+        if self._day_edit.value() > max_day:
+            self._day_edit.set_value(max_day)
 
-    def _show_calendar(self) -> None:
-        dialog = QDialog(self.window())
-        dialog.setWindowTitle("Select Date")
-        dialog.setMinimumSize(320, 280)
+    @staticmethod
+    def _days_in_month(y: int, m: int) -> int:
+        if m == 2:
+            return 29 if (y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)) else 28
+        if m in (4, 6, 9, 11):
+            return 30
+        return 31
 
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+    # ------------------------------------------------------------------
+    # Calendar popup (anchored, modeless)
+    # ------------------------------------------------------------------
+    def _toggle_calendar(self) -> None:
+        if _DateEditor._CAL_POPUP is not None:
+            _DateEditor._CAL_POPUP.close()
+            _DateEditor._CAL_POPUP = None
+            return
 
-        cal = QCalendarWidget()
-        cal.setSelectedDate(QDate(self._dt.year, self._dt.month, self._dt.day))
-        cal.setGridVisible(True)
-        cal.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
-        layout.addWidget(cal)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        btn_ok = QPushButton("OK")
-        btn_ok.clicked.connect(dialog.accept)
-        btn_cancel = QPushButton("Cancel")
-        btn_cancel.clicked.connect(dialog.reject)
-        btn_layout.addWidget(btn_ok)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-        # Position the popup near the label.
+        popup = _CalendarPopup(
+            self._dt,
+            self.window(),
+            on_selected=self._on_calendar_selected,
+            on_dismissed=self._on_calendar_dismissed,
+        )
+        # Anchor below the editor
         pos = self.mapToGlobal(QPoint(0, self.height()))
-        dialog.move(pos)
+        popup.move(pos)
+        popup.show()
+        _DateEditor._CAL_POPUP = popup
 
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            qd = cal.selectedDate()
-            new_dt = datetime(qd.year(), qd.month(), qd.day())
-            if new_dt != self._dt:
-                self._dt = new_dt
-                self._update_text()
-                self.dateChanged.emit(new_dt)
+    def _on_calendar_selected(self, dt: datetime) -> None:
+        if dt != self._dt:
+            self._dt = dt
+            self._year_edit.set_value(dt.year)
+            self._month_edit.set_value(dt.month)
+            self._day_edit.set_value(dt.day)
+            self._update_day_range()
+            self.dateChanged.emit(dt)
+
+    def _on_calendar_dismissed(self) -> None:
+        _DateEditor._CAL_POPUP = None
+
+
+class _CalendarPopup(QCalendarWidget):
+    """Frameless calendar that closes on selection or focus loss."""
+
+    def __init__(
+        self,
+        dt: datetime,
+        parent: QWidget,
+        *,
+        on_selected,
+        on_dismissed,
+    ) -> None:
+        super().__init__(parent)
+        self._on_selected = on_selected
+        self._on_dismissed = on_dismissed
+        self.setWindowFlags(
+            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setSelectedDate(QDate(dt.year, dt.month, dt.day))
+        self.setGridVisible(True)
+        self.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
+        self.setFixedSize(280, 220)
+        self.clicked.connect(self._on_clicked)
+        self.activated.connect(self._on_clicked)
+
+    def _on_clicked(self, qd: QDate) -> None:
+        new_dt = datetime(qd.year(), qd.month(), qd.day())
+        self._on_selected(new_dt)
+        self.close()
+
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        self.close()
+
+    def closeEvent(self, event) -> None:
+        self._on_dismissed()
+        super().closeEvent(event)
 
 
 class TimelineSlider(QWidget):
     """Range slider for selecting a date range on the photo trail.
 
-    Shows a visual track with two draggable handles representing the
-    start (left) and end (right) dates.  The highlighted area between
-    the handles is the active date range.  Date labels are clickable
-    to open a calendar picker for manual entry.
+    Shows a visual track with two arrow handles (◀ ▶) representing
+    start (left) and end (right).  The highlighted area between them
+    is the active date range.  Dates are editable inline via spin
+    fields with a calendar popup (not a dialog window).
 
     Signals
     -------
@@ -120,7 +316,7 @@ class TimelineSlider(QWidget):
     rangeChanged = Signal(datetime, datetime)
     granularityChanged = Signal(str)
 
-    HANDLE_RADIUS = 8
+    HANDLE_SIZE = 11
     TRACK_HEIGHT = 6
     HANDLE_HIT_PADDING = 6
 
@@ -146,7 +342,7 @@ class TimelineSlider(QWidget):
 
         # --- Track area (custom painted) ---
         self._track = QWidget()
-        self._track.setFixedHeight(self.HANDLE_RADIUS * 2 + self.TRACK_HEIGHT + 4)
+        self._track.setFixedHeight(self.HANDLE_SIZE + self.TRACK_HEIGHT + 10)
         self._track.setMouseTracking(True)
         self._track.mousePressEvent = self._track_mouse_press
         self._track.mouseMoveEvent = self._track_mouse_move
@@ -154,14 +350,14 @@ class TimelineSlider(QWidget):
         self._track.paintEvent = self._paint_track
         root.addWidget(self._track)
 
-        # --- Bottom row: date labels + granularity buttons ---
+        # --- Bottom row: date editors + granularity buttons ---
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(6)
 
-        self._start_label = _DateLabel(self._current_start)
-        self._start_label.dateChanged.connect(self._on_start_label_changed)
-        bottom.addWidget(self._start_label)
+        self._start_editor = _DateEditor(self._current_start)
+        self._start_editor.dateChanged.connect(self._on_start_date_changed)
+        bottom.addWidget(self._start_editor)
 
         bottom.addStretch(1)
 
@@ -186,9 +382,9 @@ class TimelineSlider(QWidget):
 
         bottom.addStretch(1)
 
-        self._end_label = _DateLabel(self._current_end)
-        self._end_label.dateChanged.connect(self._on_end_label_changed)
-        bottom.addWidget(self._end_label)
+        self._end_editor = _DateEditor(self._current_end)
+        self._end_editor.dateChanged.connect(self._on_end_date_changed)
+        bottom.addWidget(self._end_editor)
 
         root.addLayout(bottom)
 
@@ -202,8 +398,8 @@ class TimelineSlider(QWidget):
         self._end_date = end
         self._current_start = start
         self._current_end = end
-        self._start_label.set_date(start)
-        self._end_label.set_date(end)
+        self._start_editor.set_date(start)
+        self._end_editor.set_date(end)
         self._track.update()
         self._updating = False
 
@@ -223,10 +419,9 @@ class TimelineSlider(QWidget):
     # Track geometry
     # ------------------------------------------------------------------
     def _track_rect(self) -> QRect:
-        """Return the rectangle where the track bar is drawn."""
         w = self._track.width()
         h = self._track.height()
-        margin = self.HANDLE_RADIUS + 4
+        margin = self.HANDLE_SIZE + 4
         return QRect(
             margin, h // 2 - self.TRACK_HEIGHT // 2,
             max(w - 2 * margin, 0), self.TRACK_HEIGHT,
@@ -248,21 +443,24 @@ class TimelineSlider(QWidget):
         total = (self._end_date - self._start_date).total_seconds()
         return self._start_date + timedelta(seconds=total * frac)
 
-    def _handle_rect(self, which: str) -> QRect:
+    def _handle_hit_rect(self, which: str) -> QRect:
+        """Hit-test rectangle for a handle (padded for easier grabbing)."""
         dt = self._current_start if which == "start" else self._current_end
         cx = self._value_to_x(dt)
-        r = self.HANDLE_RADIUS
         cy = self._track.height() // 2
-        return QRect(cx - r, cy - r, r * 2, r * 2)
+        s = self.HANDLE_SIZE + self.HANDLE_HIT_PADDING
+        return QRect(cx - s, cy - s, s * 2, s * 2)
 
     # ------------------------------------------------------------------
-    # Track painting
+    # Track painting — arrow handles
     # ------------------------------------------------------------------
     def _paint_track(self, event) -> None:
         painter = QPainter(self._track)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         tr = self._track_rect()
+        cy = self._track.height() // 2
+        hs = self.HANDLE_SIZE
 
         # Background track
         painter.setPen(Qt.PenStyle.NoPen)
@@ -280,25 +478,50 @@ class TimelineSlider(QWidget):
             active, self.TRACK_HEIGHT // 2, self.TRACK_HEIGHT // 2,
         )
 
-        # Handles
-        for which in ("start", "end"):
-            hr = self._handle_rect(which)
-            painter.setPen(QPen(QColor("#356CB4"), 2))
-            painter.setBrush(QColor("#FFFFFF"))
-            painter.drawEllipse(hr.adjusted(1, 1, -1, -1))
+        # Arrow handles
+        painter.setPen(QPen(QColor("#356CB4"), 1.5))
+        painter.setBrush(QColor("#FFFFFF"))
+
+        # Left handle: ◀ pointing right (toward the range)
+        self._draw_arrow(painter, sx, cy, hs, pointing_right=True)
+        # Right handle: ▶ pointing left (toward the range)
+        self._draw_arrow(painter, ex, cy, hs, pointing_right=False)
 
         painter.end()
+
+    @staticmethod
+    def _draw_arrow(
+        painter: QPainter, cx: int, cy: int, size: int, *, pointing_right: bool,
+    ) -> None:
+        """Draw a triangular arrow handle at (*cx*, *cy*)."""
+        half = size
+        if pointing_right:
+            # Right-pointing triangle: ▶
+            points = [
+                QPoint(cx - half // 2, cy - half),
+                QPoint(cx + half // 2, cy),
+                QPoint(cx - half // 2, cy + half),
+            ]
+        else:
+            # Left-pointing triangle: ◀
+            points = [
+                QPoint(cx + half // 2, cy - half),
+                QPoint(cx - half // 2, cy),
+                QPoint(cx + half // 2, cy + half),
+            ]
+        path = QPainterPath()
+        path.moveTo(points[0])
+        path.lineTo(points[1])
+        path.lineTo(points[2])
+        path.closeSubpath()
+        painter.drawPath(path)
 
     # ------------------------------------------------------------------
     # Mouse interaction for handle dragging
     # ------------------------------------------------------------------
     def _hit_handle(self, pos: QPoint) -> Optional[str]:
         for which in ("start", "end"):
-            hr = self._handle_rect(which).adjusted(
-                -self.HANDLE_HIT_PADDING, -self.HANDLE_HIT_PADDING,
-                self.HANDLE_HIT_PADDING, self.HANDLE_HIT_PADDING,
-            )
-            if hr.contains(pos):
+            if self._handle_hit_rect(which).contains(pos):
                 return which
         return None
 
@@ -310,7 +533,6 @@ class TimelineSlider(QWidget):
             self._dragging = hit
             self._track.setCursor(Qt.CursorShape.ClosedHandCursor)
         else:
-            # Click on track body: move nearest handle
             click_dt = self._x_to_value(event.pos().x())
             dist_start = abs((click_dt - self._current_start).total_seconds())
             dist_end = abs((click_dt - self._current_end).total_seconds())
@@ -323,7 +545,7 @@ class TimelineSlider(QWidget):
         else:
             hit = self._hit_handle(event.pos())
             self._track.setCursor(
-                Qt.CursorShape.OpenHandCursor if hit else Qt.CursorShape.ArrowCursor,
+                Qt.CursorShape.SizeHorCursor if hit else Qt.CursorShape.ArrowCursor,
             )
 
     def _track_mouse_release(self, event: QMouseEvent) -> None:
@@ -342,7 +564,7 @@ class TimelineSlider(QWidget):
                 new_dt = self._start_date
             if new_dt != self._current_start:
                 self._current_start = new_dt
-                self._start_label.set_date(new_dt)
+                self._start_editor.set_date(new_dt)
                 self._track.update()
         else:
             if new_dt <= self._current_start:
@@ -351,29 +573,29 @@ class TimelineSlider(QWidget):
                 new_dt = self._end_date
             if new_dt != self._current_end:
                 self._current_end = new_dt
-                self._end_label.set_date(new_dt)
+                self._end_editor.set_date(new_dt)
                 self._track.update()
 
     # ------------------------------------------------------------------
-    # Date label calendar callbacks
+    # Date editor callbacks
     # ------------------------------------------------------------------
-    def _on_start_label_changed(self, dt: datetime) -> None:
+    def _on_start_date_changed(self, dt: datetime) -> None:
         if dt >= self._current_end:
             dt = self._current_end - timedelta(days=1)
         if dt < self._start_date:
             dt = self._start_date
         self._current_start = dt
-        self._start_label.set_date(dt)
+        self._start_editor.set_date(dt)
         self._track.update()
         self.rangeChanged.emit(self._current_start, self._current_end)
 
-    def _on_end_label_changed(self, dt: datetime) -> None:
+    def _on_end_date_changed(self, dt: datetime) -> None:
         if dt <= self._current_start:
             dt = self._current_start + timedelta(days=1)
         if dt > self._end_date:
             dt = self._end_date
         self._current_end = dt
-        self._end_label.set_date(dt)
+        self._end_editor.set_date(dt)
         self._track.update()
         self.rangeChanged.emit(self._current_start, self._current_end)
 
