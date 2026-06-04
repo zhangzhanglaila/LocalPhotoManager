@@ -660,6 +660,10 @@ class PhotoMapView(QWidget):
         self._map_widget.viewChanged.connect(self._marker_controller.handle_view_changed)
         self._map_widget.panned.connect(self._marker_controller.handle_pan)
         self._map_widget.panFinished.connect(self._marker_controller.handle_pan_finished)
+        # When the trail is visible, the QWidget-fallback overlay must
+        # repaint on every view change so the trail tracks the new
+        # projection.  The GL post-render path handles this implicitly.
+        self._map_widget.viewChanged.connect(self._on_view_changed_repaint_trail)
         self._thumbnail_loader.ready.connect(self._marker_controller.handle_thumbnail_ready)
         self._marker_controller.clustersUpdated.connect(self._overlay.set_clusters)
         self._marker_controller.citiesUpdated.connect(self._handle_city_annotations)
@@ -678,6 +682,22 @@ class PhotoMapView(QWidget):
     # ------------------------------------------------------------------
     # Trail / Timeline support
     # ------------------------------------------------------------------
+
+    def _on_view_changed_repaint_trail(self, *_args) -> None:
+        """Repaint the overlay when the map view changes and trail is visible.
+
+        For the QWidget-fallback path the overlay does not automatically
+        repaint when the map pans or zooms.  The GL post-render path
+        handles this implicitly because the trail callback runs inside the
+        map's own paint pass.
+        """
+        if not self._trail_layer_visible:
+            return
+        if self._overlay_attachment.uses_post_render:
+            return  # GL path — no extra work needed
+        if hasattr(self._overlay, '_buffer_dirty'):
+            self._overlay._buffer_dirty = True
+        self._overlay.update()
 
     def _make_trail_paint_callback(self) -> Callable[[QPainter], None]:
         """Return a closure that paints the trail layer onto *painter*.

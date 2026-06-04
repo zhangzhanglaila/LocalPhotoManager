@@ -38,7 +38,10 @@ class GalleryGridView(AssetGrid):
         self.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # Always reserve space for the vertical scrollbar so that
+        # viewport().width() is stable and grid columns never get
+        # clipped by a scrollbar that appears after layout.
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.setWordWrap(False)
         self.setSelectionRectVisible(False)
 
@@ -214,19 +217,13 @@ class GalleryGridView(AssetGrid):
         # We model the grid cell as (item_width + gap), which provides 1px padding
         # on each side of the item, resulting in a visual 2px gutter between items.
         #
-        # Reserve space for the vertical scrollbar proactively.  When content
-        # overflows the scrollbar appears *after* resizeEvent, shrinking the
-        # viewport and causing the last column to be clipped.  Subtracting the
-        # scrollbar extent upfront avoids this chicken-and-egg race.  We also
-        # keep a small extra margin for any internal QListView padding.
-        scrollbar_w = self.verticalScrollBar().sizeHint().width()
-        grid_width = max(viewport_width - scrollbar_w - 4, 1)
+        # The vertical scrollbar is always on (ScrollBarAlwaysOn), so
+        # viewport().width() already excludes it — no race condition.
+        # Use floor division (//) to guarantee cell_size * num_cols never
+        # exceeds the viewport width.
         cell_step = self.MIN_ITEM_WIDTH + self.ITEM_GAP
-        num_cols = max(1, grid_width // cell_step)
-
-        # Use floor division so that cell_size * num_cols <= grid_width,
-        # guaranteeing every column fits inside the viewport.
-        cell_size = max(1, grid_width // num_cols)
+        num_cols = max(1, viewport_width // cell_step)
+        cell_size = max(1, viewport_width // num_cols)
         new_item_width = cell_size - self.ITEM_GAP
         if new_item_width < self.MIN_ITEM_WIDTH:
             return  # Don't update if it would make items too small
