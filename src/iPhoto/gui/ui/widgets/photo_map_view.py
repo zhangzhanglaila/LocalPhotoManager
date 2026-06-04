@@ -720,11 +720,11 @@ class PhotoMapView(QWidget):
                 return None
             start_pt = seg.points[0]
             end_pt = seg.points[-1]
-            start_time = start_pt.timestamp.strftime("%Y-%m-%d %H:%M")
-            end_time = end_pt.timestamp.strftime("%Y-%m-%d %H:%M")
-            start_loc = start_pt.location_name or f"({start_pt.latitude:.2f}, {start_pt.longitude:.2f})"
-            end_loc = end_pt.location_name or f"({end_pt.latitude:.2f}, {end_pt.longitude:.2f})"
-            return f"{start_time}  →  {end_time}\n{start_loc}  →  {end_loc}"
+            start_time = start_pt.timestamp.strftime("%Y-%m-%d %H:%M")
+            end_time = end_pt.timestamp.strftime("%Y-%m-%d %H:%M")
+            start_loc = start_pt.location_name or f"({start_pt.latitude:.2f}, {start_pt.longitude:.2f})"
+            end_loc = end_pt.location_name or f"({end_pt.latitude:.2f}, {end_pt.longitude:.2f})"
+            return f"{start_time} -> {end_time}\n{start_loc} -> {end_loc}"
         except Exception:
             return None
 
