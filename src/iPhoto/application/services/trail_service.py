@@ -14,41 +14,19 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Time-based color gradient: early → middle → late
-# Warm orange → sky blue → deep purple (high contrast against map backgrounds)
-_EARLY_COLOR = (255, 120, 44)    # #FF782C warm orange
-_MID_COLOR = (35, 136, 255)      # #2388FF sky blue
-_LATE_COLOR = (153, 51, 204)     # #9933CC deep purple
-
-
-def _interpolate_color(
-    c1: tuple[int, int, int],
-    c2: tuple[int, int, int],
-    t: float,
-) -> tuple[int, int, int]:
-    """Linearly interpolate between two RGB colors."""
-    return (
-        int(c1[0] + (c2[0] - c1[0]) * t),
-        int(c1[1] + (c2[1] - c1[1]) * t),
-        int(c1[2] + (c2[2] - c1[2]) * t),
-    )
-
-
-def _segment_color(
-    segment_index: int,
-    total_segments: int,
-) -> tuple[int, int, int]:
-    """Return a color for a segment based on its time position.
-
-    Early segments → warm orange, middle → sky blue, late → deep purple.
-    """
-    if total_segments <= 1:
-        return _MID_COLOR
-    t = segment_index / (total_segments - 1)
-    if t < 0.5:
-        return _interpolate_color(_EARLY_COLOR, _MID_COLOR, t * 2)
-    else:
-        return _interpolate_color(_MID_COLOR, _LATE_COLOR, (t - 0.5) * 2)
+# Color palette for trail segments (RGB tuples)
+_SEGMENT_COLORS = [
+    (66, 133, 244),   # Blue
+    (234, 67, 53),    # Red
+    (251, 188, 4),    # Yellow
+    (52, 168, 83),    # Green
+    (171, 71, 188),   # Purple
+    (255, 112, 67),   # Orange
+    (0, 172, 193),    # Cyan
+    (124, 179, 66),   # Light Green
+    (233, 30, 99),    # Pink
+    (156, 39, 176),   # Deep Purple
+]
 
 
 class TrailService:
@@ -121,13 +99,6 @@ class TrailService:
 
         # Group by granularity, splitting on gaps > 24h
         segments = self._group_points(points, granularity)
-        total = len(segments)
-
-        # Assign time-gradient colors to each segment
-        for i, seg in enumerate(segments):
-            seg.color = _segment_color(i, total)
-            # Long trails (>5 points) get thicker line
-            seg.line_width = 3 if len(seg.points) > 5 else 2
 
         return TrailData(
             segments=segments,
@@ -155,6 +126,7 @@ class TrailService:
 
         # Build segments, splitting on gaps
         segments: List[TrailSegment] = []
+        color_idx = 0
 
         for key in sorted(groups.keys()):
             group = groups[key]
@@ -170,11 +142,14 @@ class TrailService:
             for sg in sub_groups:
                 if not sg:
                     continue
+                color = _SEGMENT_COLORS[color_idx % len(_SEGMENT_COLORS)]
                 segments.append(TrailSegment(
                     points=sg,
                     start_time=sg[0].timestamp,
                     end_time=sg[-1].timestamp,
+                    color=color,
                 ))
+                color_idx += 1
 
         return segments
 
@@ -182,6 +157,7 @@ class TrailService:
     def _time_key(dt: datetime, granularity: str) -> str:
         """Generate a grouping key for the given datetime."""
         if granularity == "week":
+            # ISO week: year-Www
             iso = dt.isocalendar()
             return f"{iso[0]}-W{iso[1]:02d}"
         elif granularity == "month":
