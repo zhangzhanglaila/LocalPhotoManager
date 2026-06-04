@@ -84,7 +84,7 @@ class TrailLayer:
         project_fn,
         viewport: QRectF,
     ) -> None:
-        """Paint a single trail segment."""
+        """Paint a single trail segment as a line with direction arrows."""
         if len(segment.points) < 2:
             return
 
@@ -101,28 +101,22 @@ class TrailLayer:
         if len(screen_points) < 2:
             return
 
-        # Draw trail line
         r, g, b = segment.color
         color = QColor(r, g, b, int(255 * self._opacity))
-        pen = QPen(color, 3.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        pen = QPen(color, 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
         painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
 
+        # Draw the trail line
         path = QPainterPath()
         path.moveTo(screen_points[0])
         for pt in screen_points[1:]:
             path.lineTo(pt)
         painter.drawPath(path)
 
-        # Draw direction arrows on longer segments
-        if len(screen_points) >= 4:
+        # Draw filled direction arrows along the path
+        if len(screen_points) >= 2:
             self._paint_arrows(painter, screen_points, color)
-
-        # Draw endpoint dots
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(color))
-        for i, pt in enumerate(screen_points):
-            radius = 5.0 if i == 0 or i == len(screen_points) - 1 else 3.0
-            painter.drawEllipse(pt, radius, radius)
 
     def _paint_arrows(
         self,
@@ -130,34 +124,40 @@ class TrailLayer:
         points: list[QPointF],
         color: QColor,
     ) -> None:
-        """Paint direction arrows along the trail."""
-        pen = QPen(color, 2.0)
-        painter.setPen(pen)
+        """Paint filled direction arrowheads along the trail."""
+        arrow_color = QColor(color.red(), color.green(), color.blue(),
+                             int(255 * self._opacity))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(arrow_color))
 
-        # Draw an arrow every N points
-        step = max(len(points) // 5, 3)
-        for i in range(step, len(points) - 1, step):
+        step = max(len(points) // 5, 2)
+        for i in range(step, len(points), step):
             p1 = points[i - 1]
             p2 = points[i]
             dx = p2.x() - p1.x()
             dy = p2.y() - p1.y()
             length = math.sqrt(dx * dx + dy * dy)
-            if length < 10:
+            if length < 6:
                 continue
 
-            # Normalize
             nx, ny = dx / length, dy / length
-            # Arrow head
-            arrow_len = 8.0
-            cx, cy = p2.x(), p2.y()
-            painter.drawLine(
-                QPointF(cx, cy),
-                QPointF(cx - arrow_len * (nx - ny * 0.5), cy - arrow_len * (ny + nx * 0.5)),
+            arrow_len = 6.0
+            arrow_width = 4.0
+            tip = QPointF(p2.x(), p2.y())
+            left = QPointF(
+                tip.x() - arrow_len * nx + arrow_width * ny,
+                tip.y() - arrow_len * ny - arrow_width * nx,
             )
-            painter.drawLine(
-                QPointF(cx, cy),
-                QPointF(cx - arrow_len * (nx + ny * 0.5), cy - arrow_len * (ny - nx * 0.5)),
+            right = QPointF(
+                tip.x() - arrow_len * nx - arrow_width * ny,
+                tip.y() - arrow_len * ny + arrow_width * nx,
             )
+            arrow_path = QPainterPath()
+            arrow_path.moveTo(tip)
+            arrow_path.lineTo(left)
+            arrow_path.lineTo(right)
+            arrow_path.closeSubpath()
+            painter.drawPath(arrow_path)
 
     def _paint_highlight(
         self,
