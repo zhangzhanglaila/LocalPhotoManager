@@ -45,7 +45,11 @@ class TrailLayer:
     def segment_at_point(
         self, screen_pos: QPointF, project_fn, threshold: float = 16.0,
     ) -> int | None:
-        """Return the index of the segment nearest to *screen_pos*."""
+        """Return the index of the segment nearest to *screen_pos*.
+
+        Checks both point proximity and distance to each line segment
+        so hovering anywhere along the trail triggers the tooltip.
+        """
         if self._trail_data is None:
             return None
         best_idx: int | None = None
@@ -54,18 +58,41 @@ class TrailLayer:
             if idx >= len(self._trail_data.segments):
                 continue
             seg = self._trail_data.segments[idx]
+            pts: list[QPointF] = []
             for tp in seg.points:
                 try:
                     pt = project_fn(tp.longitude, tp.latitude)
+                    if pt is not None:
+                        pts.append(pt)
                 except Exception:
                     continue
-                if pt is None:
-                    continue
-                d = math.hypot(screen_pos.x() - pt.x(), screen_pos.y() - pt.y())
+            if len(pts) < 2:
+                for pt in pts:
+                    d = math.hypot(screen_pos.x() - pt.x(), screen_pos.y() - pt.y())
+                    if d < best_dist:
+                        best_dist = d
+                        best_idx = idx
+                continue
+            for i in range(len(pts) - 1):
+                a, b = pts[i], pts[i + 1]
+                d = self._point_to_segment_dist(screen_pos, a, b)
                 if d < best_dist:
                     best_dist = d
                     best_idx = idx
         return best_idx
+
+    @staticmethod
+    def _point_to_segment_dist(p: QPointF, a: QPointF, b: QPointF) -> float:
+        """Return the shortest distance from point *p* to line segment *ab*."""
+        dx, dy = b.x() - a.x(), b.y() - a.y()
+        length_sq = dx * dx + dy * dy
+        if length_sq < 1e-6:
+            return math.hypot(p.x() - a.x(), p.y() - a.y())
+        t = max(0.0, min(1.0,
+                         ((p.x() - a.x()) * dx + (p.y() - a.y()) * dy) / length_sq))
+        proj_x = a.x() + t * dx
+        proj_y = a.y() + t * dy
+        return math.hypot(p.x() - proj_x, p.y() - proj_y)
 
     def paint(
         self,
