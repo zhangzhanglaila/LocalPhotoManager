@@ -201,7 +201,7 @@ class FaceClusterPipeline:
                     continue
 
                 face_id = uuid.uuid4().hex
-                thumbnail_path = thumbnail_dir / f"{face_id}.png"
+                thumbnail_path = thumbnail_dir / f"{face_id}.jpg"
                 save_face_thumbnail(image, bbox, thumbnail_path)
                 faces.append(
                     FaceRecord(

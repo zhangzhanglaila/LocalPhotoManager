@@ -86,11 +86,14 @@ def crop_face_thumbnail(
     bbox: tuple[int, int, int, int],
     padding_ratio: float = 0.35,
     min_size: int = 160,
+    max_size: int = 320,
 ) -> Image.Image:
     crop_box = compute_square_crop_box(image.size, bbox, padding_ratio=padding_ratio)
     cropped = image.crop(crop_box)
     if min(cropped.size) < min_size:
         cropped = cropped.resize((min_size, min_size), Image.Resampling.LANCZOS)
+    elif max_size and max(cropped.size) > max_size:
+        cropped.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
     return cropped
 
 
@@ -100,15 +103,18 @@ def save_face_thumbnail(
     output_path: Path,
     padding_ratio: float = 0.35,
     min_size: int = 160,
+    max_size: int = 320,
+    jpeg_quality: int = 85,
 ) -> Path:
     thumbnail = crop_face_thumbnail(
         image,
         bbox,
         padding_ratio=padding_ratio,
         min_size=min_size,
+        max_size=max_size,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    thumbnail.save(output_path, format="PNG")
+    thumbnail.convert("RGB").save(output_path, format="JPEG", quality=jpeg_quality)
     return output_path
 
 

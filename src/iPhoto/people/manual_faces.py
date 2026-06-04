@@ -45,7 +45,7 @@ def build_manual_face_record(
         raise ManualFaceValidationError("The selected face is too small to save reliably.")
 
     face_id = uuid.uuid4().hex
-    thumbnail_path = thumbnail_dir / f"{face_id}.png"
+    thumbnail_path = thumbnail_dir / f"{face_id}.jpg"
     save_face_thumbnail(image, (x, y, width, height), thumbnail_path)
     return ManualFaceRecord(
         face_id=face_id,
