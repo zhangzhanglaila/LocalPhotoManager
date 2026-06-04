@@ -60,29 +60,37 @@ class TrailService:
         if not geotagged_assets:
             return TrailData()
 
-        # Filter by date range
-        filtered = geotagged_assets
+        # Convert epoch timestamps to datetime and filter out assets
+        # that have no valid timestamp.
+        def _ts(a):
+            if a.still_image_time is not None:
+                return datetime.fromtimestamp(a.still_image_time)
+            return None
+
+        filtered = [(a, _ts(a)) for a in geotagged_assets]
+        filtered = [(a, ts) for a, ts in filtered if ts is not None]
+
         if date_from is not None:
-            filtered = [a for a in filtered if a.timestamp >= date_from]
+            filtered = [(a, ts) for a, ts in filtered if ts >= date_from]
         if date_to is not None:
-            filtered = [a for a in filtered if a.timestamp <= date_to]
+            filtered = [(a, ts) for a, ts in filtered if ts <= date_to]
 
         if not filtered:
             return TrailData()
 
         # Sort by timestamp
-        filtered.sort(key=lambda a: a.timestamp)
+        filtered.sort(key=lambda pair: pair[1])
 
         # Convert to TrailPoint
         points = [
             TrailPoint(
                 asset_id=a.asset_id,
-                asset_rel=a.asset_rel,
+                asset_rel=a.album_relative,
                 latitude=a.latitude,
                 longitude=a.longitude,
-                timestamp=a.timestamp,
+                timestamp=ts,
             )
-            for a in filtered
+            for a, ts in filtered
         ]
 
         # Group by granularity, splitting on gaps > 24h
