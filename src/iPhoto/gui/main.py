@@ -271,6 +271,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv if argv is None else argv)
     _prepare_qt_runtime_for_maps()
     _configure_qt_opengl_defaults()
+    # Suppress noisy Qt RHI/OpenGL debug output (e.g. the full GL extension
+    # list) that clutters the terminal on every startup.
+    os.environ.setdefault("QT_LOGGING_RULES", "qt.rhi*=false;qt.gui*=false")
     app = QApplication(arguments)
 
     # Allow Ctrl+C to terminate the app on Windows, even when the UI thread
