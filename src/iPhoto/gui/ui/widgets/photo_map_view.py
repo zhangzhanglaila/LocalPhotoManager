@@ -814,7 +814,7 @@ class PhotoMapView(QWidget):
         self._person_filter_panel.personSelected.connect(self._on_person_selected)
         self._person_filter_panel.personDeselected.connect(self._on_person_deselected)
         self._person_filter_panel.setMinimumWidth(180)
-        self._person_filter_panel.setMaximumWidth(280)
+        self._person_filter_panel.setMaximumWidth(360)
 
         splitter = self._find_map_splitter()
         if splitter is not None:

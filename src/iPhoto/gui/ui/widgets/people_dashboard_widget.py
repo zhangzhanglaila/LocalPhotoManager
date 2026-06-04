@@ -866,6 +866,12 @@ class PeopleDashboardWidget(QWidget):
             self._pending_card_population = False
             self._populate_groups()
             self._populate_cards()
+            # Defer a second position update so that boards recalculate after
+            # the widget has been fully laid out by Qt's event loop.  Without
+            # this, cards positioned during initial population may use a stale
+            # width from before the view-switch resize.
+            QTimer.singleShot(0, self._board.update_positions)
+            QTimer.singleShot(0, self._groups_board.update_positions)
         if self._pending_index_refresh or self._loaded_index_version < self._index_version:
             self._schedule_visible_refresh()
 

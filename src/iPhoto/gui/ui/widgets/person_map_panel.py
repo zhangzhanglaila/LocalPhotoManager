@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .flow_layout import FlowLayout
+
 if TYPE_CHECKING:
     from ...people.records import PersonSummary
 
@@ -140,15 +142,14 @@ class PersonMapPanel(QWidget):
         self._search.textChanged.connect(self._filter_list)
         layout.addWidget(self._search)
 
-        # Scrollable grid of person cards
+        # Scrollable grid of person cards — uses FlowLayout so cards
+        # wrap responsively to fit the panel width instead of being cut off.
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self._grid_widget = QWidget()
-        self._grid_layout = QGridLayout(self._grid_widget)
-        self._grid_layout.setContentsMargins(0, 0, 0, 0)
-        self._grid_layout.setSpacing(4)
+        self._grid_layout = FlowLayout(self._grid_widget, margin=2, h_spacing=4, v_spacing=4)
         self._scroll.setWidget(self._grid_widget)
         layout.addWidget(self._scroll, 1)
 
@@ -164,14 +165,14 @@ class PersonMapPanel(QWidget):
         except Exception:
             summaries = []
 
-        for i, s in enumerate(summaries):
+        for s in summaries:
             name = getattr(s, "name", None) or "未命名"
             person_id = getattr(s, "person_id", "")
             thumbnail_path = getattr(s, "thumbnail_path", None)
 
             card = PersonCard(person_id, name, thumbnail_path)
             card.clicked.connect(self._on_card_clicked)
-            self._grid_layout.addWidget(card, i // 4, i % 4)
+            self._grid_layout.addWidget(card)
             self._cards.append(card)
 
     def _on_card_clicked(self, person_id: str) -> None:
