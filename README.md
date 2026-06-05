@@ -147,13 +147,20 @@ extension/models/clip-vit-base-patch32/
 ## 启动
 
 ```bash
+# 方式一：激活虚拟环境后启动
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
 iphoto-gui
+
+# 方式二：不激活虚拟环境，直接调用
+.venv\Scripts\iphoto-gui      # Windows
+# .venv/bin/iphoto-gui        # macOS/Linux
 ```
 
 或直接打开指定相册：
 
 ```bash
-iphoto-gui /photos/LondonTrip
+iphoto-gui D:\APPLE\202406_a
 ```
 
 ## 环境变量
