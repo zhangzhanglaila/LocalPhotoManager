@@ -22,7 +22,12 @@ from PySide6.QtGui import (
     QResizeEvent,
     QWheelEvent,
 )
-from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache, QNetworkRequest
+from PySide6.QtNetwork import (
+    QNetworkAccessManager,
+    QNetworkDiskCache,
+    QNetworkReply,
+    QNetworkRequest,
+)
 from PySide6.QtWidgets import QWidget
 
 from maps.map_sources import MapBackendMetadata, MapSourceSpec
@@ -441,7 +446,7 @@ class LeafletOnlineMapWidget(QWidget):
         if not isinstance(key, tuple) or len(key) != 3:
             reply.deleteLater()
             return
-        if reply.error():
+        if reply.error() != QNetworkReply.NetworkError.NoError:
             self._tiles.pop(key, None)
             reply.deleteLater()
             self.update()
