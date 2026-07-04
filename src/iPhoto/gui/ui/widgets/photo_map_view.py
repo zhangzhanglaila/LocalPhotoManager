@@ -19,7 +19,7 @@ from PySide6.QtGui import (
     QPixmap,
     QPalette,
 )
-from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ....application.ports import MapInteractionServicePort, MapRuntimePort
 from ....application.services.map_interaction_service import LibraryMapInteractionService
@@ -49,6 +49,8 @@ from .map_widget_factory import (
 logger = getLogger(__name__)
 _MAPS_PACKAGE_ROOT = Path(__file__).resolve().parents[4] / "maps"
 _MAP_OPAQUE_BACKGROUND = "#88a8c2"
+_MAP_SOURCE_LOCAL = "local"
+_MAP_SOURCE_APPLE = "apple_mapkit"
 
 
 def _configure_opaque_map_container(
@@ -309,6 +311,11 @@ class PhotoMapView(QWidget):
         layout.setSpacing(0)
         self._layout = layout
         self._requested_map_source = map_source
+        self._map_source_mode = (
+            _MAP_SOURCE_APPLE
+            if map_source is not None and map_source.kind == "apple_mapkit"
+            else _MAP_SOURCE_LOCAL
+        )
         self._map_runtime = map_runtime
 
         # Trail/timeline support
@@ -364,10 +371,37 @@ class PhotoMapView(QWidget):
         self._pending_click_pos = QPointF()
         self._thumbnail_loader = ThumbnailLoader(self)
         self._map_widget_built = False
+        self._runtime_diagnostics = ""
+        self._source_bar = self._build_source_bar()
+        self._layout.addWidget(self._source_bar)
         self._placeholder_label = QLabel(tr("map.loading"), self)
         self._placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._placeholder_label.setStyleSheet("color: #888; font-size: 14px;")
         self._layout.addWidget(self._placeholder_label)
+
+    def _build_source_bar(self) -> QWidget:
+        bar = QWidget(self)
+        bar.setObjectName("mapSourceBar")
+        bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        bar.setStyleSheet(
+            "QWidget#mapSourceBar { background: rgba(246, 248, 250, 235); border: none; }"
+            "QLabel { color: #334; font-size: 12px; }"
+            "QComboBox { min-width: 132px; padding: 3px 8px; }"
+        )
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(10, 6, 10, 6)
+        row.setSpacing(8)
+        label = QLabel(tr("map.source_label"), bar)
+        row.addWidget(label)
+        selector = QComboBox(bar)
+        selector.addItem(tr("map.source_local"), _MAP_SOURCE_LOCAL)
+        selector.addItem(tr("map.source_apple"), _MAP_SOURCE_APPLE)
+        selector.setCurrentIndex(1 if self._map_source_mode == _MAP_SOURCE_APPLE else 0)
+        selector.currentIndexChanged.connect(self._handle_map_source_changed)
+        row.addWidget(selector)
+        row.addStretch(1)
+        self._map_source_selector = selector
+        return bar
 
     def set_map_interaction_service(
         self,
@@ -452,7 +486,11 @@ class PhotoMapView(QWidget):
         """Delegate a full repaint to the underlying map widget."""
 
         if self._map_widget_built:
-            self._map_widget.request_full_update()
+            request_full_update = getattr(self._map_widget, "request_full_update", None)
+            if callable(request_full_update):
+                request_full_update()
+            elif isinstance(self._map_widget, QWidget):
+                self._map_widget.update()
 
     def set_assets(self, assets: Iterable[GeotaggedAsset], library_root: Path) -> None:
         """Replace the asset catalogue shown on the map."""
@@ -597,11 +635,27 @@ class PhotoMapView(QWidget):
             return
         self._map_widget.set_city_annotations(list(cities))
 
+    def _active_map_source(self) -> MapSourceSpec | None:
+        if self._map_source_mode == _MAP_SOURCE_APPLE:
+            return MapSourceSpec.apple_mapkit()
+        return self._requested_map_source
+
+    def _handle_map_source_changed(self, index: int) -> None:
+        mode = self._map_source_selector.itemData(index)
+        if mode not in {_MAP_SOURCE_LOCAL, _MAP_SOURCE_APPLE}:
+            return
+        if mode == self._map_source_mode:
+            return
+        self._map_source_mode = str(mode)
+        if not self._map_widget_built:
+            return
+        self._rebuild_map_widget()
+
     def _build_map_widget(self) -> None:
         logger.info("_build_map_widget: creating map widget")
         result = create_map_widget(
             self,
-            map_source=self._requested_map_source,
+            map_source=self._active_map_source(),
             map_runtime_capabilities=self._map_runtime_capabilities,
             package_root=self._map_package_root,
             log=logger,
@@ -621,6 +675,8 @@ class PhotoMapView(QWidget):
         )
         if result.backend_kind == "osmand_native":
             logger.info("Photo map initialised with the native OsmAnd OBF backend.")
+        elif result.backend_kind == "apple_mapkit":
+            logger.info("Photo map initialised with the Apple Maps online backend.")
         elif self._resolved_map_source.kind == "osmand_obf":
             if actual_uses_gl:
                 logger.info("Photo map initialised with the OsmAnd OBF backend (GPU fallback).")
@@ -634,7 +690,7 @@ class PhotoMapView(QWidget):
             logger.info("Photo map using CPU rendering because OpenGL is unavailable.")
         if self._map_runtime_capabilities is not None:
             logger.info("Photo map runtime capability: %s", self._map_runtime_capabilities.status_message)
-        self._layout.addWidget(self._map_widget)
+        self._layout.insertWidget(1, self._map_widget, 1)
 
         # Trail paint callback -- wraps TrailLayer.paint() with the map
         # widget's project_lonlat so it can draw on any QPainter.
@@ -694,10 +750,22 @@ class PhotoMapView(QWidget):
             self._marker_controller.set_assets(self._assets, self._assets_library_root)
 
         # Add timeline slider at the bottom (hidden by default)
-        self._layout.addWidget(self._timeline_slider)
+        if self._timeline_slider.parentWidget() is None:
+            self._layout.addWidget(self._timeline_slider)
         self._timeline_slider.hide()
+        try:
+            self._timeline_slider.rangeChanged.disconnect(self._on_timeline_range_changed)
+        except (RuntimeError, TypeError):
+            pass
+        try:
+            self._timeline_slider.granularityChanged.disconnect(
+                self._on_timeline_granularity_changed
+            )
+        except (RuntimeError, TypeError):
+            pass
         self._timeline_slider.rangeChanged.connect(self._on_timeline_range_changed)
         self._timeline_slider.granularityChanged.connect(self._on_timeline_granularity_changed)
+        self._map_widget_built = True
 
     def _trail_tooltip_at(self, screen_pos) -> str | None:
         """Return a tooltip string if the mouse is near a trail segment."""
@@ -958,6 +1026,7 @@ class PhotoMapView(QWidget):
     def _teardown_map_widget(self) -> None:
         if not self._map_widget_built:
             return
+        self._ensure_trail_unregistered()
         self._event_bridge.unbind()
         self._map_event_target = None
         self._overlay_attachment.detach(self._map_widget)
@@ -978,6 +1047,7 @@ class PhotoMapView(QWidget):
         self._map_widget.hide()
         self._map_widget.setParent(None)
         self._map_widget.deleteLater()
+        self._map_widget_built = False
 
     def _rebuild_map_widget(self) -> None:
         if self._last_tooltip_text:
@@ -985,7 +1055,15 @@ class PhotoMapView(QWidget):
             self._last_tooltip_text = ""
         if hasattr(self, "_map_widget"):
             self._teardown_map_widget()
-        self._build_map_widget()
+        self._placeholder_label.setText(tr("map.loading"))
+        self._placeholder_label.show()
+        try:
+            self._build_map_widget()
+        except Exception:
+            logger.exception("_rebuild_map_widget: failed to rebuild map widget")
+            self._placeholder_label.setText(tr("map.load_failed"))
+            return
+        self._placeholder_label.hide()
 
 
 __all__ = ["PhotoMapView"]

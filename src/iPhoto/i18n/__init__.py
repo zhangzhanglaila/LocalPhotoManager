@@ -226,6 +226,9 @@ _ZH: dict[str, str] = {
     "map.no_location": "无位置信息",
     "map.loading": "正在加载地图…",
     "map.load_failed": "地图加载失败，请重启应用重试",
+    "map.source_label": "地图",
+    "map.source_local": "本地地图",
+    "map.source_apple": "Apple Maps",
     "map.feature_limited": "功能受限",
     "map.location_saved_no_exiftool": (
         "地点已保存到本机图库数据库。\n\n"
@@ -492,6 +495,9 @@ _EN: dict[str, str] = {
     "map.no_location": "No location data",
     "map.loading": "Loading map…",
     "map.load_failed": "Map loading failed. Please restart the application.",
+    "map.source_label": "Map",
+    "map.source_local": "Local Map",
+    "map.source_apple": "Apple Maps",
     "map.feature_limited": "Feature Limited",
     "map.location_saved_no_exiftool": (
         "Location has been saved to the local library database.\n\n"

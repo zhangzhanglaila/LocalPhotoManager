@@ -79,6 +79,16 @@ def test_default_map_source_falls_back_to_legacy_without_obf(tmp_path) -> None:
     assert Path(source.style_path) == package_root / "style.json"
 
 
+def test_apple_mapkit_source_does_not_resolve_to_local_files(tmp_path) -> None:
+    source = MapSourceSpec.apple_mapkit()
+
+    resolved = source.resolved(tmp_path / "maps")
+
+    assert resolved is source
+    assert resolved.kind == "apple_mapkit"
+    assert resolved.data_path == "mapkit-js"
+
+
 def test_resolve_osmand_helper_command_prefers_environment(monkeypatch) -> None:
     monkeypatch.setenv(
         map_sources.ENV_OSMAND_HELPER,

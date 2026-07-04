@@ -5,6 +5,7 @@ before the refactor, keeping backwards compatibility for imports such as
 ``from map_widget import LayerPlan``.
 """
 
+from .apple_mapkit_widget import AppleMapKitWidget
 from .layer import LayerPlan
 from .map_gl_widget import MapGLWidget, MapGLWindowWidget
 from .map_widget import MapWidget
@@ -13,6 +14,7 @@ from .qt_location_map_widget import QtLocationMapWidget
 
 __all__ = [
     "MapWidget",
+    "AppleMapKitWidget",
     "MapGLWidget",
     "MapGLWindowWidget",
     "NativeOsmAndWidget",

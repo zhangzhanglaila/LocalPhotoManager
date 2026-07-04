@@ -19,6 +19,7 @@ from maps.map_sources import (
     prefer_osmand_native_widget,
 )
 from maps.map_widget._map_widget_base import MapWidgetBase
+from maps.map_widget.apple_mapkit_widget import AppleMapKitWidget
 from maps.map_widget.map_gl_widget import MapGLWidget, MapGLWindowWidget
 from maps.map_widget.map_widget import MapWidget
 from maps.map_widget.native_osmand_widget import (
@@ -148,6 +149,8 @@ def choose_map_widget_backend(
 
     if map_source is not None:
         resolved_map_source = _resolve_map_source(map_source, package_root)
+        if resolved_map_source.kind == "apple_mapkit":
+            return AppleMapKitWidget, resolved_map_source, "apple_mapkit"
         if resolved_map_source.kind == "osmand_obf":
             if native_widget_usable:
                 return NativeOsmAndWidget, resolved_map_source, "osmand_native"
@@ -248,6 +251,8 @@ def _confirmed_gl_state(
         return "false"
     if isinstance(map_widget, QtLocationMapWidget):
         return "unknown"
+    if isinstance(map_widget, AppleMapKitWidget):
+        return "false"
     return "unknown"
 
 
@@ -375,6 +380,7 @@ __all__ = [
     "MapWidgetBase",
     "MapWidgetFactoryResult",
     "MapSourceSpec",
+    "AppleMapKitWidget",
     "NativeOsmAndWidget",
     "QtLocationMapWidget",
     "_MAPS_PACKAGE_ROOT",

@@ -129,7 +129,7 @@ class MapBackendMetadata:
 class MapSourceSpec:
     """Describe how the map should obtain its background data."""
 
-    kind: Literal["legacy_pbf", "osmand_obf"]
+    kind: Literal["legacy_pbf", "osmand_obf", "apple_mapkit"]
     data_path: Path | str
     resources_root: Path | str | None = None
     style_path: Path | str | None = None
@@ -137,6 +137,9 @@ class MapSourceSpec:
 
     def resolved(self, package_root: Path) -> "MapSourceSpec":
         """Return a copy whose filesystem paths are absolute."""
+
+        if self.kind == "apple_mapkit":
+            return self
 
         data_path = _resolve_path(self.data_path, package_root)
         resources_root = _resolve_optional_path(self.resources_root, package_root)
@@ -173,6 +176,12 @@ class MapSourceSpec:
             resources_root=extension_root,
             style_path=extension_root / "rendering_styles" / DEFAULT_OSMAND_STYLE_FILENAME,
         )
+
+    @classmethod
+    def apple_mapkit(cls) -> "MapSourceSpec":
+        """Return the online Apple Maps source backed by MapKit JS."""
+
+        return cls(kind="apple_mapkit", data_path="mapkit-js")
 
     @classmethod
     def default(cls, package_root: Path | None = None) -> "MapSourceSpec":
