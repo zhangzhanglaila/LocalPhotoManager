@@ -298,6 +298,27 @@ def format_map_runtime_diagnostics(
     )
 
 
+def format_map_runtime_summary(
+    map_widget: MapWidgetBase,
+    *,
+    backend_kind: str,
+    map_source: MapSourceSpec | None,
+) -> str:
+    """Return the concise map startup line used in normal logs."""
+
+    source_kind = map_source.kind if map_source is not None else "none"
+    metadata = map_widget.map_backend_metadata()
+    gl_state = _confirmed_gl_state(map_widget, backend_kind=backend_kind)
+    renderer = "OpenGL" if gl_state == "true" else "CPU" if gl_state == "false" else "unknown"
+    return (
+        "Photo map ready: "
+        f"backend={backend_kind} "
+        f"source={source_kind} "
+        f"renderer={renderer} "
+        f"tiles={metadata.tile_kind}/{metadata.tile_scheme}"
+    )
+
+
 def create_map_widget(
     parent: QWidget,
     *,
@@ -406,5 +427,6 @@ __all__ = [
     "choose_map_widget_backend",
     "create_map_widget",
     "format_map_runtime_diagnostics",
+    "format_map_runtime_summary",
     "resolve_map_package_root",
 ]

@@ -42,6 +42,7 @@ from .map_widget_factory import (
     choose_map_widget_backend,
     create_map_widget,
     format_map_runtime_diagnostics,
+    format_map_runtime_summary,
     resolve_map_package_root,
 )
 
@@ -748,7 +749,6 @@ class PhotoMapView(QWidget):
         self._online_map_has_auto_fitted = True
 
     def _build_map_widget(self) -> None:
-        logger.info("_build_map_widget: creating map widget")
         result = create_map_widget(
             self,
             map_source=self._active_map_source(),
@@ -764,28 +764,8 @@ class PhotoMapView(QWidget):
         self._backend_kind = result.backend_kind
         self._resolved_map_source = result.resolved_map_source
         assert self._resolved_map_source is not None
-        actual_uses_gl = "confirmed_gl=true" in format_map_runtime_diagnostics(
-            self._map_widget,
-            backend_kind=result.backend_kind,
-            map_source=self._resolved_map_source,
-        )
-        if result.backend_kind == "osmand_native":
-            logger.info("Photo map initialised with the native OsmAnd OBF backend.")
-        elif result.backend_kind == "apple_mapkit":
-            logger.info("Photo map initialised with the Apple Maps online backend.")
-        elif self._resolved_map_source.kind == "osmand_obf":
-            if actual_uses_gl:
-                logger.info("Photo map initialised with the OsmAnd OBF backend (GPU fallback).")
-            else:
-                logger.info("Photo map initialised with the OsmAnd OBF backend (CPU fallback).")
-        elif actual_uses_gl:
-            logger.info("Photo map initialised with GPU acceleration enabled.")
-        elif result.use_opengl:
-            logger.info("Photo map initialised with the legacy CPU map backend.")
-        else:
-            logger.info("Photo map using CPU rendering because OpenGL is unavailable.")
         if self._map_runtime_capabilities is not None:
-            logger.info("Photo map runtime capability: %s", self._map_runtime_capabilities.status_message)
+            logger.debug("Photo map runtime capability: %s", self._map_runtime_capabilities.status_message)
         self._layout.insertWidget(1, self._map_widget, 1)
 
         # Trail paint callback -- wraps TrailLayer.paint() with the map
@@ -817,8 +797,14 @@ class PhotoMapView(QWidget):
             backend_kind=result.backend_kind,
             map_source=self._resolved_map_source,
         )
-        logger.info(self._runtime_diagnostics)
-        print(self._runtime_diagnostics, flush=True)
+        logger.info(
+            format_map_runtime_summary(
+                self._map_widget,
+                backend_kind=result.backend_kind,
+                map_source=self._resolved_map_source,
+            )
+        )
+        logger.debug(self._runtime_diagnostics)
         self._online_map_has_auto_fitted = False
 
         self._marker_controller = MarkerController(

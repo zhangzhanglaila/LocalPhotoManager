@@ -8,9 +8,10 @@ import math
 import os
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
 import PySide6
 import shiboken6
@@ -144,6 +145,77 @@ def _startup_profile_enabled() -> bool:
         "yes",
         "on",
     }
+
+
+def _verbose_native_logs_enabled() -> bool:
+    return os.environ.get("IPHOTO_VERBOSE_NATIVE_MAP_LOGS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+@contextmanager
+def _suppress_native_stdio() -> Iterator[None]:
+    """Silence verbose stdout/stderr emitted directly by the native map DLL."""
+
+    if _verbose_native_logs_enabled():
+        yield
+        return
+
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:
+            pass
+
+    devnull_fd: int | None = None
+    saved_stdout_fd: int | None = None
+    saved_stderr_fd: int | None = None
+    stdout_redirected = False
+    stderr_redirected = False
+    try:
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        saved_stdout_fd = os.dup(1)
+        saved_stderr_fd = os.dup(2)
+        os.dup2(devnull_fd, 1)
+        stdout_redirected = True
+        os.dup2(devnull_fd, 2)
+        stderr_redirected = True
+    except OSError:
+        if stdout_redirected and saved_stdout_fd is not None:
+            os.dup2(saved_stdout_fd, 1)
+        if stderr_redirected and saved_stderr_fd is not None:
+            os.dup2(saved_stderr_fd, 2)
+        for fd in (saved_stdout_fd, saved_stderr_fd, devnull_fd):
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+        _LOGGER.debug("Could not suppress native map stdio", exc_info=True)
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.flush()
+            except Exception:
+                pass
+        if saved_stdout_fd is not None:
+            os.dup2(saved_stdout_fd, 1)
+        if saved_stderr_fd is not None:
+            os.dup2(saved_stderr_fd, 2)
+        for fd in (saved_stdout_fd, saved_stderr_fd, devnull_fd):
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
 
 
 def _log_startup_profile(stage: str, elapsed_ms: float, **details: object) -> None:
@@ -341,18 +413,19 @@ class NativeOsmAndWidget(QWidget):
         self._bridge = _load_bridge(library_path)
         error_buffer = ctypes.create_unicode_buffer(4096)
         parent_pointer = int(shiboken6.getCppPointer(self)[0])
-        native_pointer = self._bridge.library.osmand_create_map_widget(
-            ctypes.c_void_p(parent_pointer),
-            str(self._map_source.data_path),
-            str(self._map_source.resources_root or ""),
-            str(self._map_source.style_path or ""),
-            0,
-            ctypes.cast(error_buffer, ctypes.c_void_p),
-            len(error_buffer),
-        )
+        with _suppress_native_stdio():
+            native_pointer = self._bridge.library.osmand_create_map_widget(
+                ctypes.c_void_p(parent_pointer),
+                str(self._map_source.data_path),
+                str(self._map_source.resources_root or ""),
+                str(self._map_source.style_path or ""),
+                0,
+                ctypes.cast(error_buffer, ctypes.c_void_p),
+                len(error_buffer),
+            )
         if not native_pointer:
             message = error_buffer.value or "Failed to create the native OsmAnd widget"
-            print(f"[NativeOsmAndWidget] osmand_create_map_widget failed: {message}", file=sys.stderr)
+            _LOGGER.warning("Native OsmAnd widget creation failed: %s", message)
             raise TileLoadingError(message)
         _log_startup_profile(
             "create_widget_bridge",
