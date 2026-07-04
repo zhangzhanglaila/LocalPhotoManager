@@ -571,13 +571,7 @@ class PhotoMapView(QWidget):
         super().resizeEvent(event)
         if not self._map_widget_built:
             return
-        if self._overlay_attachment.uses_post_render:
-            self._overlay.update()
-        else:
-            self._overlay_attachment.sync_widget_overlay(
-                self._overlay,
-                geometry=self._map_widget.geometry(),
-            )
+        self._sync_marker_overlay()
         self._marker_controller.handle_resize()
 
     def hideEvent(self, event) -> None:  # type: ignore[override]
@@ -599,6 +593,13 @@ class PhotoMapView(QWidget):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # type: ignore[override]
         if not self._map_widget_built:
             return super().eventFilter(watched, event)
+        if watched is self._map_widget and event.type() in {
+            QEvent.Type.Move,
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+            QEvent.Type.LayoutRequest,
+        }:
+            self._sync_marker_overlay()
         if watched is self._map_event_target:
             if event.type() == QEvent.Type.MouseMove:
                 mouse_event = cast(QMouseEvent, event)
@@ -676,6 +677,26 @@ class PhotoMapView(QWidget):
         if not self._map_widget_built:
             return
         self._map_widget.set_city_annotations(list(cities))
+
+    def _handle_clusters_updated(self, clusters: object) -> None:
+        """Publish marker clusters and keep the QWidget overlay visible."""
+
+        if not hasattr(self, "_overlay"):
+            return
+        self._overlay.set_clusters(clusters)
+        self._sync_marker_overlay()
+
+    def _sync_marker_overlay(self) -> None:
+        if not self._map_widget_built or not hasattr(self, "_overlay"):
+            return
+        if self._overlay_attachment.uses_post_render:
+            self._overlay.update()
+            return
+        self._overlay_attachment.sync_widget_overlay(
+            self._overlay,
+            geometry=self._map_widget.geometry(),
+            raise_overlay=True,
+        )
 
     def _active_map_source(self) -> MapSourceSpec | None:
         if self._map_source_mode == _MAP_SOURCE_GAODE:
@@ -817,7 +838,7 @@ class PhotoMapView(QWidget):
         # projection.  The GL post-render path handles this implicitly.
         self._map_widget.viewChanged.connect(self._on_view_changed_repaint_trail)
         self._thumbnail_loader.ready.connect(self._marker_controller.handle_thumbnail_ready)
-        self._marker_controller.clustersUpdated.connect(self._overlay.set_clusters)
+        self._marker_controller.clustersUpdated.connect(self._handle_clusters_updated)
         self._marker_controller.citiesUpdated.connect(self._handle_city_annotations)
         self._marker_controller.markerActivated.connect(self._on_marker_activated)
         self._marker_controller.thumbnailUpdated.connect(self._overlay.set_thumbnail)

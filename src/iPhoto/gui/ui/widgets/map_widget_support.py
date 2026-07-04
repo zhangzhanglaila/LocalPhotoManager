@@ -151,6 +151,7 @@ class MapOverlayAttachment:
             return
         if geometry is not None:
             overlay.setGeometry(geometry)
+        overlay.show()
         if raise_overlay:
             overlay.raise_()
 
