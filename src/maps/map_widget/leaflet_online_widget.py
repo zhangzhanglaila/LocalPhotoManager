@@ -89,9 +89,9 @@ LEAFLET_TILE_SOURCES: dict[str, LeafletTileSource] = {
     ),
     "osm_standard": LeafletTileSource(
         label="OpenStreetMap",
-        url_template="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attribution="OpenStreetMap contributors",
-        subdomains="abc",
+        url_template="https://tile.openstreetmap.de/{z}/{x}/{y}.png",
+        attribution="OpenStreetMap contributors / FOSSGIS",
+        subdomains="",
         max_zoom=19,
     ),
 }
