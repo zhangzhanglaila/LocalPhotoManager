@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Iterable, Sequence
 
 from PySide6.QtCore import QByteArray, QPointF, QStandardPaths, Qt, QUrl, Signal
 from PySide6.QtGui import (
@@ -41,6 +41,10 @@ MERCATOR_LAT_BOUND = 85.05112878
 _MAP_OPAQUE_BACKGROUND = "#d9e4ea"
 _ATTRIBUTION_BG = QColor(255, 255, 255, 220)
 _ATTRIBUTION_FG = QColor(55, 65, 75)
+_DEFAULT_ONLINE_CENTER_LON = 104.1954
+_DEFAULT_ONLINE_CENTER_LAT = 35.8617
+_DEFAULT_ONLINE_ZOOM = 4.0
+_DEFAULT_SINGLE_POINT_ZOOM = 10.0
 
 
 @dataclass(frozen=True)
@@ -165,12 +169,18 @@ class LeafletOnlineMapWidget(QWidget):
             source_kind,
             LEAFLET_TILE_SOURCES["carto_voyager"],
         )
-        self._zoom = float(self.BACKEND_METADATA.min_zoom)
         self._min_zoom = float(self.BACKEND_METADATA.min_zoom)
         self._max_zoom = float(min(self.BACKEND_METADATA.max_zoom, self._tile_source.max_zoom))
-        self._default_zoom = float(self.BACKEND_METADATA.min_zoom)
-        self._center_x = 0.5
-        self._center_y = 0.5
+        self._default_zoom = max(
+            self._min_zoom,
+            min(self._max_zoom, _DEFAULT_ONLINE_ZOOM),
+        )
+        self._zoom = self._default_zoom
+        default_center = lonlat_to_normalized(
+            _DEFAULT_ONLINE_CENTER_LON,
+            _DEFAULT_ONLINE_CENTER_LAT,
+        )
+        self._center_x, self._center_y = default_center or (0.5, 0.5)
         self._dragging = False
         self._last_mouse_pos = QPointF()
         self._drag_cursor = DragCursorManager()
@@ -264,6 +274,50 @@ class LeafletOnlineMapWidget(QWidget):
         self.center_on(lon, lat)
         if zoom_delta:
             self.set_zoom(self._zoom + float(zoom_delta))
+
+    def fit_lonlat_bounds(
+        self,
+        points: Iterable[tuple[float, float]],
+        *,
+        padding: int = 96,
+        single_point_zoom: float = _DEFAULT_SINGLE_POINT_ZOOM,
+        max_zoom: float = 12.0,
+    ) -> None:
+        normalized_points = [
+            normalized
+            for lon, lat in points
+            if (normalized := lonlat_to_normalized(lon, lat)) is not None
+        ]
+        if not normalized_points:
+            return
+
+        if len(normalized_points) == 1:
+            self._center_x, self._center_y = normalized_points[0]
+            self._zoom = max(self._min_zoom, min(self._max_zoom, float(single_point_zoom)))
+            self._wrap_center()
+            self.update()
+            self._emit_view_change()
+            return
+
+        xs = sorted(point[0] for point in normalized_points)
+        ys = [point[1] for point in normalized_points]
+        start_x, end_x = self._minimal_wrapped_interval(xs)
+        span_x = max(end_x - start_x, 1e-9)
+        span_y = max(max(ys) - min(ys), 1e-9)
+        center_x = (start_x + span_x / 2.0) % 1.0
+        center_y = min(max((min(ys) + max(ys)) / 2.0, 0.0), 1.0)
+
+        available_width = max(1.0, float(self.width() - padding * 2))
+        available_height = max(1.0, float(self.height() - padding * 2))
+        zoom_x = math.log2(available_width / (TILE_SIZE * span_x))
+        zoom_y = math.log2(available_height / (TILE_SIZE * span_y))
+        target_zoom = min(float(max_zoom), zoom_x, zoom_y)
+        self._center_x = center_x
+        self._center_y = center_y
+        self._zoom = max(self._min_zoom, min(self._max_zoom, target_zoom))
+        self._wrap_center()
+        self.update()
+        self._emit_view_change()
 
     def set_city_annotations(self, cities: Sequence[CityAnnotation]) -> None:
         del cities
@@ -491,6 +545,27 @@ class LeafletOnlineMapWidget(QWidget):
             self._center_y = 0.5
             return
         self._center_y = min(max(self._center_y, half_view_ratio), 1.0 - half_view_ratio)
+
+    @staticmethod
+    def _minimal_wrapped_interval(xs: Sequence[float]) -> tuple[float, float]:
+        if len(xs) <= 1:
+            value = xs[0] if xs else 0.5
+            return value, value
+
+        largest_gap = -1.0
+        largest_gap_index = 0
+        for index, x in enumerate(xs):
+            next_x = xs[(index + 1) % len(xs)]
+            gap = (next_x - x) % 1.0
+            if gap > largest_gap:
+                largest_gap = gap
+                largest_gap_index = index
+
+        start = xs[(largest_gap_index + 1) % len(xs)]
+        end = xs[largest_gap_index]
+        if end < start:
+            end += 1.0
+        return start, end
 
 
 __all__ = [

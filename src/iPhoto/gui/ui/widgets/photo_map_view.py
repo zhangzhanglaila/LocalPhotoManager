@@ -356,6 +356,7 @@ class PhotoMapView(QWidget):
         self._resolved_map_source: MapSourceSpec | None = None
         self._backend_kind = "unavailable"
         self._marker_paint_callback = None
+        self._online_map_has_auto_fitted = False
         self._assets: list[GeotaggedAsset] = []
         self._assets_library_root: Path | None = None
 
@@ -532,8 +533,11 @@ class PhotoMapView(QWidget):
     def set_assets(self, assets: Iterable[GeotaggedAsset], library_root: Path) -> None:
         """Replace the asset catalogue shown on the map."""
 
+        previous_library_root = self._assets_library_root
         self._assets = list(assets)
         self._assets_library_root = library_root
+        if previous_library_root != library_root:
+            self._online_map_has_auto_fitted = False
         if self._map_widget_built:
             filtered = list(self._assets)
 
@@ -550,6 +554,7 @@ class PhotoMapView(QWidget):
                 end = self._timeline_slider.current_end
                 filtered = self._filter_assets_by_date(start, end, filtered)
 
+            self._maybe_fit_online_map_to_assets(filtered)
             self._marker_controller.set_assets(filtered, library_root)
 
     def clear(self) -> None:
@@ -695,9 +700,31 @@ class PhotoMapView(QWidget):
         if mode == self._map_source_mode:
             return
         self._map_source_mode = str(mode)
+        self._online_map_has_auto_fitted = False
         if not self._map_widget_built:
             return
         self._rebuild_map_widget()
+
+    def _maybe_fit_online_map_to_assets(self, assets: Iterable[GeotaggedAsset]) -> None:
+        if self._online_map_has_auto_fitted:
+            return
+        if self._resolved_map_source is None:
+            return
+        if self._resolved_map_source.kind not in _ONLINE_MAP_SOURCE_MODES:
+            return
+        fit_bounds = getattr(self._map_widget, "fit_lonlat_bounds", None)
+        if not callable(fit_bounds):
+            return
+
+        points = [
+            (asset.longitude, asset.latitude)
+            for asset in assets
+            if isinstance(asset, GeotaggedAsset)
+        ]
+        if not points:
+            return
+        fit_bounds(points)
+        self._online_map_has_auto_fitted = True
 
     def _build_map_widget(self) -> None:
         logger.info("_build_map_widget: creating map widget")
@@ -771,6 +798,7 @@ class PhotoMapView(QWidget):
         )
         logger.info(self._runtime_diagnostics)
         print(self._runtime_diagnostics, flush=True)
+        self._online_map_has_auto_fitted = False
 
         self._marker_controller = MarkerController(
             self._map_widget,
@@ -795,6 +823,7 @@ class PhotoMapView(QWidget):
         self._marker_controller.thumbnailUpdated.connect(self._overlay.set_thumbnail)
         self._marker_controller.thumbnailsInvalidated.connect(self._overlay.clear_pixmaps)
         if self._assets_library_root is not None:
+            self._maybe_fit_online_map_to_assets(self._assets)
             self._marker_controller.set_assets(self._assets, self._assets_library_root)
 
         # Add timeline slider at the bottom (hidden by default)
