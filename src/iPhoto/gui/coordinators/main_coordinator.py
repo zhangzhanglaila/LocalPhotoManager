@@ -368,7 +368,7 @@ class MainCoordinator(QObject):
 
     def start(self):
         """Start the coordinator."""
-        self._logger.info("MainCoordinator started")
+        self._logger.debug("MainCoordinator started")
         self._wire_exiftool_missing_warning()
         self._cleanup_null_gps_locations()
         self._view_router.show_gallery()
@@ -379,7 +379,7 @@ class MainCoordinator(QObject):
     def finish_startup(self):
         """Re-enable full tree-update cascade after startup sequence completes."""
         self._startup_loading = False
-        self._logger.info("Startup loading complete, tree-update cascade enabled")
+        self._logger.debug("Startup loading complete, tree-update cascade enabled")
 
     def _cleanup_null_gps_locations(self) -> None:
         """One-time cleanup: clear persisted location names for (0, 0) GPS assets."""

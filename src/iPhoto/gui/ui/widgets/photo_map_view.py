@@ -350,6 +350,7 @@ class PhotoMapView(QWidget):
         self._trail_paint_callback = None
         self._trail_registered = False
         self._timeline_slider = TimelineSlider()
+        self._timeline_slider_signals_connected = False
         self._trail_layer_visible = False
 
         # Person filter support
@@ -881,18 +882,10 @@ class PhotoMapView(QWidget):
         if self._timeline_slider.parentWidget() is None:
             self._layout.addWidget(self._timeline_slider)
         self._timeline_slider.hide()
-        try:
-            self._timeline_slider.rangeChanged.disconnect(self._on_timeline_range_changed)
-        except (RuntimeError, TypeError):
-            pass
-        try:
-            self._timeline_slider.granularityChanged.disconnect(
-                self._on_timeline_granularity_changed
-            )
-        except (RuntimeError, TypeError):
-            pass
-        self._timeline_slider.rangeChanged.connect(self._on_timeline_range_changed)
-        self._timeline_slider.granularityChanged.connect(self._on_timeline_granularity_changed)
+        if not self._timeline_slider_signals_connected:
+            self._timeline_slider.rangeChanged.connect(self._on_timeline_range_changed)
+            self._timeline_slider.granularityChanged.connect(self._on_timeline_granularity_changed)
+            self._timeline_slider_signals_connected = True
         self._map_widget_built = True
 
     def _trail_tooltip_at(self, screen_pos) -> str | None:

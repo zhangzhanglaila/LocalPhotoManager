@@ -107,7 +107,7 @@ def get_global_repository(library_root: Path) -> "AssetRepository":
             if _global_instance.library_root.resolve() == resolved_root:
                 return _global_instance
             # Different root requested - close old instance and create new one
-            logger.info(
+            logger.debug(
                 "Switching global database from %s to %s",
                 _global_instance.library_root,
                 resolved_root,

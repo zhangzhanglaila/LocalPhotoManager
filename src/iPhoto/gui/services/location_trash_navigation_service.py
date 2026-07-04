@@ -142,7 +142,7 @@ class LocationTrashNavigationService(QObject):
         root: Path,
         assets: list,
     ) -> None:
-        _logger.info("_handle_location_assets_finished: serial=%d assets=%d", serial, len(assets))
+        _logger.debug("_handle_location_assets_finished: serial=%d assets=%d", serial, len(assets))
         signals = self._location_signals.pop(int(serial), None)
         if signals is not None:
             signals.deleteLater()
@@ -213,7 +213,7 @@ class LocationTrashNavigationService(QObject):
         )
         if callable(list_geotagged_assets):
             assets = list(list_geotagged_assets())
-            _logger.info("_load_location_assets: loaded %d geotagged assets", len(assets))
+            _logger.debug("_load_location_assets: loaded %d geotagged assets", len(assets))
             return assets
         _logger.warning("_load_location_assets: location_service not available")
         raise RuntimeError(

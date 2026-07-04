@@ -193,7 +193,7 @@ class LibraryRuntimeController(
         self._bind_path(root, bind_session_if_needed=False)
 
     def _bind_path(self, root: Path, *, bind_session_if_needed: bool) -> None:
-        LOGGER.info("bind_path: binding to %s", root)
+        LOGGER.debug("bind_path: binding to %s", root)
         # Clear existing watches to ensure initialization operations (like creating
         # the deleted items folder) do not trigger "directoryChanged" signals
         # from an active watcher, which would cause a double-refresh.
@@ -229,7 +229,7 @@ class LibraryRuntimeController(
                     self.bind_people_service(session.people)
         self._geotagged_assets_cache = None
         self._geotagged_assets_cache_root = None
-        LOGGER.info("bind_path: normalized root=%s", normalized)
+        LOGGER.debug("bind_path: normalized root=%s", normalized)
         self._initialize_deleted_dir()
         self._refresh_tree()
         # If the album tree was unchanged, ``_refresh_tree()`` may have skipped
@@ -237,7 +237,7 @@ class LibraryRuntimeController(
         # cleared all watcher directories, ensure we restore them so filesystem
         # monitoring is active even when binding an (initially) empty library.
         if not self._watcher.directories():
-            LOGGER.info(
+            LOGGER.debug(
                 "bind_path: watcher has no directories after refresh; rebuilding watches"
             )
             self._rebuild_watches()
@@ -250,7 +250,7 @@ class LibraryRuntimeController(
         # initial-model-rebuild behaviour without causing duplicate emissions
         # for non-empty libraries where ``_refresh_tree()`` has already emitted.
         if not self._albums:
-            LOGGER.info("bind_path: emitting treeUpdated for empty album tree")
+            LOGGER.debug("bind_path: emitting treeUpdated for empty album tree")
             self.treeUpdated.emit()
 
     def _clear_watches_for_rebind(self) -> None:

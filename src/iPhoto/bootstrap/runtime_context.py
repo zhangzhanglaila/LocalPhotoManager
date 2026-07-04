@@ -147,16 +147,16 @@ class RuntimeContext:
         self._pending_basic_library_path = None
         self._pending_extra_roots = []
         if candidate is None:
-            _logger.info("resume_startup_tasks: no pending library path")
+            _logger.debug("resume_startup_tasks: no pending library path")
             return
-        _logger.info(
+        _logger.debug(
             "resume_startup_tasks: attempting to bind saved library path %s",
             candidate,
         )
         if candidate.exists():
             try:
                 self.open_library(candidate)
-                _logger.info(
+                _logger.debug(
                     "resume_startup_tasks: bind_path succeeded, root=%s",
                     self.library.root(),
                 )
@@ -175,7 +175,7 @@ class RuntimeContext:
                             exclude=DEFAULT_EXCLUDE,
                         )
                     else:
-                        _logger.info(
+                        _logger.debug(
                             "resume_startup_tasks: index DB exists, skipping scan"
                         )
             except LibraryError as exc:
@@ -202,7 +202,7 @@ class RuntimeContext:
                 continue
             try:
                 self.library.add_root(extra)
-                _logger.info("resume_startup_tasks: added extra root %s", extra)
+                _logger.debug("resume_startup_tasks: added extra root %s", extra)
             except Exception as exc:
                 _logger.error("resume_startup_tasks: add_root failed for %s: %s", extra, exc)
                 self.library.errorRaised.emit(str(exc))

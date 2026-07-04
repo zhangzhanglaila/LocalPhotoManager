@@ -672,7 +672,7 @@ class AlbumSidebar(QWidget):
     def select_all_photos(self, emit_signal: bool = False) -> None:
         """Select the "All Photos" static node if it is available."""
 
-        _logger.info("select_all_photos: emit_signal=%s", emit_signal)
+        _logger.debug("select_all_photos: emit_signal=%s", emit_signal)
         self.select_static_node(self.ALL_PHOTOS_TITLE, emit_signal=emit_signal)
 
     def select_static_node(self, title: str, emit_signal: bool = False) -> None:
@@ -684,7 +684,7 @@ class AlbumSidebar(QWidget):
 
         index = self._find_static_index(title)
         if not index.isValid():
-            _logger.warning("select_static_node: '%s' not found in model", title)
+            _logger.debug("select_static_node: '%s' not found in model", title)
             return
 
         # Check whether the target index is already selected.  When the caller
@@ -713,7 +713,7 @@ class AlbumSidebar(QWidget):
         # ``setCurrentIndex`` is a no-op and ``selectionChanged`` never fires.
         # Manually invoke the handler so the view transition still occurs.
         if emit_signal and already_selected:
-            _logger.info(
+            _logger.debug(
                 "select_static_node: '%s' was already selected, manually triggering handler",
                 title,
             )

@@ -63,7 +63,7 @@ class EditPreviewManager(QObject):
                 )
                 backend = fallback
         self._preview_backend: PreviewBackend = backend
-        _LOGGER.info("Initialised edit preview backend: %s", self._preview_backend.tier_name)
+        _LOGGER.debug("Initialised edit preview backend: %s", self._preview_backend.tier_name)
 
         self._preview_session: Optional[PreviewSession] = None
         self._base_image: Optional[QImage] = None

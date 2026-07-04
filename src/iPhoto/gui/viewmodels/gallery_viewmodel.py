@@ -264,7 +264,7 @@ class GalleryViewModel(BaseViewModel):
             _logger.warning("open_location_map: library root is None")
             self.bind_library_requested.emit()
             return
-        _logger.info("open_location_map: root=%s", root)
+        _logger.debug("open_location_map: root=%s", root)
         self.current_section.value = "location_map"
         self.static_selection.value = "Location"
         self.active_root.value = root
@@ -281,11 +281,11 @@ class GalleryViewModel(BaseViewModel):
             and not self._location_session.invalidated
         ):
             cached = self._location_session.full_assets()
-            _logger.info("open_location_map: using cached assets, count=%d", len(cached))
+            _logger.debug("open_location_map: using cached assets, count=%d", len(cached))
             self.map_assets_changed.emit(self._filter_assets_by_checked_paths(cached), root)
             return
 
-        _logger.info("open_location_map: requesting fresh assets")
+        _logger.debug("open_location_map: requesting fresh assets")
         self._request_location_assets(root)
 
     def open_location_asset(self, rel: str) -> None:
@@ -492,7 +492,7 @@ class GalleryViewModel(BaseViewModel):
             _logger.warning("_request_location_assets: request_location_assets returned None")
             return
         serial, request_root = request
-        _logger.info("_request_location_assets: serial=%d root=%s", serial, request_root)
+        _logger.debug("_request_location_assets: serial=%d root=%s", serial, request_root)
         if request_root != root:
             root = request_root
         self._location_session.begin_load_with_serial(root, serial)
@@ -510,14 +510,14 @@ class GalleryViewModel(BaseViewModel):
         root: Path,
         assets: list,
     ) -> None:
-        _logger.info("_handle_location_assets_loaded: serial=%d root=%s assets=%d", serial, root, len(assets))
+        _logger.debug("_handle_location_assets_loaded: serial=%d root=%s assets=%d", serial, root, len(assets))
         filtered = self._filter_assets_by_checked_paths(assets)
         if not self._location_session.accept_loaded(serial, root, filtered):
             _logger.warning("_handle_location_assets_loaded: accept_loaded returned False")
             return
         if self._location_session.mode == "map":
             full = self._location_session.full_assets()
-            _logger.info("_handle_location_assets_loaded: emitting map_assets_changed, count=%d", len(full))
+            _logger.debug("_handle_location_assets_loaded: emitting map_assets_changed, count=%d", len(full))
             self.map_assets_changed.emit(full, root)
 
     def _filter_assets_by_checked_paths(self, assets: list) -> list:

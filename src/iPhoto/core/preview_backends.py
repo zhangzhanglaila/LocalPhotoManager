@@ -567,7 +567,7 @@ def select_preview_backend() -> PreviewBackend:
         except Exception as exc:  # pragma: no cover - defensive guard
             _LOGGER.warning("Failed to initialise CUDA backend: %s", exc)
         else:
-            _LOGGER.info("Using CUDA preview backend")
+            _LOGGER.debug("Using CUDA preview backend")
             return backend
 
     # OpenGL is the next best choice when CUDA is not available.
@@ -577,11 +577,11 @@ def select_preview_backend() -> PreviewBackend:
         except Exception as exc:  # pragma: no cover - defensive guard
             _LOGGER.warning("Failed to initialise OpenGL backend: %s", exc)
         else:
-            _LOGGER.info("Using OpenGL preview backend")
+            _LOGGER.debug("Using OpenGL preview backend")
             return backend
 
     backend = _CpuPreviewBackend()
-    _LOGGER.info("Falling back to CPU preview backend")
+    _LOGGER.debug("Falling back to CPU preview backend")
     return backend
 
 
