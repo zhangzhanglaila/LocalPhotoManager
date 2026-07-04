@@ -55,6 +55,7 @@ class LeafletTileSource:
     attribution: str
     subdomains: str = "abc"
     max_zoom: int = 19
+    retina_url_template: str | None = None
 
 
 LEAFLET_TILE_SOURCES: dict[str, LeafletTileSource] = {
@@ -89,10 +90,13 @@ LEAFLET_TILE_SOURCES: dict[str, LeafletTileSource] = {
     ),
     "osm_standard": LeafletTileSource(
         label="OpenStreetMap",
-        url_template="https://tile.openstreetmap.de/{z}/{x}/{y}.png",
-        attribution="OpenStreetMap contributors / FOSSGIS",
+        url_template="https://tile.openstreetmap.jp/{z}/{x}/{y}.png",
+        attribution="OpenStreetMap contributors / OpenStreetMap Japan",
         subdomains="",
         max_zoom=19,
+        retina_url_template=(
+            "https://tile.openstreetmap.jp/styles/osm-bright/{z}/{x}/{y}@2x.png"
+        ),
     ),
 }
 
@@ -192,6 +196,7 @@ class LeafletOnlineMapWidget(QWidget):
         self._tile_failure_count = 0
         self._tile_success_count = 0
         self._network_unavailable_emitted = False
+        self._tile_device_pixel_ratio = self._preferred_tile_device_pixel_ratio()
 
         self._network = QNetworkAccessManager(self)
         self._network.finished.connect(self._handle_tile_reply)
@@ -516,7 +521,9 @@ class LeafletOnlineMapWidget(QWidget):
         data = bytes(reply.readAll())
         image = QImage()
         if image.loadFromData(data):
-            self._tiles[key] = QPixmap.fromImage(image)
+            pixmap = QPixmap.fromImage(image)
+            pixmap.setDevicePixelRatio(self._tile_device_pixel_ratio)
+            self._tiles[key] = pixmap
             self._record_tile_success()
         else:
             self._tiles.pop(key, None)
@@ -540,12 +547,26 @@ class LeafletOnlineMapWidget(QWidget):
     def _tile_url(self, z: int, x: int, y: int) -> str:
         subdomains = self._tile_source.subdomains or "a"
         subdomain = subdomains[(x + y) % len(subdomains)]
+        template = (
+            self._tile_source.retina_url_template
+            if self._tile_device_pixel_ratio > 1.0
+            and self._tile_source.retina_url_template is not None
+            else self._tile_source.url_template
+        )
         return (
-            self._tile_source.url_template.replace("{s}", subdomain)
+            template.replace("{s}", subdomain)
             .replace("{z}", str(z))
             .replace("{x}", str(x))
             .replace("{y}", str(y))
         )
+
+    def _preferred_tile_device_pixel_ratio(self) -> float:
+        if self._tile_source.retina_url_template is None:
+            return 1.0
+        try:
+            return 2.0 if self.devicePixelRatioF() >= 1.25 else 1.0
+        except Exception:
+            return 1.0
 
     def _emit_view_change(self) -> None:
         self.viewChanged.emit(float(self._center_x), float(self._center_y), float(self._zoom))
