@@ -45,6 +45,7 @@ _DEFAULT_ONLINE_CENTER_LON = 104.1954
 _DEFAULT_ONLINE_CENTER_LAT = 35.8617
 _DEFAULT_ONLINE_ZOOM = 4.0
 _DEFAULT_SINGLE_POINT_ZOOM = 10.0
+_NETWORK_FAILURE_FALLBACK_THRESHOLD = 6
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,7 @@ class LeafletOnlineMapWidget(QWidget):
     viewChanged = Signal(float, float, float)
     panned = Signal(QPointF)
     panFinished = Signal()
+    networkUnavailable = Signal()
 
     BACKEND_METADATA = MapBackendMetadata(
         min_zoom=2.0,
@@ -187,6 +189,9 @@ class LeafletOnlineMapWidget(QWidget):
         self._last_mouse_pos = QPointF()
         self._drag_cursor = DragCursorManager()
         self._tiles: dict[tuple[int, int, int], QPixmap | None] = {}
+        self._tile_failure_count = 0
+        self._tile_success_count = 0
+        self._network_unavailable_emitted = False
 
         self._network = QNetworkAccessManager(self)
         self._network.finished.connect(self._handle_tile_reply)
@@ -504,6 +509,7 @@ class LeafletOnlineMapWidget(QWidget):
             return
         if reply.error() != QNetworkReply.NetworkError.NoError:
             self._tiles.pop(key, None)
+            self._record_tile_failure()
             reply.deleteLater()
             self.update()
             return
@@ -511,10 +517,25 @@ class LeafletOnlineMapWidget(QWidget):
         image = QImage()
         if image.loadFromData(data):
             self._tiles[key] = QPixmap.fromImage(image)
+            self._record_tile_success()
         else:
             self._tiles.pop(key, None)
+            self._record_tile_failure()
         reply.deleteLater()
         self.update()
+
+    def _record_tile_success(self) -> None:
+        self._tile_success_count += 1
+        self._tile_failure_count = 0
+
+    def _record_tile_failure(self) -> None:
+        self._tile_failure_count += 1
+        if self._tile_success_count > 0 or self._network_unavailable_emitted:
+            return
+        if self._tile_failure_count < _NETWORK_FAILURE_FALLBACK_THRESHOLD:
+            return
+        self._network_unavailable_emitted = True
+        self.networkUnavailable.emit()
 
     def _tile_url(self, z: int, x: int, y: int) -> str:
         subdomains = self._tile_source.subdomains or "a"

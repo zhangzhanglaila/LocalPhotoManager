@@ -14,6 +14,7 @@ def test_map_runtime_service_keeps_native_widget_available_when_macos_python_gl_
 ) -> None:
     monkeypatch.setattr(map_runtime_service_module, "_has_qt_application", lambda: True)
     monkeypatch.setattr(map_runtime_service_module, "check_opengl_support", lambda: False)
+    monkeypatch.setattr(map_runtime_service_module, "has_usable_gaode_online_map", lambda: False)
     monkeypatch.setattr(map_runtime_service_module, "prefer_osmand_native_widget", lambda: True)
     monkeypatch.setattr(map_runtime_service_module, "has_usable_osmand_native_widget", lambda root: root == tmp_path)
     monkeypatch.setattr(map_runtime_service_module, "probe_native_widget_runtime", lambda root: (root == tmp_path, None))
@@ -42,6 +43,7 @@ def test_map_runtime_service_falls_back_to_legacy_when_osmand_extension_is_unava
 ) -> None:
     monkeypatch.setattr(map_runtime_service_module, "_has_qt_application", lambda: True)
     monkeypatch.setattr(map_runtime_service_module, "check_opengl_support", lambda: True)
+    monkeypatch.setattr(map_runtime_service_module, "has_usable_gaode_online_map", lambda: False)
     monkeypatch.setattr(map_runtime_service_module, "prefer_osmand_native_widget", lambda: True)
     monkeypatch.setattr(map_runtime_service_module, "has_usable_osmand_native_widget", lambda root: False)
     monkeypatch.setattr(
@@ -70,6 +72,7 @@ def test_map_runtime_service_checks_search_extension_against_bound_package_root(
 
     monkeypatch.setattr(map_runtime_service_module, "_has_qt_application", lambda: True)
     monkeypatch.setattr(map_runtime_service_module, "check_opengl_support", lambda: True)
+    monkeypatch.setattr(map_runtime_service_module, "has_usable_gaode_online_map", lambda: False)
     monkeypatch.setattr(map_runtime_service_module, "prefer_osmand_native_widget", lambda: False)
     monkeypatch.setattr(map_runtime_service_module, "has_usable_osmand_native_widget", lambda root: False)
     monkeypatch.setattr(
@@ -93,3 +96,34 @@ def test_map_runtime_service_checks_search_extension_against_bound_package_root(
 
     assert probed_roots == [tmp_path]
     assert capabilities.location_search_available is True
+
+
+def test_map_runtime_service_prefers_gaode_when_online_map_is_reachable(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    choose_default_calls = []
+
+    monkeypatch.setattr(map_runtime_service_module, "_has_qt_application", lambda: True)
+    monkeypatch.setattr(map_runtime_service_module, "check_opengl_support", lambda: True)
+    monkeypatch.setattr(map_runtime_service_module, "has_usable_gaode_online_map", lambda: True)
+    monkeypatch.setattr(map_runtime_service_module, "prefer_osmand_native_widget", lambda: False)
+    monkeypatch.setattr(map_runtime_service_module, "has_usable_osmand_native_widget", lambda root: False)
+    monkeypatch.setattr(
+        map_runtime_service_module,
+        "choose_default_map_source",
+        lambda root, **_kwargs: choose_default_calls.append(root)
+        or MapSourceSpec.osmand_default(root),
+    )
+    monkeypatch.setattr(
+        map_runtime_service_module,
+        "has_usable_osmand_search_extension",
+        lambda package_root=None: False,
+    )
+
+    capabilities = SessionMapRuntimeService(tmp_path).capabilities()
+
+    assert choose_default_calls == []
+    assert capabilities.preferred_backend == "gaode_standard"
+    assert capabilities.display_available is True
+    assert capabilities.osmand_extension_available is False

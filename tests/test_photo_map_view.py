@@ -1397,3 +1397,50 @@ def test_photo_map_view_rebuilds_when_runtime_package_root_changes(
         assert controller_instances[1].set_assets_calls == [(assets, library_root)]
     finally:
         view.close()
+
+
+def test_photo_map_view_uses_runtime_preferred_gaode_source(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    del qapp
+
+    captured_sources: list[MapSourceSpec | None] = []
+
+    def _create_widget(
+        parent: QWidget,
+        *,
+        map_source: MapSourceSpec | None,
+        **_kwargs,
+    ) -> MapWidgetFactoryResult:
+        captured_sources.append(map_source)
+        resolved_source = map_source or MapSourceSpec.legacy_default(tmp_path)
+        return MapWidgetFactoryResult(
+            _FallbackMapWidget(parent, map_source=resolved_source),
+            resolved_source,
+            resolved_source.kind,
+            False,
+        )
+
+    runtime = SimpleNamespace(
+        capabilities=lambda: SimpleNamespace(
+            preferred_backend="gaode_standard",
+            python_gl_available=False,
+            status_message="gaode-online",
+        ),
+        package_root=lambda: tmp_path,
+    )
+
+    monkeypatch.setattr(photo_map_view_module, "create_map_widget", _create_widget)
+    monkeypatch.setattr(photo_map_view_module, "ThumbnailLoader", _DummyThumbnailLoader)
+    monkeypatch.setattr(photo_map_view_module, "MarkerController", _DummyMarkerController)
+
+    view = photo_map_view_module.PhotoMapView(map_runtime=runtime)
+    try:
+        view.activate_map()
+        assert captured_sources
+        assert captured_sources[0] is not None
+        assert captured_sources[0].kind == "gaode_standard"
+    finally:
+        view.close()

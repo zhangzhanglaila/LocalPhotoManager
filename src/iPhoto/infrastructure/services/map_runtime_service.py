@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import socket
 from pathlib import Path
 
 from PySide6.QtGui import QGuiApplication
 from maps.main import check_opengl_support, choose_default_map_source
 from maps.map_sources import (
+    MapSourceSpec,
     has_usable_osmand_native_widget,
     has_usable_osmand_search_extension,
     prefer_osmand_native_widget,
@@ -17,7 +19,13 @@ from maps.map_widget.native_osmand_widget import probe_native_widget_runtime
 from ...application.ports import MapRuntimeCapabilities, MapRuntimePort
 
 _TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+_FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 _MAPS_PACKAGE_ROOT = Path(__file__).resolve().parents[3] / "maps"
+_GAODE_CONNECTIVITY_HOSTS = (
+    "webrd01.is.autonavi.com",
+    "webrd02.is.autonavi.com",
+)
+ENV_PREFER_ONLINE_MAP = "IPHOTO_PREFER_ONLINE_MAP"
 
 
 def _opengl_explicitly_disabled() -> bool:
@@ -26,6 +34,28 @@ def _opengl_explicitly_disabled() -> bool:
 
 def _has_qt_application() -> bool:
     return QGuiApplication.instance() is not None
+
+
+def _prefer_online_map() -> bool:
+    raw_value = os.environ.get(ENV_PREFER_ONLINE_MAP, "").strip().lower()
+    if raw_value in _TRUE_ENV_VALUES:
+        return True
+    if raw_value in _FALSE_ENV_VALUES:
+        return False
+    return True
+
+
+def has_usable_gaode_online_map(timeout_seconds: float = 0.35) -> bool:
+    """Return whether Gaode online tiles appear reachable right now."""
+
+    timeout = max(0.1, float(timeout_seconds))
+    for host in _GAODE_CONNECTIVITY_HOSTS:
+        try:
+            with socket.create_connection((host, 443), timeout=timeout):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 class SessionMapRuntimeService(MapRuntimePort):
@@ -69,15 +99,20 @@ class SessionMapRuntimeService(MapRuntimePort):
         ):
             native_widget_available, _ = probe_native_widget_runtime(self._package_root)
 
-        default_source = choose_default_map_source(
-            self._package_root,
-            use_opengl=python_gl_available,
-            native_widget_runtime_available=native_widget_available,
-        )
+        if _prefer_online_map() and has_usable_gaode_online_map():
+            default_source = MapSourceSpec.gaode_standard()
+        else:
+            default_source = choose_default_map_source(
+                self._package_root,
+                use_opengl=python_gl_available,
+                native_widget_runtime_available=native_widget_available,
+            )
         osmand_extension_available = default_source.kind == "osmand_obf"
         location_search_available = has_usable_osmand_search_extension(self._package_root)
 
-        if osmand_extension_available and native_widget_available:
+        if default_source.kind == "gaode_standard":
+            preferred_backend = "gaode_standard"
+        elif osmand_extension_available and native_widget_available:
             preferred_backend = "osmand_native"
         elif osmand_extension_available:
             preferred_backend = "osmand_python"
@@ -111,6 +146,8 @@ class SessionMapRuntimeService(MapRuntimePort):
     ) -> str:
         if preferred_backend == "osmand_native":
             return "Native OsmAnd widget available."
+        if preferred_backend == "gaode_standard":
+            return "Gaode online map available."
         if preferred_backend == "osmand_python":
             if python_gl_available:
                 return "OsmAnd renderer available with OpenGL."
@@ -126,4 +163,7 @@ class SessionMapRuntimeService(MapRuntimePort):
         return "Map runtime unavailable."
 
 
-__all__ = ["SessionMapRuntimeService"]
+__all__ = [
+    "SessionMapRuntimeService",
+    "has_usable_gaode_online_map",
+]

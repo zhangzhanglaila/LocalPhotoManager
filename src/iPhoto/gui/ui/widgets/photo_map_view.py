@@ -329,6 +329,19 @@ class PhotoMapView(QWidget):
             else _MAP_SOURCE_LOCAL
         )
         self._map_runtime = map_runtime
+        self._map_runtime_capabilities = (
+            map_runtime.capabilities() if map_runtime is not None else None
+        )
+        if (
+            map_source is None
+            and self._map_runtime_capabilities is not None
+            and getattr(self._map_runtime_capabilities, "preferred_backend", None)
+            in _ONLINE_MAP_SOURCE_MODES
+        ):
+            self._map_source_mode = cast(
+                str,
+                getattr(self._map_runtime_capabilities, "preferred_backend"),
+            )
 
         # Trail/timeline support
         from .trail_layer import TrailLayer
@@ -343,9 +356,6 @@ class PhotoMapView(QWidget):
         self._person_filter_panel = None
         self._person_filter = None
         self._active_person_id: str | None = None
-        self._map_runtime_capabilities = (
-            map_runtime.capabilities() if map_runtime is not None else None
-        )
         self._map_interaction_service = (
             map_interaction_service or LibraryMapInteractionService()
         )
@@ -497,6 +507,19 @@ class PhotoMapView(QWidget):
         self._map_runtime_capabilities = (
             map_runtime.capabilities() if map_runtime is not None else None
         )
+        if (
+            self._requested_map_source is None
+            and self._map_runtime_capabilities is not None
+            and getattr(self._map_runtime_capabilities, "preferred_backend", None)
+            in _ONLINE_MAP_SOURCE_MODES
+        ):
+            self._map_source_mode = cast(
+                str,
+                getattr(self._map_runtime_capabilities, "preferred_backend"),
+            )
+            source_index = self._map_source_selector.findData(self._map_source_mode)
+            if source_index >= 0:
+                self._map_source_selector.setCurrentIndex(source_index)
         self._map_package_root = resolve_map_package_root(map_runtime)
         if not self._map_widget_built:
             # Widget not built yet — the stored runtime will be used when
@@ -727,6 +750,24 @@ class PhotoMapView(QWidget):
             return
         self._rebuild_map_widget()
 
+    def _handle_online_map_unavailable(self) -> None:
+        if self._resolved_map_source is None:
+            return
+        if self._resolved_map_source.kind not in _ONLINE_MAP_SOURCE_MODES:
+            return
+        logger.info("Online map unavailable; falling back to local map.")
+        self._map_source_mode = _MAP_SOURCE_LOCAL
+        self._online_map_has_auto_fitted = False
+        source_index = self._map_source_selector.findData(_MAP_SOURCE_LOCAL)
+        if source_index >= 0:
+            previous_blocked = self._map_source_selector.blockSignals(True)
+            try:
+                self._map_source_selector.setCurrentIndex(source_index)
+            finally:
+                self._map_source_selector.blockSignals(previous_blocked)
+        if self._map_widget_built:
+            self._rebuild_map_widget()
+
     def _maybe_fit_online_map_to_assets(self, assets: Iterable[GeotaggedAsset]) -> None:
         if self._online_map_has_auto_fitted:
             return
@@ -792,6 +833,9 @@ class PhotoMapView(QWidget):
 
         self._event_bridge.bind(self._map_widget)
         self._map_event_target = cast(QWidget | None, self._event_bridge.event_target())
+        network_unavailable = getattr(self._map_widget, "networkUnavailable", None)
+        if network_unavailable is not None and hasattr(network_unavailable, "connect"):
+            network_unavailable.connect(self._handle_online_map_unavailable)
         self._runtime_diagnostics = format_map_runtime_diagnostics(
             self._map_widget,
             backend_kind=result.backend_kind,
