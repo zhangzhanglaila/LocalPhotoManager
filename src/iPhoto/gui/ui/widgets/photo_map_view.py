@@ -50,6 +50,8 @@ logger = getLogger(__name__)
 _MAPS_PACKAGE_ROOT = Path(__file__).resolve().parents[4] / "maps"
 _MAP_OPAQUE_BACKGROUND = "#88a8c2"
 _MAP_SOURCE_LOCAL = "local"
+_MAP_SOURCE_CARTO = "carto_voyager"
+_MAP_SOURCE_OSM = "osm_standard"
 _MAP_SOURCE_APPLE = "apple_mapkit"
 
 
@@ -312,8 +314,9 @@ class PhotoMapView(QWidget):
         self._layout = layout
         self._requested_map_source = map_source
         self._map_source_mode = (
-            _MAP_SOURCE_APPLE
-            if map_source is not None and map_source.kind == "apple_mapkit"
+            map_source.kind
+            if map_source is not None
+            and map_source.kind in {_MAP_SOURCE_APPLE, _MAP_SOURCE_CARTO, _MAP_SOURCE_OSM}
             else _MAP_SOURCE_LOCAL
         )
         self._map_runtime = map_runtime
@@ -395,8 +398,11 @@ class PhotoMapView(QWidget):
         row.addWidget(label)
         selector = QComboBox(bar)
         selector.addItem(tr("map.source_local"), _MAP_SOURCE_LOCAL)
+        selector.addItem(tr("map.source_carto"), _MAP_SOURCE_CARTO)
+        selector.addItem(tr("map.source_osm"), _MAP_SOURCE_OSM)
         selector.addItem(tr("map.source_apple"), _MAP_SOURCE_APPLE)
-        selector.setCurrentIndex(1 if self._map_source_mode == _MAP_SOURCE_APPLE else 0)
+        source_index = selector.findData(self._map_source_mode)
+        selector.setCurrentIndex(max(0, source_index))
         selector.currentIndexChanged.connect(self._handle_map_source_changed)
         row.addWidget(selector)
         row.addStretch(1)
@@ -636,13 +642,22 @@ class PhotoMapView(QWidget):
         self._map_widget.set_city_annotations(list(cities))
 
     def _active_map_source(self) -> MapSourceSpec | None:
+        if self._map_source_mode == _MAP_SOURCE_CARTO:
+            return MapSourceSpec.carto_voyager()
+        if self._map_source_mode == _MAP_SOURCE_OSM:
+            return MapSourceSpec.osm_standard()
         if self._map_source_mode == _MAP_SOURCE_APPLE:
             return MapSourceSpec.apple_mapkit()
         return self._requested_map_source
 
     def _handle_map_source_changed(self, index: int) -> None:
         mode = self._map_source_selector.itemData(index)
-        if mode not in {_MAP_SOURCE_LOCAL, _MAP_SOURCE_APPLE}:
+        if mode not in {
+            _MAP_SOURCE_LOCAL,
+            _MAP_SOURCE_CARTO,
+            _MAP_SOURCE_OSM,
+            _MAP_SOURCE_APPLE,
+        }:
             return
         if mode == self._map_source_mode:
             return

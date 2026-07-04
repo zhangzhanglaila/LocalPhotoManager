@@ -15,6 +15,8 @@ MapBackendKind = Literal[
     "osmand_python",
     "legacy_python",
     "apple_mapkit",
+    "carto_voyager",
+    "osm_standard",
     "unavailable",
 ]
 

@@ -228,6 +228,8 @@ _ZH: dict[str, str] = {
     "map.load_failed": "地图加载失败，请重启应用重试",
     "map.source_label": "地图",
     "map.source_local": "本地地图",
+    "map.source_carto": "CARTO Voyager",
+    "map.source_osm": "OpenStreetMap",
     "map.source_apple": "Apple Maps",
     "map.feature_limited": "功能受限",
     "map.location_saved_no_exiftool": (
@@ -497,6 +499,8 @@ _EN: dict[str, str] = {
     "map.load_failed": "Map loading failed. Please restart the application.",
     "map.source_label": "Map",
     "map.source_local": "Local Map",
+    "map.source_carto": "CARTO Voyager",
+    "map.source_osm": "OpenStreetMap",
     "map.source_apple": "Apple Maps",
     "map.feature_limited": "Feature Limited",
     "map.location_saved_no_exiftool": (

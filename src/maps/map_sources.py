@@ -129,7 +129,13 @@ class MapBackendMetadata:
 class MapSourceSpec:
     """Describe how the map should obtain its background data."""
 
-    kind: Literal["legacy_pbf", "osmand_obf", "apple_mapkit"]
+    kind: Literal[
+        "legacy_pbf",
+        "osmand_obf",
+        "apple_mapkit",
+        "carto_voyager",
+        "osm_standard",
+    ]
     data_path: Path | str
     resources_root: Path | str | None = None
     style_path: Path | str | None = None
@@ -138,7 +144,7 @@ class MapSourceSpec:
     def resolved(self, package_root: Path) -> "MapSourceSpec":
         """Return a copy whose filesystem paths are absolute."""
 
-        if self.kind == "apple_mapkit":
+        if self.kind in {"apple_mapkit", "carto_voyager", "osm_standard"}:
             return self
 
         data_path = _resolve_path(self.data_path, package_root)
@@ -182,6 +188,18 @@ class MapSourceSpec:
         """Return the online Apple Maps source backed by MapKit JS."""
 
         return cls(kind="apple_mapkit", data_path="mapkit-js")
+
+    @classmethod
+    def carto_voyager(cls) -> "MapSourceSpec":
+        """Return the online CARTO Voyager source backed by public raster tiles."""
+
+        return cls(kind="carto_voyager", data_path="carto-voyager")
+
+    @classmethod
+    def osm_standard(cls) -> "MapSourceSpec":
+        """Return the online OpenStreetMap Standard source backed by public tiles."""
+
+        return cls(kind="osm_standard", data_path="osm-standard")
 
     @classmethod
     def default(cls, package_root: Path | None = None) -> "MapSourceSpec":
