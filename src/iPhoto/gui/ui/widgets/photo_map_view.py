@@ -387,9 +387,30 @@ class PhotoMapView(QWidget):
         bar.setObjectName("mapSourceBar")
         bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         bar.setStyleSheet(
-            "QWidget#mapSourceBar { background: rgba(246, 248, 250, 235); border: none; }"
-            "QLabel { color: #334; font-size: 12px; }"
-            "QComboBox { min-width: 132px; padding: 3px 8px; }"
+            "QWidget#mapSourceBar { background: #f6f8fa; border: none; }"
+            "QLabel { color: #263238; font-size: 12px; }"
+            "QComboBox {"
+            " min-width: 160px;"
+            " padding: 4px 28px 4px 8px;"
+            " color: #1f2933;"
+            " background: #ffffff;"
+            " border: 1px solid #aeb8c2;"
+            " border-radius: 4px;"
+            "}"
+            "QComboBox:hover { border-color: #7d8b99; }"
+            "QComboBox::drop-down {"
+            " width: 22px;"
+            " border-left: 1px solid #c6ced6;"
+            " background: #eef2f5;"
+            "}"
+            "QComboBox QAbstractItemView {"
+            " color: #1f2933;"
+            " background: #ffffff;"
+            " selection-color: #ffffff;"
+            " selection-background-color: #2f6fed;"
+            " border: 1px solid #aeb8c2;"
+            " outline: 0;"
+            "}"
         )
         row = QHBoxLayout(bar)
         row.setContentsMargins(10, 6, 10, 6)

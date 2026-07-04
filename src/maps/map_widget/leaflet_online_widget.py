@@ -1,32 +1,41 @@
-"""Online no-key map widget backed by Leaflet raster tile basemaps."""
+"""Online no-key map widget backed by public raster tile basemaps."""
 
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from PySide6.QtCore import QObject, QPointF, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QCloseEvent, QMouseEvent, QResizeEvent, QWheelEvent
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import QByteArray, QPointF, QStandardPaths, Qt, QUrl, Signal
+from PySide6.QtGui import (
+    QColor,
+    QCloseEvent,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QMouseEvent,
+    QPainter,
+    QPalette,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+    QWheelEvent,
+)
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache, QNetworkRequest
+from PySide6.QtWidgets import QWidget
 
 from maps.map_sources import MapBackendMetadata, MapSourceSpec
 
 from .drag_cursor import DragCursorManager
 from .map_renderer import CityAnnotation
 
-try:  # pragma: no cover - availability depends on the user's PySide6 package.
-    from PySide6.QtWebChannel import QWebChannel
-    from PySide6.QtWebEngineWidgets import QWebEngineView
-except Exception:  # noqa: BLE001 - handled as a graceful runtime fallback.
-    QWebChannel = None  # type: ignore[assignment]
-    QWebEngineView = None  # type: ignore[assignment]
-
 
 TILE_SIZE = 256
 MERCATOR_LAT_BOUND = 85.05112878
+_MAP_OPAQUE_BACKGROUND = "#d9e4ea"
+_ATTRIBUTION_BG = QColor(255, 255, 255, 220)
+_ATTRIBUTION_FG = QColor(55, 65, 75)
 
 
 @dataclass(frozen=True)
@@ -34,30 +43,25 @@ class LeafletTileSource:
     label: str
     url_template: str
     attribution: str
+    subdomains: str = "abc"
     max_zoom: int = 19
 
 
-_CARTO_ATTRIBUTION = (
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-    'contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-)
-_OSM_ATTRIBUTION = (
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> '
-    "contributors"
-)
 LEAFLET_TILE_SOURCES: dict[str, LeafletTileSource] = {
     "carto_voyager": LeafletTileSource(
         label="CARTO Voyager",
         url_template=(
-            "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+            "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
         ),
-        attribution=_CARTO_ATTRIBUTION,
+        attribution="OpenStreetMap contributors / CARTO",
+        subdomains="abcd",
         max_zoom=20,
     ),
     "osm_standard": LeafletTileSource(
         label="OpenStreetMap",
         url_template="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        attribution=_OSM_ATTRIBUTION,
+        attribution="OpenStreetMap contributors",
+        subdomains="abc",
         max_zoom=19,
     ),
 }
@@ -89,20 +93,8 @@ def normalized_to_lonlat(x: float, y: float) -> tuple[float, float]:
     return lon, lat
 
 
-class _LeafletBridge(QObject):
-    """Receive camera updates from the Leaflet page."""
-
-    def __init__(self, owner: "LeafletOnlineMapWidget") -> None:
-        super().__init__(owner)
-        self._owner = owner
-
-    @Slot(float, float, float)
-    def cameraChanged(self, lon: float, lat: float, zoom: float) -> None:
-        self._owner._handle_js_camera_changed(lon, lat, zoom)
-
-
 class LeafletOnlineMapWidget(QWidget):
-    """Render a no-key online map through Leaflet and public raster tiles."""
+    """Render a no-key online map with Qt-managed raster tile loading."""
 
     viewChanged = Signal(float, float, float)
     panned = Signal(QPointF)
@@ -127,40 +119,49 @@ class LeafletOnlineMapWidget(QWidget):
     ) -> None:
         super().__init__(parent)
         del tile_root, style_path
-        self.setObjectName("LeafletOnlineMapWidget")
+        if not self.objectName():
+            self.setObjectName("OnlineRasterMapWidget")
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
+        self.setAutoFillBackground(True)
+        palette = QPalette(self.palette())
+        palette.setColor(QPalette.ColorRole.Window, QColor(_MAP_OPAQUE_BACKGROUND))
+        self.setPalette(palette)
+        self.setStyleSheet(
+            f"QWidget#{self.objectName()} {{ background-color: {_MAP_OPAQUE_BACKGROUND}; border: none; }}"
+        )
         self.setMouseTracking(True)
         self.setMinimumSize(640, 480)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         source_kind = map_source.kind if map_source is not None else "carto_voyager"
-        self._tile_source = LEAFLET_TILE_SOURCES.get(source_kind, LEAFLET_TILE_SOURCES["carto_voyager"])
-
+        self._tile_source = LEAFLET_TILE_SOURCES.get(
+            source_kind,
+            LEAFLET_TILE_SOURCES["carto_voyager"],
+        )
         self._zoom = float(self.BACKEND_METADATA.min_zoom)
         self._min_zoom = float(self.BACKEND_METADATA.min_zoom)
         self._max_zoom = float(min(self.BACKEND_METADATA.max_zoom, self._tile_source.max_zoom))
         self._default_zoom = float(self.BACKEND_METADATA.min_zoom)
         self._center_x = 0.5
         self._center_y = 0.5
-        self._web_ready = False
-        self._syncing_from_js = False
         self._dragging = False
         self._last_mouse_pos = QPointF()
         self._drag_cursor = DragCursorManager()
-        self._web_view: QWidget | None = None
-        self._channel: QObject | None = None
+        self._tiles: dict[tuple[int, int, int], QPixmap | None] = {}
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        self._layout = layout
-
-        if QWebEngineView is None or QWebChannel is None:
-            self._show_status(
-                "Online maps require PySide6 QtWebEngine. Install a PySide6 build "
-                "that includes QtWebEngineWidgets to use no-key online maps."
-            )
-        else:
-            self._create_web_map()
+        self._network = QNetworkAccessManager(self)
+        self._network.finished.connect(self._handle_tile_reply)
+        cache = QNetworkDiskCache(self)
+        cache_dir = (
+            Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation))
+            / "online-map-tiles"
+            / source_kind
+        )
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache.setCacheDirectory(str(cache_dir))
+        self._network.setCache(cache)
 
     @property
     def zoom(self) -> float:
@@ -172,7 +173,7 @@ class LeafletOnlineMapWidget(QWidget):
             return
         self._zoom = zoom
         self._wrap_center()
-        self._sync_map_camera()
+        self.update()
         self._emit_view_change()
 
     def reset_view(self) -> None:
@@ -180,7 +181,7 @@ class LeafletOnlineMapWidget(QWidget):
         self._center_y = 0.5
         self._zoom = self._default_zoom
         self._wrap_center()
-        self._sync_map_camera()
+        self.update()
         self._emit_view_change()
 
     def pan_by_pixels(self, delta_x: float, delta_y: float) -> None:
@@ -188,7 +189,7 @@ class LeafletOnlineMapWidget(QWidget):
         self._center_x -= float(delta_x) / world_size
         self._center_y -= float(delta_y) / world_size
         self._wrap_center()
-        self._sync_map_camera()
+        self.update()
         self.panned.emit(QPointF(float(delta_x), float(delta_y)))
         self._emit_view_change()
 
@@ -197,15 +198,9 @@ class LeafletOnlineMapWidget(QWidget):
 
     def shutdown(self) -> None:
         self._reset_drag_cursor()
-        if self._web_view is not None:
-            page = getattr(self._web_view, "page", lambda: None)()
-            if page is not None:
-                page.setWebChannel(None)
 
     def request_full_update(self) -> None:
         self.update()
-        if self._web_view is not None:
-            self._web_view.update()
 
     def map_backend_metadata(self) -> MapBackendMetadata:
         return self.BACKEND_METADATA
@@ -237,7 +232,7 @@ class LeafletOnlineMapWidget(QWidget):
             return
         self._center_x, self._center_y = normalized
         self._wrap_center()
-        self._sync_map_camera()
+        self.update()
         self._emit_view_change()
 
     def focus_on(self, lon: float, lat: float, zoom_delta: float = 1.0) -> None:
@@ -253,7 +248,7 @@ class LeafletOnlineMapWidget(QWidget):
         return None
 
     def event_target(self) -> QWidget:
-        return self._web_view if isinstance(self._web_view, QWidget) else self
+        return self
 
     def closeEvent(self, event: QCloseEvent) -> None:  # type: ignore[override]
         self.shutdown()
@@ -262,13 +257,20 @@ class LeafletOnlineMapWidget(QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._wrap_center()
-        self._sync_map_camera()
+        self.update()
         self._emit_view_change()
 
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        del event
+        painter = QPainter(self)
+        try:
+            painter.fillRect(self.rect(), QColor(_MAP_OPAQUE_BACKGROUND))
+            self._paint_tiles(painter)
+            self._paint_attribution(painter)
+        finally:
+            painter.end()
+
     def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
-        if self._web_view is not None:
-            super().mousePressEvent(event)
-            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
             self._last_mouse_pos = event.position()
@@ -279,9 +281,6 @@ class LeafletOnlineMapWidget(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
-        if self._web_view is not None:
-            super().mouseMoveEvent(event)
-            return
         if self._dragging and event.buttons() & Qt.MouseButton.LeftButton:
             current_pos = event.position()
             delta = current_pos - self._last_mouse_pos
@@ -293,9 +292,6 @@ class LeafletOnlineMapWidget(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
-        if self._web_view is not None:
-            super().mouseReleaseEvent(event)
-            return
         if event.button() == Qt.MouseButton.LeftButton and self._dragging:
             self._dragging = False
             self._reset_drag_cursor()
@@ -305,72 +301,149 @@ class LeafletOnlineMapWidget(QWidget):
         super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # type: ignore[override]
-        if self._web_view is not None:
-            super().wheelEvent(event)
-            return
         delta = event.angleDelta().y()
         if delta == 0:
             super().wheelEvent(event)
             return
-        self.set_zoom(self._zoom * (1.0 + delta / 1200.0))
+
+        zoom_factor = 1.0 + delta / 1200.0
+        new_zoom = max(self._min_zoom, min(self._max_zoom, self._zoom * zoom_factor))
+        if abs(new_zoom - self._zoom) <= 1e-6:
+            event.accept()
+            return
+
+        world_size = self._world_size()
+        center_px = self._center_x * world_size
+        center_py = self._center_y * world_size
+        view_top_left_x = center_px - self.width() / 2.0
+        view_top_left_y = center_py - self.height() / 2.0
+
+        mouse_world_x = (view_top_left_x + event.position().x()) / world_size
+        mouse_world_y = (view_top_left_y + event.position().y()) / world_size
+
+        self._zoom = new_zoom
+        new_world_size = self._world_size()
+        self._center_x = (
+            mouse_world_x * new_world_size - event.position().x() + self.width() / 2.0
+        ) / new_world_size
+        self._center_y = (
+            mouse_world_y * new_world_size - event.position().y() + self.height() / 2.0
+        ) / new_world_size
+        self._wrap_center()
+        self.update()
+        self._emit_view_change()
         event.accept()
 
-    def _show_status(self, message: str) -> None:
-        label = QLabel(message, self)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        label.setStyleSheet(
-            "background: #eef2f5; color: #334; font-size: 14px; padding: 24px;"
+    def _paint_tiles(self, painter: QPainter) -> None:
+        z = int(max(self._min_zoom, min(self._max_zoom, round(self._zoom))))
+        tile_count = 2**z
+        world_size_at_z = float(TILE_SIZE * tile_count)
+        scale = 2.0 ** (self._zoom - z)
+        draw_size = TILE_SIZE * scale
+        center_x = self._center_x * world_size_at_z
+        center_y = self._center_y * world_size_at_z
+        left = center_x - self.width() / (2.0 * scale)
+        top = center_y - self.height() / (2.0 * scale)
+        right = center_x + self.width() / (2.0 * scale)
+        bottom = center_y + self.height() / (2.0 * scale)
+
+        start_x = math.floor(left / TILE_SIZE)
+        end_x = math.floor(right / TILE_SIZE)
+        start_y = max(0, math.floor(top / TILE_SIZE))
+        end_y = min(tile_count - 1, math.floor(bottom / TILE_SIZE))
+
+        for y in range(start_y, end_y + 1):
+            for raw_x in range(start_x, end_x + 1):
+                x = raw_x % tile_count
+                screen_x = self.width() / 2.0 + (raw_x * TILE_SIZE - center_x) * scale
+                screen_y = self.height() / 2.0 + (y * TILE_SIZE - center_y) * scale
+                key = (z, x, y)
+                pixmap = self._tiles.get(key)
+                if pixmap is None:
+                    self._request_tile(key)
+                    self._paint_tile_placeholder(painter, screen_x, screen_y, draw_size)
+                elif not pixmap.isNull():
+                    painter.drawPixmap(
+                        int(round(screen_x)),
+                        int(round(screen_y)),
+                        int(math.ceil(draw_size)),
+                        int(math.ceil(draw_size)),
+                        pixmap,
+                    )
+
+    def _paint_tile_placeholder(
+        self,
+        painter: QPainter,
+        x: float,
+        y: float,
+        size: float,
+    ) -> None:
+        painter.fillRect(
+            int(round(x)),
+            int(round(y)),
+            int(math.ceil(size)),
+            int(math.ceil(size)),
+            QColor(_MAP_OPAQUE_BACKGROUND),
         )
-        self._layout.addWidget(label, 1)
-
-    def _create_web_map(self) -> None:
-        assert QWebEngineView is not None
-        assert QWebChannel is not None
-        web_view = QWebEngineView(self)
-        web_view.setObjectName("LeafletOnlineWebView")
-        self._web_view = web_view
-        self._layout.addWidget(web_view, 1)
-
-        bridge = _LeafletBridge(self)
-        channel = QWebChannel(self)
-        channel.registerObject("bridge", bridge)
-        web_view.page().setWebChannel(channel)
-        self._channel = channel
-
-        web_view.loadFinished.connect(self._handle_load_finished)
-        web_view.setHtml(self._html(self._tile_source), QUrl("https://localhost/"))
-
-    def _handle_load_finished(self, ok: bool) -> None:
-        self._web_ready = bool(ok)
-        if ok:
-            self._sync_map_camera()
-
-    def _handle_js_camera_changed(self, lon: float, lat: float, zoom: float) -> None:
-        normalized = lonlat_to_normalized(lon, lat)
-        if normalized is None:
-            return
-        self._syncing_from_js = True
-        try:
-            self._center_x, self._center_y = normalized
-            self._zoom = max(self._min_zoom, min(self._max_zoom, float(zoom)))
-            self._wrap_center()
-            self._emit_view_change()
-            self.panFinished.emit()
-        finally:
-            self._syncing_from_js = False
-
-    def _sync_map_camera(self) -> None:
-        if not self._web_ready or self._web_view is None or self._syncing_from_js:
-            return
-        lon, lat = normalized_to_lonlat(self._center_x, self._center_y)
-        script = (
-            "window.iphotoSetCamera && window.iphotoSetCamera("
-            f"{json.dumps(lat)}, {json.dumps(lon)}, {json.dumps(self._zoom)});"
+        painter.setPen(QPen(QColor(180, 195, 205), 1))
+        painter.drawRect(
+            int(round(x)),
+            int(round(y)),
+            int(math.ceil(size)),
+            int(math.ceil(size)),
         )
-        page = getattr(self._web_view, "page", lambda: None)()
-        if page is not None:
-            page.runJavaScript(script)
+
+    def _paint_attribution(self, painter: QPainter) -> None:
+        text = self._tile_source.attribution
+        font = QFont()
+        font.setPointSize(8)
+        painter.setFont(font)
+        metrics = QFontMetrics(font)
+        rect = metrics.boundingRect(text).adjusted(-6, -3, 6, 3)
+        rect.moveBottomRight(self.rect().bottomRight())
+        painter.fillRect(rect, _ATTRIBUTION_BG)
+        painter.setPen(_ATTRIBUTION_FG)
+        painter.drawText(rect.adjusted(3, 1, -3, -1), Qt.AlignmentFlag.AlignCenter, text)
+
+    def _request_tile(self, key: tuple[int, int, int]) -> None:
+        if key in self._tiles:
+            return
+        z, x, y = key
+        self._tiles[key] = None
+        url = self._tile_url(z, x, y)
+        request = QNetworkRequest(QUrl(url))
+        request.setRawHeader(QByteArray(b"User-Agent"), QByteArray(b"iPhotron/online-map"))
+        reply = self._network.get(request)
+        reply.setProperty("tile_key", key)
+
+    def _handle_tile_reply(self, reply) -> None:
+        key = reply.property("tile_key")
+        if not isinstance(key, tuple) or len(key) != 3:
+            reply.deleteLater()
+            return
+        if reply.error():
+            self._tiles.pop(key, None)
+            reply.deleteLater()
+            self.update()
+            return
+        data = bytes(reply.readAll())
+        image = QImage()
+        if image.loadFromData(data):
+            self._tiles[key] = QPixmap.fromImage(image)
+        else:
+            self._tiles.pop(key, None)
+        reply.deleteLater()
+        self.update()
+
+    def _tile_url(self, z: int, x: int, y: int) -> str:
+        subdomains = self._tile_source.subdomains or "a"
+        subdomain = subdomains[(x + y) % len(subdomains)]
+        return (
+            self._tile_source.url_template.replace("{s}", subdomain)
+            .replace("{z}", str(z))
+            .replace("{x}", str(x))
+            .replace("{y}", str(y))
+        )
 
     def _emit_view_change(self) -> None:
         self.viewChanged.emit(float(self._center_x), float(self._center_y), float(self._zoom))
@@ -393,109 +466,6 @@ class LeafletOnlineMapWidget(QWidget):
             self._center_y = 0.5
             return
         self._center_y = min(max(self._center_y, half_view_ratio), 1.0 - half_view_ratio)
-
-    @staticmethod
-    def _html(source: LeafletTileSource) -> str:
-        return f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="initial-scale=1.0, width=device-width">
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  >
-  <style>
-    html, body, #map {{
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #eef2f5;
-    }}
-    #error {{
-      display: none;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      padding: 24px;
-      box-sizing: border-box;
-      color: #334;
-      font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      text-align: center;
-    }}
-  </style>
-  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-</head>
-<body>
-  <div id="map"></div>
-  <div id="error">Online map failed to load. Check the network connection.</div>
-  <script>
-    const TILE_URL = {json.dumps(source.url_template)};
-    const ATTRIBUTION = {json.dumps(source.attribution)};
-    const MAX_ZOOM = {json.dumps(source.max_zoom)};
-    let bridge = null;
-    let map = null;
-    let suppressCameraEvent = false;
-
-    function showError() {{
-      document.getElementById("map").style.display = "none";
-      document.getElementById("error").style.display = "flex";
-    }}
-
-    function syncCamera() {{
-      if (!bridge || !map || suppressCameraEvent) {{
-        return;
-      }}
-      const center = map.getCenter();
-      bridge.cameraChanged(center.lng, center.lat, map.getZoom());
-    }}
-
-    window.iphotoSetCamera = function(latitude, longitude, zoom) {{
-      if (!map) {{
-        return;
-      }}
-      suppressCameraEvent = true;
-      map.setView([latitude, longitude], zoom, {{ animate: false }});
-      window.setTimeout(function() {{
-        suppressCameraEvent = false;
-      }}, 120);
-    }};
-
-    try {{
-      new QWebChannel(qt.webChannelTransport, function(channel) {{
-        bridge = channel.objects.bridge;
-      }});
-    }} catch (error) {{
-      console.warn("Qt WebChannel is unavailable", error);
-    }}
-
-    try {{
-      if (!window.L) {{
-        throw new Error("Leaflet did not load");
-      }}
-      map = L.map("map", {{
-        zoomControl: true,
-        attributionControl: true,
-        worldCopyJump: true,
-        preferCanvas: true
-      }}).setView([0, 0], 2);
-      L.tileLayer(TILE_URL, {{
-        attribution: ATTRIBUTION,
-        maxZoom: MAX_ZOOM,
-        subdomains: "abcd",
-        detectRetina: true
-      }}).addTo(map);
-      map.on("moveend zoomend", syncCamera);
-    }} catch (error) {{
-      console.error(error);
-      showError();
-    }}
-  </script>
-</body>
-</html>"""
 
 
 __all__ = [
