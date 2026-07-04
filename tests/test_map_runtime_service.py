@@ -123,7 +123,7 @@ def test_map_runtime_service_prefers_gaode_when_online_map_is_reachable(
 
     capabilities = SessionMapRuntimeService(tmp_path).capabilities()
 
-    assert choose_default_calls == []
+    assert choose_default_calls == [tmp_path]
     assert capabilities.preferred_backend == "gaode_standard"
     assert capabilities.display_available is True
-    assert capabilities.osmand_extension_available is False
+    assert capabilities.osmand_extension_available is True

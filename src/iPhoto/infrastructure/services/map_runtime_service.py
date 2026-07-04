@@ -99,15 +99,14 @@ class SessionMapRuntimeService(MapRuntimePort):
         ):
             native_widget_available, _ = probe_native_widget_runtime(self._package_root)
 
-        if _prefer_online_map() and has_usable_gaode_online_map():
-            default_source = MapSourceSpec.gaode_standard()
-        else:
-            default_source = choose_default_map_source(
-                self._package_root,
-                use_opengl=python_gl_available,
-                native_widget_runtime_available=native_widget_available,
-            )
-        osmand_extension_available = default_source.kind == "osmand_obf"
+        offline_source = choose_default_map_source(
+            self._package_root,
+            use_opengl=python_gl_available,
+            native_widget_runtime_available=native_widget_available,
+        )
+        online_map_available = _prefer_online_map() and has_usable_gaode_online_map()
+        default_source = MapSourceSpec.gaode_standard() if online_map_available else offline_source
+        osmand_extension_available = offline_source.kind == "osmand_obf"
         location_search_available = has_usable_osmand_search_extension(self._package_root)
 
         if default_source.kind == "gaode_standard":
