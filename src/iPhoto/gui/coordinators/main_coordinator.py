@@ -22,6 +22,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QAction
 
 from iPhoto.application.contracts.runtime_entry_contract import RuntimeEntryContract
+from iPhoto.application.dtos import GeotaggedAsset
 from iPhoto.config import RECENTLY_DELETED_DIR_NAME
 from iPhoto.i18n import tr
 from iPhoto.gui.coordinators.edit_coordinator import EditCoordinator
@@ -542,6 +543,7 @@ class MainCoordinator(QObject):
         if hasattr(ui, "map_view") and ui.map_view is not None:
             ui.map_view.assetActivated.connect(self._on_map_asset_activated)
             ui.map_view.clusterActivated.connect(self._on_cluster_activated)
+            ui.map_view.showAllRequested.connect(self._handle_map_show_all_requested)
 
         # Map feature buttons (in sidebar, under Location)
         if hasattr(ui, "sidebar"):
@@ -812,10 +814,35 @@ class MainCoordinator(QObject):
         lon = gps.get("lon")
         if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
             return
-        # Remember the current photo so we can return to it.
+        rel = presentation.info.get("rel")
+        if not isinstance(rel, str) or not rel:
+            rel = presentation.path.name
+        asset = GeotaggedAsset(
+            library_relative=rel,
+            album_relative=Path(rel).name,
+            absolute_path=presentation.path,
+            album_path=presentation.path.parent,
+            asset_id=presentation.asset_id or rel,
+            latitude=float(lat),
+            longitude=float(lon),
+            is_image=not presentation.is_video,
+            is_video=bool(presentation.is_video),
+            still_image_time=None,
+            timestamp=None,
+            duration=None,
+            location_name=presentation.location,
+            live_photo_group_id=None,
+            live_partner_rel=(
+                presentation.live_motion_rel.as_posix()
+                if presentation.live_motion_rel is not None
+                else None
+            ),
+        )
+        # Remember the current photo so the header back button can return to it.
         self._return_from_map_path = presentation.path
-        # Navigate to Location view.
-        self._navigation.open_location_view()
+        self._gallery_vm.open_location_map_focused(asset)
+        if hasattr(self._window.ui, "map_view"):
+            self._window.ui.map_view.set_focused_asset_mode(True)
         # Show back button in header immediately.
         self._add_header_back_button()
         # Highlight sidebar immediately.
@@ -826,6 +853,11 @@ class MainCoordinator(QObject):
             pass
         # Center map on photo location — retry quickly until native GL widget is ready.
         QTimer.singleShot(0, lambda: self._try_focus_map(lat, lon, 0))
+
+    def _handle_map_show_all_requested(self) -> None:
+        self._gallery_vm.show_all_location_assets()
+        if hasattr(self._window.ui, "map_view"):
+            self._window.ui.map_view.set_focused_asset_mode(False)
 
     _FOCUS_MAP_MAX_RETRIES = 30
 

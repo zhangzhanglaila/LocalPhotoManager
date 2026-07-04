@@ -19,7 +19,7 @@ from PySide6.QtGui import (
     QPixmap,
     QPalette,
 )
-from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ....application.ports import MapInteractionServicePort, MapRuntimePort
 from ....application.services.map_interaction_service import LibraryMapInteractionService
@@ -308,6 +308,9 @@ class PhotoMapView(QWidget):
     This enables O(1) gallery opening without additional database lookups.
     """
 
+    showAllRequested = Signal()
+    """Signal emitted when focused map mode should return to all map assets."""
+
     def __init__(
         self,
         parent: Optional[QWidget] = None,
@@ -450,8 +453,32 @@ class PhotoMapView(QWidget):
         selector.currentIndexChanged.connect(self._handle_map_source_changed)
         row.addWidget(selector)
         row.addStretch(1)
+        show_all = QPushButton("显示所有照片", bar)
+        show_all.setCursor(Qt.CursorShape.PointingHandCursor)
+        show_all.setVisible(False)
+        show_all.setStyleSheet(
+            "QPushButton {"
+            " padding: 4px 10px;"
+            " color: #1f2933;"
+            " background: #ffffff;"
+            " border: 1px solid #aeb8c2;"
+            " border-radius: 4px;"
+            " font-size: 12px;"
+            "}"
+            "QPushButton:hover { background: #eef2f5; border-color: #7d8b99; }"
+        )
+        show_all.clicked.connect(self.showAllRequested.emit)
+        row.addWidget(show_all)
         self._map_source_selector = selector
+        self._show_all_button = show_all
         return bar
+
+    def set_focused_asset_mode(self, enabled: bool) -> None:
+        """Show or hide controls for a map focused on one detail photo."""
+
+        button = getattr(self, "_show_all_button", None)
+        if button is not None:
+            button.setVisible(bool(enabled))
 
     def set_map_interaction_service(
         self,

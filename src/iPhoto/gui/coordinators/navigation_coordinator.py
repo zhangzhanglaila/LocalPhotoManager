@@ -192,6 +192,11 @@ class NavigationCoordinator(QObject):
     def open_location_view(self) -> None:
         self._reset_playback()
         self._gallery_vm.open_location_map()
+        map_view = self._router.map_view()
+        if map_view is not None:
+            set_focused = getattr(map_view, "set_focused_asset_mode", None)
+            if callable(set_focused):
+                set_focused(False)
 
     def open_people_view(self) -> None:
         self._reset_playback()
@@ -272,6 +277,9 @@ class NavigationCoordinator(QObject):
     def _handle_map_assets_changed(self, assets: list, root: Path) -> None:
         map_view = self._router.map_view()
         if map_view is not None:
+            set_focused = getattr(map_view, "set_focused_asset_mode", None)
+            if callable(set_focused):
+                set_focused(self._gallery_vm.is_location_map_focused())
             map_view.set_assets(assets, root)
 
     def _handle_cluster_gallery_mode_changed(self, enabled: bool) -> None:

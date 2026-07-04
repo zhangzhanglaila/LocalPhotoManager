@@ -57,6 +57,7 @@ class GalleryViewModel(BaseViewModel):
         self._people_cluster_id: str | None = None
         self._cluster_gallery_opened_at: float = 0.0
         self._checked_album_paths: list[str] | None = None
+        self._focused_location_rel: str | None = None
 
         self.current_section = ObservableProperty("gallery")
         self.static_selection = ObservableProperty(None)
@@ -264,6 +265,7 @@ class GalleryViewModel(BaseViewModel):
             _logger.warning("open_location_map: library root is None")
             self.bind_library_requested.emit()
             return
+        self._focused_location_rel = None
         _logger.debug("open_location_map: root=%s", root)
         self.current_section.value = "location_map"
         self.static_selection.value = "Location"
@@ -287,6 +289,33 @@ class GalleryViewModel(BaseViewModel):
 
         _logger.debug("open_location_map: requesting fresh assets")
         self._request_location_assets(root)
+
+    def open_location_map_focused(self, asset: object) -> None:
+        root = self._context.library.root()
+        if root is None:
+            self.bind_library_requested.emit()
+            return
+        rel = getattr(asset, "library_relative", None)
+        if not isinstance(rel, str) or not rel:
+            return
+        self._focused_location_rel = Path(rel).as_posix()
+        self.current_section.value = "location_map"
+        self.static_selection.value = "Location"
+        self.active_root.value = root
+        self.current_query.value = None
+        self.current_direct_assets.value = None
+        self.can_return_to_map.value = False
+        self._clear_cluster_gallery_context()
+        self._location_session.set_mode("map")
+        self._location_session.upsert_asset(asset)
+        self.route_requested.emit("map")
+        self.map_assets_changed.emit([asset], root)
+
+    def show_all_location_assets(self) -> None:
+        self.open_location_map()
+
+    def is_location_map_focused(self) -> bool:
+        return bool(self._focused_location_rel)
 
     def open_location_asset(self, rel: str) -> None:
         root = self._context.library.root()
@@ -471,7 +500,10 @@ class GalleryViewModel(BaseViewModel):
                 changed = self._location_session.remove_asset(rel) or changed
 
         if changed and self._location_session.mode == "map":
-            self.map_assets_changed.emit(self._location_session.full_assets(), root)
+            assets = self._focused_location_assets()
+            if assets is None:
+                assets = self._location_session.full_assets()
+            self.map_assets_changed.emit(assets, root)
 
     def handle_location_scan_finished(self, scan_root: Path, success: bool) -> None:
         if not success:
@@ -516,9 +548,11 @@ class GalleryViewModel(BaseViewModel):
             _logger.warning("_handle_location_assets_loaded: accept_loaded returned False")
             return
         if self._location_session.mode == "map":
-            full = self._location_session.full_assets()
-            _logger.debug("_handle_location_assets_loaded: emitting map_assets_changed, count=%d", len(full))
-            self.map_assets_changed.emit(full, root)
+            assets = self._focused_location_assets()
+            if assets is None:
+                assets = self._location_session.full_assets()
+            _logger.debug("_handle_location_assets_loaded: emitting map_assets_changed, count=%d", len(assets))
+            self.map_assets_changed.emit(assets, root)
 
     def _filter_assets_by_checked_paths(self, assets: list) -> list:
         """Filter assets to only include those under checked root paths."""
@@ -722,11 +756,19 @@ class GalleryViewModel(BaseViewModel):
     def _clear_location_context(self) -> None:
         self._location_session.set_mode("inactive")
         self.can_return_to_map.value = False
+        self._focused_location_rel = None
 
     def _clear_cluster_gallery_context(self) -> None:
         self._cluster_gallery_origin = None
         self._people_cluster_kind = None
         self._people_cluster_id = None
+
+    def _focused_location_assets(self) -> list | None:
+        rel = self._focused_location_rel
+        if not rel:
+            return None
+        asset = self._location_session.resolve_asset(rel)
+        return [asset] if asset is not None else []
 
     def _album_path_for_query(self, path: Path) -> Optional[str]:
         library_root = self._context.library.root()
