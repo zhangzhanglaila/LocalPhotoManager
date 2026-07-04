@@ -42,6 +42,9 @@ _PRELOADED_QT_LIBRARIES: list[ctypes.CDLL] = []
 _NATIVE_WIDGET_RUNTIME_PROBE: dict[Path, tuple[bool, str | None]] = {}
 _LOGGER = logging.getLogger(__name__)
 _MAP_OPAQUE_BACKGROUND = "#88a8c2"
+_DEFAULT_CENTER_LON = 104.1954
+_DEFAULT_CENTER_LAT = 35.8617
+_DEFAULT_ZOOM = 4.0
 
 
 @dataclass(frozen=True)
@@ -402,6 +405,7 @@ class NativeOsmAndWidget(QWidget):
             tile_scheme="xyz",
             fetch_max_zoom=max(0, int(max(max_zoom, min_zoom))),
         )
+        self._default_zoom = min(max(_DEFAULT_ZOOM, self._metadata.min_zoom), self._metadata.max_zoom)
 
         self._last_view_state: tuple[float, float, float] | None = None
         self._state_timer = QTimer(self)
@@ -413,6 +417,7 @@ class NativeOsmAndWidget(QWidget):
         self._deferred_view_sync_timer.setInterval(0)
         self._deferred_view_sync_timer.timeout.connect(self._emit_view_change)
         self._sync_native_widget_geometry()
+        self._apply_default_view()
         self._emit_view_change()
 
     @property
@@ -430,7 +435,7 @@ class NativeOsmAndWidget(QWidget):
     def reset_view(self) -> None:
         if self._is_shutdown():
             return
-        self._bridge.library.osmand_widget_reset_view(self._native_pointer)
+        self._apply_default_view()
         self._emit_view_change()
 
     def pan_by_pixels(self, delta_x: float, delta_y: float) -> None:
@@ -462,6 +467,19 @@ class NativeOsmAndWidget(QWidget):
         self.center_on(lon, lat)
         if zoom_delta:
             self.set_zoom(self.zoom + float(zoom_delta))
+
+    def _apply_default_view(self) -> None:
+        if self._is_shutdown():
+            return
+        self._bridge.library.osmand_widget_set_center_lonlat(
+            self._native_pointer,
+            _DEFAULT_CENTER_LON,
+            _DEFAULT_CENTER_LAT,
+        )
+        self._bridge.library.osmand_widget_set_zoom(
+            self._native_pointer,
+            float(self._default_zoom),
+        )
 
     def shutdown(self) -> None:
         if self._shutdown:

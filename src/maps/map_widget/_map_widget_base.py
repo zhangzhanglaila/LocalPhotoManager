@@ -101,6 +101,9 @@ class MapWidgetController:
     TILE_SIZE = 256
     DEFAULT_MIN_ZOOM = 2.0
     DEFAULT_MAX_ZOOM = 19.0
+    DEFAULT_CENTER_LON = 104.1954
+    DEFAULT_CENTER_LAT = 35.8617
+    DEFAULT_ZOOM = 4.0
 
     def __init__(
         self,
@@ -199,12 +202,16 @@ class MapWidgetController:
         self._update_timer.setInterval(16)
         self._update_timer.timeout.connect(self._widget.update)
 
-        self._center_x = 0.5
-        self._center_y = 0.5
         self._min_zoom = float(self._backend_metadata.min_zoom)
         self._max_zoom = float(self._backend_metadata.max_zoom)
-        self._default_zoom = min(max(2.0, self._min_zoom), self._max_zoom)
+        self._default_zoom = min(max(self.DEFAULT_ZOOM, self._min_zoom), self._max_zoom)
         self._zoom = self._default_zoom
+        self._default_center_x, self._default_center_y = self._lonlat_to_normalized(
+            self.DEFAULT_CENTER_LON,
+            self.DEFAULT_CENTER_LAT,
+        )
+        self._center_x = self._default_center_x
+        self._center_y = self._default_center_y
         self._device_scale = 1.0
         self._cities: list[CityAnnotation] = []
         self._tile_manager.set_device_scale(self._device_pixel_ratio())
@@ -237,8 +244,8 @@ class MapWidgetController:
     def reset_view(self) -> None:
         """Re-centre the map and restore the default zoom level."""
 
-        self._center_x = 0.5
-        self._center_y = 0.5
+        self._center_x = self._default_center_x
+        self._center_y = self._default_center_y
         self.set_zoom(self._default_zoom)
         self._widget.update()
         self._notify_view_changed()
@@ -601,6 +608,16 @@ class MapWidgetController:
         lon = wrapped_x * 360.0 - 180.0
         lat = math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * clamped_y))))
         return lon, lat
+
+    @staticmethod
+    def _lonlat_to_normalized(lon: float, lat: float) -> tuple[float, float]:
+        """Convert lon/lat into normalized Web Mercator coordinates."""
+
+        lat = max(min(float(lat), 85.05112878), -85.05112878)
+        x = (float(lon) + 180.0) / 360.0
+        sin_lat = math.sin(math.radians(lat))
+        y = 0.5 - math.log((1 + sin_lat) / (1 - sin_lat)) / (4 * math.pi)
+        return x, y
 
 
 __all__ = ["MapWidgetBase", "MapWidgetController", "SupportsMapViewport"]

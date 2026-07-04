@@ -180,7 +180,9 @@ class LeafletOnlineMapWidget(QWidget):
             _DEFAULT_ONLINE_CENTER_LON,
             _DEFAULT_ONLINE_CENTER_LAT,
         )
-        self._center_x, self._center_y = default_center or (0.5, 0.5)
+        self._default_center_x, self._default_center_y = default_center or (0.5, 0.5)
+        self._center_x = self._default_center_x
+        self._center_y = self._default_center_y
         self._dragging = False
         self._last_mouse_pos = QPointF()
         self._drag_cursor = DragCursorManager()
@@ -212,8 +214,8 @@ class LeafletOnlineMapWidget(QWidget):
         self._emit_view_change()
 
     def reset_view(self) -> None:
-        self._center_x = 0.5
-        self._center_y = 0.5
+        self._center_x = self._default_center_x
+        self._center_y = self._default_center_y
         self._zoom = self._default_zoom
         self._wrap_center()
         self.update()
