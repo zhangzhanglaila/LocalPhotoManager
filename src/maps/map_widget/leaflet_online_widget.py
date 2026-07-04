@@ -48,6 +48,26 @@ class LeafletTileSource:
 
 
 LEAFLET_TILE_SOURCES: dict[str, LeafletTileSource] = {
+    "gaode_standard": LeafletTileSource(
+        label="Gaode Standard",
+        url_template=(
+            "https://webrd0{s}.is.autonavi.com/appmaptile?"
+            "lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
+        ),
+        attribution="AutoNavi / Gaode",
+        subdomains="1234",
+        max_zoom=18,
+    ),
+    "esri_streets": LeafletTileSource(
+        label="Esri World Street Map",
+        url_template=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+        ),
+        attribution="Esri World Street Map",
+        subdomains="",
+        max_zoom=19,
+    ),
     "carto_voyager": LeafletTileSource(
         label="CARTO Voyager",
         url_template=(

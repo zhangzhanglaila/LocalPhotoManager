@@ -152,7 +152,12 @@ def choose_map_widget_backend(
         resolved_map_source = _resolve_map_source(map_source, package_root)
         if resolved_map_source.kind == "apple_mapkit":
             return AppleMapKitWidget, resolved_map_source, "apple_mapkit"
-        if resolved_map_source.kind in {"carto_voyager", "osm_standard"}:
+        if resolved_map_source.kind in {
+            "gaode_standard",
+            "esri_streets",
+            "carto_voyager",
+            "osm_standard",
+        }:
             return LeafletOnlineMapWidget, resolved_map_source, resolved_map_source.kind
         if resolved_map_source.kind == "osmand_obf":
             if native_widget_usable:

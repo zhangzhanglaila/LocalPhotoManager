@@ -50,9 +50,18 @@ logger = getLogger(__name__)
 _MAPS_PACKAGE_ROOT = Path(__file__).resolve().parents[4] / "maps"
 _MAP_OPAQUE_BACKGROUND = "#88a8c2"
 _MAP_SOURCE_LOCAL = "local"
+_MAP_SOURCE_GAODE = "gaode_standard"
+_MAP_SOURCE_ESRI = "esri_streets"
 _MAP_SOURCE_CARTO = "carto_voyager"
 _MAP_SOURCE_OSM = "osm_standard"
 _MAP_SOURCE_APPLE = "apple_mapkit"
+_ONLINE_MAP_SOURCE_MODES = {
+    _MAP_SOURCE_APPLE,
+    _MAP_SOURCE_GAODE,
+    _MAP_SOURCE_ESRI,
+    _MAP_SOURCE_CARTO,
+    _MAP_SOURCE_OSM,
+}
 
 
 def _configure_opaque_map_container(
@@ -315,8 +324,7 @@ class PhotoMapView(QWidget):
         self._requested_map_source = map_source
         self._map_source_mode = (
             map_source.kind
-            if map_source is not None
-            and map_source.kind in {_MAP_SOURCE_APPLE, _MAP_SOURCE_CARTO, _MAP_SOURCE_OSM}
+            if map_source is not None and map_source.kind in _ONLINE_MAP_SOURCE_MODES
             else _MAP_SOURCE_LOCAL
         )
         self._map_runtime = map_runtime
@@ -419,6 +427,8 @@ class PhotoMapView(QWidget):
         row.addWidget(label)
         selector = QComboBox(bar)
         selector.addItem(tr("map.source_local"), _MAP_SOURCE_LOCAL)
+        selector.addItem(tr("map.source_gaode"), _MAP_SOURCE_GAODE)
+        selector.addItem(tr("map.source_esri"), _MAP_SOURCE_ESRI)
         selector.addItem(tr("map.source_carto"), _MAP_SOURCE_CARTO)
         selector.addItem(tr("map.source_osm"), _MAP_SOURCE_OSM)
         selector.addItem(tr("map.source_apple"), _MAP_SOURCE_APPLE)
@@ -663,6 +673,10 @@ class PhotoMapView(QWidget):
         self._map_widget.set_city_annotations(list(cities))
 
     def _active_map_source(self) -> MapSourceSpec | None:
+        if self._map_source_mode == _MAP_SOURCE_GAODE:
+            return MapSourceSpec.gaode_standard()
+        if self._map_source_mode == _MAP_SOURCE_ESRI:
+            return MapSourceSpec.esri_streets()
         if self._map_source_mode == _MAP_SOURCE_CARTO:
             return MapSourceSpec.carto_voyager()
         if self._map_source_mode == _MAP_SOURCE_OSM:
@@ -675,9 +689,7 @@ class PhotoMapView(QWidget):
         mode = self._map_source_selector.itemData(index)
         if mode not in {
             _MAP_SOURCE_LOCAL,
-            _MAP_SOURCE_CARTO,
-            _MAP_SOURCE_OSM,
-            _MAP_SOURCE_APPLE,
+            *_ONLINE_MAP_SOURCE_MODES,
         }:
             return
         if mode == self._map_source_mode:

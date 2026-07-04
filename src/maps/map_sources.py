@@ -133,6 +133,8 @@ class MapSourceSpec:
         "legacy_pbf",
         "osmand_obf",
         "apple_mapkit",
+        "gaode_standard",
+        "esri_streets",
         "carto_voyager",
         "osm_standard",
     ]
@@ -144,7 +146,13 @@ class MapSourceSpec:
     def resolved(self, package_root: Path) -> "MapSourceSpec":
         """Return a copy whose filesystem paths are absolute."""
 
-        if self.kind in {"apple_mapkit", "carto_voyager", "osm_standard"}:
+        if self.kind in {
+            "apple_mapkit",
+            "gaode_standard",
+            "esri_streets",
+            "carto_voyager",
+            "osm_standard",
+        }:
             return self
 
         data_path = _resolve_path(self.data_path, package_root)
@@ -194,6 +202,18 @@ class MapSourceSpec:
         """Return the online CARTO Voyager source backed by public raster tiles."""
 
         return cls(kind="carto_voyager", data_path="carto-voyager")
+
+    @classmethod
+    def gaode_standard(cls) -> "MapSourceSpec":
+        """Return the online Gaode standard source backed by public raster tiles."""
+
+        return cls(kind="gaode_standard", data_path="gaode-standard")
+
+    @classmethod
+    def esri_streets(cls) -> "MapSourceSpec":
+        """Return the online Esri streets source backed by public raster tiles."""
+
+        return cls(kind="esri_streets", data_path="esri-streets")
 
     @classmethod
     def osm_standard(cls) -> "MapSourceSpec":

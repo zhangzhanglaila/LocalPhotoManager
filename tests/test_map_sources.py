@@ -82,6 +82,8 @@ def test_default_map_source_falls_back_to_legacy_without_obf(tmp_path) -> None:
 def test_online_map_sources_do_not_resolve_to_local_files(tmp_path) -> None:
     sources = (
         (MapSourceSpec.apple_mapkit(), "apple_mapkit", "mapkit-js"),
+        (MapSourceSpec.gaode_standard(), "gaode_standard", "gaode-standard"),
+        (MapSourceSpec.esri_streets(), "esri_streets", "esri-streets"),
         (MapSourceSpec.carto_voyager(), "carto_voyager", "carto-voyager"),
         (MapSourceSpec.osm_standard(), "osm_standard", "osm-standard"),
     )
