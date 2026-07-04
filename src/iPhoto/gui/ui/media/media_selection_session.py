@@ -99,6 +99,9 @@ class MediaSelectionSession:
                 self._current_row = row
                 self.currentChanged.emit(row, self._current_source)
                 return
+            if self._current_source.exists():
+                self.currentChanged.emit(self._current_row, self._current_source)
+                return
         count = self._collection.count()
         if count <= 0:
             self._current_row = -1

@@ -86,6 +86,20 @@ def test_session_can_restore_current_item_by_path_after_reload() -> None:
     assert session.current_source() == current
 
 
+def test_session_keeps_existing_current_file_during_transient_reload(tmp_path) -> None:
+    current = tmp_path / "b.jpg"
+    current.write_bytes(b"")
+    session = MediaSelectionSession()
+    collection = _Collection([tmp_path / "a.jpg", current])
+    session.bind_collection(collection)
+    session.set_current_row(1)
+
+    collection.replace([tmp_path / "a.jpg", tmp_path / "c.jpg"])
+
+    assert session.current_row() == 1
+    assert session.current_source() == current
+
+
 def test_session_emits_restore_request_payload() -> None:
     session = MediaSelectionSession()
     emitted: list[MediaRestoreRequest] = []

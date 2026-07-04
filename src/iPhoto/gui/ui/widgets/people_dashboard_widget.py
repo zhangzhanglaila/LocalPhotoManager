@@ -128,7 +128,7 @@ class PeopleDashboardWidget(QWidget):
         self._load_pool = QThreadPool.globalInstance()
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
-        self._refresh_timer.setInterval(500)
+        self._refresh_timer.setInterval(2000)
         self._refresh_timer.timeout.connect(self._flush_pending_refresh)
 
         root = QVBoxLayout(self)

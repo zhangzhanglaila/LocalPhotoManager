@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
-from PySide6.QtCore import QMutexLocker, QRunnable
+from PySide6.QtCore import QMutexLocker, QRunnable, QThread
 
 from ..bootstrap.library_scan_service import LibraryScanService
 from ..utils.logging import get_logger
@@ -441,7 +441,7 @@ class ScanCoordinatorMixin:
             and getattr(self, "_face_scan_pending_start", False)
         ):
             self._face_scan_pending_start = False
-            face_scanner.start()
+            face_scanner.start(QThread.Priority.LowestPriority)
             self.faceScanStatusChanged.emit("Scanning faces...")
 
         if (

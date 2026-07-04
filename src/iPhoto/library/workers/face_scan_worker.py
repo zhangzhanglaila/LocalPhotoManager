@@ -33,9 +33,12 @@ class FaceScanWorker(QThread):
     statusChanged = Signal(str)
     downloadProgress = Signal(int, int)
 
-    BATCH_SIZE = 2
-    QUEUE_TARGET_SIZE = 8
-    BATCH_IDLE_MS = 50  # brief pause between batches to let the UI breathe
+    # Keep face scanning responsive to the app: detection still runs in a
+    # worker thread, but each committed batch rebuilds the People snapshot and
+    # touches SQLite. Very small batches make that bookkeeping dominate UI use.
+    BATCH_SIZE = 16
+    QUEUE_TARGET_SIZE = 64
+    BATCH_IDLE_MS = 150
 
     def __init__(
         self,
