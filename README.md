@@ -146,21 +146,32 @@ extension/models/clip-vit-base-patch32/
 
 ## 启动
 
+在项目根目录执行启动命令。
+
 ```bash
-# 方式一：激活虚拟环境后启动
+# Windows 推荐方式：不需要先激活虚拟环境
+.venv\Scripts\python.exe -m iPhoto.gui.main
+
+# Windows：如果已经激活虚拟环境
 .venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
 iphoto-gui
 
-# 方式二：不激活虚拟环境，直接调用
-.venv\Scripts\iphoto-gui      # Windows
-# .venv/bin/iphoto-gui        # macOS/Linux
+# macOS / Linux
+source .venv/bin/activate
+iphoto-gui
 ```
 
 或直接打开指定相册：
 
 ```bash
-iphoto-gui D:\APPLE\202406_a
+.venv\Scripts\python.exe -m iPhoto.gui.main D:\APPLE\202406_a   # Windows
+# iphoto-gui /path/to/photos                                     # macOS/Linux
+```
+
+如果 `iphoto-gui` 命令不可用，先确认已经执行过安装：
+
+```bash
+pip install -e .
 ```
 
 ## 环境变量
