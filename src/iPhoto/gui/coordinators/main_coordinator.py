@@ -545,10 +545,12 @@ class MainCoordinator(QObject):
             ui.map_view.clusterActivated.connect(self._on_cluster_activated)
             ui.map_view.showAllRequested.connect(self._handle_map_show_all_requested)
 
-        # Map feature buttons (in sidebar, under Location)
-        if hasattr(ui, "sidebar"):
-            ui.sidebar.btn_person_filter.clicked.connect(self._on_person_filter_toggled)
-            ui.sidebar.btn_trail_toggle.clicked.connect(self._on_trail_toggle_toggled)
+        # Map feature buttons (in map source bar, to the right of map selector)
+        if hasattr(ui, "map_view") and ui.map_view is not None:
+            if hasattr(ui.map_view, "btn_person_filter"):
+                ui.map_view.btn_person_filter.clicked.connect(self._on_person_filter_toggled)
+            if hasattr(ui.map_view, "btn_trail_toggle"):
+                ui.map_view.btn_trail_toggle.clicked.connect(self._on_trail_toggle_toggled)
 
         # Menus
         ui.open_album_action.triggered.connect(self._handle_open_album_dialog)
@@ -1815,7 +1817,7 @@ class MainCoordinator(QObject):
                     from iPhoto.people.service import PeopleService
                     people_service = PeopleService()
                 except Exception:
-                    ui.sidebar.btn_person_filter.setChecked(False)
+                    ui.map_view.btn_person_filter.setChecked(False)
                     return
             ui.map_view.show_person_filter(people_service)
         else:
@@ -1831,14 +1833,14 @@ class MainCoordinator(QObject):
                 from iPhoto.application.services.trail_service import TrailService
                 library = getattr(self._context, "library", None)
                 if library is None:
-                    ui.sidebar.btn_trail_toggle.setChecked(False)
+                    ui.map_view.btn_trail_toggle.setChecked(False)
                     self._status_bar.show_message(
                         "Trail unavailable: no library bound.", 4000
                     )
                     return
                 geotagged = library.get_geotagged_assets()
                 if not geotagged:
-                    ui.sidebar.btn_trail_toggle.setChecked(False)
+                    ui.map_view.btn_trail_toggle.setChecked(False)
                     self._status_bar.show_message(
                         "No geotagged photos found — trail needs photos with GPS data.", 5000
                     )
@@ -1846,7 +1848,7 @@ class MainCoordinator(QObject):
                 trail_service = TrailService()
                 trail = trail_service.build_trail(geotagged, granularity="day")
                 if trail.is_empty:
-                    ui.sidebar.btn_trail_toggle.setChecked(False)
+                    ui.map_view.btn_trail_toggle.setChecked(False)
                     self._status_bar.show_message(
                         "Trail is empty — photos may lack valid timestamps.", 5000
                     )
@@ -1861,7 +1863,7 @@ class MainCoordinator(QObject):
                 )
             except Exception as e:
                 self._logger.warning("Failed to build trail: %s", e)
-                ui.sidebar.btn_trail_toggle.setChecked(False)
+                ui.map_view.btn_trail_toggle.setChecked(False)
                 self._status_bar.show_message(
                     f"Failed to build trail: {e}", 5000
                 )

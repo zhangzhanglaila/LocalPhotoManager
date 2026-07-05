@@ -19,7 +19,7 @@ from PySide6.QtGui import (
     QPixmap,
     QPalette,
 )
-from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
 from ....application.ports import MapInteractionServicePort, MapRuntimePort
 from ....application.services.map_interaction_service import LibraryMapInteractionService
@@ -452,6 +452,31 @@ class PhotoMapView(QWidget):
         selector.setCurrentIndex(max(0, source_index))
         selector.currentIndexChanged.connect(self._handle_map_source_changed)
         row.addWidget(selector)
+
+        self.btn_person_filter = QToolButton(bar)
+        self.btn_person_filter.setText("👤 人物")
+        self.btn_person_filter.setCheckable(True)
+        self.btn_person_filter.setAutoRaise(True)
+        self.btn_person_filter.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.btn_person_filter.setFixedHeight(22)
+        self.btn_person_filter.setStyleSheet(
+            "QToolButton { font-size: 11px; padding: 1px 4px; border: none; }"
+            "QToolButton:checked { background: #d0d0d0; border-radius: 3px; }"
+        )
+        row.addWidget(self.btn_person_filter)
+
+        self.btn_trail_toggle = QToolButton(bar)
+        self.btn_trail_toggle.setText("🗺️ 轨迹")
+        self.btn_trail_toggle.setCheckable(True)
+        self.btn_trail_toggle.setAutoRaise(True)
+        self.btn_trail_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.btn_trail_toggle.setFixedHeight(22)
+        self.btn_trail_toggle.setStyleSheet(
+            "QToolButton { font-size: 11px; padding: 1px 4px; border: none; }"
+            "QToolButton:checked { background: #d0d0d0; border-radius: 3px; }"
+        )
+        row.addWidget(self.btn_trail_toggle)
+
         row.addStretch(1)
         show_all = QPushButton("显示所有照片", bar)
         show_all.setCursor(Qt.CursorShape.PointingHandCursor)
