@@ -368,15 +368,27 @@ class GalleryGridView(AssetGrid):
         with the appropriate text.  It is hidden again as soon as the
         first row arrives.  Passing ``None`` clears the override so the
         standard empty-state logic resumes.
+
+        The label geometry update is deferred by one event-loop tick so
+        the viewport and its parent stack page are fully laid out.
         """
         self._empty_mode = mode
         if mode is not None:
             self._empty_label.setText(self._empty_message())
             self._loading_label.hide()
-            self._empty_label.setGeometry(self.viewport().rect())
-            self._empty_label.show()
-            self._empty_label.raise_()
-            self.viewport().update()
+
+            def _show() -> None:
+                if self._empty_mode != mode:
+                    return  # mode changed before timer fired
+                vp_rect = self.viewport().rect()
+                if vp_rect.width() <= 0 or vp_rect.height() <= 0:
+                    vp_rect = self.rect()
+                self._empty_label.setGeometry(vp_rect)
+                self._empty_label.show()
+                self._empty_label.raise_()
+                self.viewport().update()
+
+            QTimer.singleShot(0, _show)
         else:
             self._update_empty_state()
 
