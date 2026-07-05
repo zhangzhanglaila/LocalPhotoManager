@@ -70,7 +70,10 @@ pip install insightface onnxruntime
 > | 资源 | 大小 | 触发条件 | 下载来源 |
 > |------|------|---------|----------|
 > | 人脸模型 | ~300MB | 安装了 insightface 后，首次使用"人物识别" | InsightFace CDN（自动下载） |
-> | 地图扩展 | ~975MB | 首次启动时弹窗提示 | 本项目 GitHub Release（自动下载） |
+> | 地图扩展 | ~975MB | 首次启动时弹窗提示 | 本项目 GitHub Release |
+> | CLIP 模型 | ~580MB | 首次使用语义搜索时弹窗提示 | 本项目 GitHub Release / HuggingFace 镜像 |
+>
+> **所有模型文件也可从 [v6.1.0 Release](https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0) 手动下载。**
 >
 > **注意：** 第 4 步不装的话，人脸功能完全不可用（不会自动下载模型）。
 >
@@ -91,8 +94,8 @@ python scripts/download_clip_model.py
 
 或手动安装：
 ```bash
-# 1. 下载模型（约 580MB）
-# GitHub: https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/clip-vit-base-patch32.zip
+# 1. 从 Release 页面下载 clip-vit-base-patch32.zip（约 580MB）
+# https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/clip-vit-base-patch32.zip
 
 # 2. 解压到项目目录
 unzip clip-vit-base-patch32.zip -d extension/models/
@@ -128,16 +131,25 @@ extension/models/clip-vit-base-patch32/
 
 ### 国内用户特别说明
 
-**人脸模型**下载较慢时，可手动下载：
+**人脸模型**下载较慢时，可手动下载（任选其一）：
 
-1. 访问 https://github.com/deepinsight/insightface/releases/tag/v0.7
-2. 下载 `buffalo_l.zip`（约 300MB）
-3. 解压后把 `buffalo_l` 文件夹放到 `src/extension/models/` 下
-4. 最终目录结构：`src/extension/models/buffalo_l/1k3d68.onnx` 等文件
+- **本项目镜像（推荐）：** 从 [v6.1.0 Release](https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0) 下载 `buffalo_l.zip`
+- **官方源：** 访问 https://github.com/deepinsight/insightface/releases/tag/v0.7 下载 `buffalo_l.zip`
+
+下载后解压，把 `buffalo_l` 文件夹放到 `src/extension/models/` 下：
+
+```
+src/extension/models/buffalo_l/
+├── 1k3d68.onnx
+├── 2d106det.onnx
+├── det_10g.onnx
+├── genderage.onnx
+└── w600k_r50.onnx
+```
 
 **地图扩展**下载较慢时，可手动下载：
 
-1. 访问 https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v1.0.0
+1. 访问 https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0
 2. Windows 下载 `extension.zip`，Linux 下载 `extension.tar.xz`
 3. 解压后把 `extension` 文件夹放到 `src/maps/tiles/` 下
 4. 最终目录结构：`src/maps/tiles/extension/World_basemap_2.obf` 等文件
