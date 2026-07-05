@@ -1061,9 +1061,6 @@ class PhotoMapView(QWidget):
         self._trail_layer_visible = False
         self._ensure_trail_unregistered()
         self._timeline_slider.hide()
-        # Clean up person-filter trail backup so stale data is not reused
-        if hasattr(self, "_trail_geotagged_all"):
-            del self._trail_geotagged_all
         # Restore all markers (they may have been filtered by timeline range).
         if self._map_widget_built and self._assets_library_root is not None:
             if self._active_person_id and self._person_filter:
@@ -1077,30 +1074,49 @@ class PhotoMapView(QWidget):
             if hasattr(self._overlay, '_buffer_dirty'):
                 self._overlay._buffer_dirty = True
 
+    def _rebuild_trail(self) -> None:
+        """Rebuild trail from current data source, respecting active filters."""
+        if not self._trail_layer_visible:
+            return
+        trail_service = getattr(self, "_trail_service", None)
+        if trail_service is None:
+            return
+
+        # Base data: always the full geotagged set (never person-filtered).
+        # Person filter, if active, is applied on top.
+        base = getattr(self, "_trail_geotagged", [])
+        if not base:
+            return
+
+        if self._active_person_id and self._person_filter:
+            self._person_filter.set_all_geotagged(base)
+            data = self._person_filter.filter_by_person(self._active_person_id)
+        else:
+            data = list(base)
+
+        start = getattr(self._timeline_slider, "current_start", None)
+        end = getattr(self._timeline_slider, "current_end", None)
+        granularity = getattr(self._timeline_slider, "granularity", "day")
+
+        trail = trail_service.build_trail(
+            data, date_from=start, date_to=end, granularity=granularity,
+        )
+        self._trail_layer.set_trail(trail)
+
     def _on_timeline_range_changed(self, start, end) -> None:
-        if hasattr(self, '_trail_service') and hasattr(self, '_trail_geotagged'):
-            trail = self._trail_service.build_trail(
-                self._trail_geotagged, date_from=start, date_to=end,
-                granularity=self._timeline_slider.granularity)
-            self._trail_layer.set_trail(trail)
+        self._rebuild_trail()
         # Also filter map markers to only show photos within the selected
         # date range, so the map reflects the timeline selection.
         self._apply_timeline_marker_filter(start, end)
         self.request_full_update()
 
     def _on_timeline_granularity_changed(self, granularity: str) -> None:
-        if hasattr(self, '_trail_service') and hasattr(self, '_trail_geotagged'):
-            trail = self._trail_service.build_trail(
-                self._trail_geotagged,
-                date_from=self._timeline_slider.current_start,
-                date_to=self._timeline_slider.current_end,
-                granularity=granularity)
-            self._trail_layer.set_trail(trail)
-            self._apply_timeline_marker_filter(
-                self._timeline_slider.current_start,
-                self._timeline_slider.current_end,
-            )
-            self.request_full_update()
+        self._rebuild_trail()
+        self._apply_timeline_marker_filter(
+            self._timeline_slider.current_start,
+            self._timeline_slider.current_end,
+        )
+        self.request_full_update()
 
     def _filter_assets_by_date(
         self, start, end, assets: list | None = None
@@ -1193,47 +1209,13 @@ class PhotoMapView(QWidget):
         filtered = self._person_filter.filter_by_person(person_id)
         if self._map_widget_built:
             self._marker_controller.set_assets(filtered, self._assets_library_root)
-
-        # Rebuild trail for the filtered person only
-        if self._trail_layer_visible and hasattr(self, "_trail_service"):
-            trail_service = getattr(self, "_trail_service", None)
-            if trail_service is not None:
-                # Filter the full geotagged set to only this person's assets
-                person_geotagged = self._person_filter.filter_by_person(person_id)
-                if not hasattr(self, "_trail_geotagged_all"):
-                    self._trail_geotagged_all = getattr(self, "_trail_geotagged", [])
-                trail = trail_service.build_trail(
-                    person_geotagged,
-                    date_from=getattr(self, "_trail_date_from", None),
-                    date_to=getattr(self, "_trail_date_to", None),
-                    granularity=getattr(
-                        self._timeline_slider, "granularity", "day",
-                    ),
-                )
-                self._trail_layer.set_trail(trail)
-                self._trail_geotagged = person_geotagged
+        self._rebuild_trail()
 
     def _on_person_deselected(self) -> None:
         self._active_person_id = None
         if self._map_widget_built and self._assets_library_root:
             self._marker_controller.set_assets(self._assets, self._assets_library_root)
-
-        # Restore full trail
-        if self._trail_layer_visible and hasattr(self, "_trail_geotagged_all"):
-            trail_service = getattr(self, "_trail_service", None)
-            full_geotagged = self._trail_geotagged_all
-            del self._trail_geotagged_all
-            if trail_service is not None and full_geotagged:
-                trail = trail_service.build_trail(
-                    full_geotagged,
-                    date_from=getattr(self, "_trail_date_from", None),
-                    date_to=getattr(self, "_trail_date_to", None),
-                    granularity=getattr(
-                        self._timeline_slider, "granularity", "day",
-                    ),
-                )
-                self._trail_layer.set_trail(trail)
-                self._trail_geotagged = full_geotagged
+        self._rebuild_trail()
 
     def _teardown_map_widget(self) -> None:
         if not self._map_widget_built:
