@@ -34,100 +34,109 @@
 
 ## 安装
 
-### 一键下载（推荐）
-
-从 [v6.1.0 Release](https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0) 下载 `iPhotron-v6.1.0-complete.zip`（~1.4GB），源码、CLIP 模型、人脸模型、地图扩展全部打包好，解压即用：
-
-```bash
-# 解压后进入目录，安装依赖即可启动
-cd iPhotron-v6.1.0
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-pip install -e .
-```
-
-### 手动安装（从源码）
-
-适合需要最新代码或只想下载特定组件的用户。
-
-### 前置条件
+### 前置条件（三种方式都需要）
 
 - **Python 3.12+**
-- **ExifTool**（必须，用于读取照片 EXIF/GPS 元数据）
-  - Windows: `choco install exiftool` 或从 https://exiftool.org 下载
+- **ExifTool** — 读取照片 EXIF/GPS 元数据
+  - Windows: `choco install exiftool` 或 https://exiftool.org
   - macOS: `brew install exiftool`
-  - Linux: `sudo apt install libimage-exiftool-perl` 或 `sudo dnf install perl-Image-ExifTool`
-- **FFmpeg**（必须，用于视频封面提取、元数据读取、视频导出）
-  - Windows: `choco install ffmpeg` 或从 https://ffmpeg.org 下载
+  - Linux: `sudo apt install libimage-exiftool-perl`
+- **FFmpeg** — 视频封面提取、视频导出
+  - Windows: `choco install ffmpeg` 或 https://ffmpeg.org
   - macOS: `brew install ffmpeg`
-  - Linux: `sudo apt install ffmpeg` 或 `sudo dnf install ffmpeg`
+  - Linux: `sudo apt install ffmpeg`
 
-### 安装步骤
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/zhangzhanglaila/LocalPhotoManager.git
-cd LocalPhotoManager
-
-# 2. 创建虚拟环境
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
-
-# 3. 安装依赖
-pip install -e .
-
-# 4. 安装人脸检测依赖（如需"人物识别"功能）
-pip install insightface onnxruntime
-```
-
-> **关于自动下载：**
->
-> | 资源 | 大小 | 触发条件 | 下载来源 |
-> |------|------|---------|----------|
-> | 人脸模型 | ~300MB | 安装了 insightface 后，首次使用"人物识别" | InsightFace CDN（自动下载） |
-> | 地图扩展 | ~975MB | 首次启动时弹窗提示 | 本项目 GitHub Release |
-> | CLIP 模型 | ~580MB | 首次使用语义搜索时弹窗提示 | 本项目 GitHub Release / HuggingFace 镜像 |
->
-> **所有模型文件也可从 [v6.1.0 Release](https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0) 手动下载。**
->
-> **注意：** 第 4 步不装的话，人脸功能完全不可用（不会自动下载模型）。
->
-> **Linux 用户注意：** `rawpy` 依赖 `libraw`，安装前需先执行：
+> **Linux 用户注意：** `rawpy` 依赖 `libraw`：
 > ```bash
 > sudo apt install libraw-dev    # Debian/Ubuntu
 > sudo dnf install LibRaw-devel  # Fedora
 > ```
 
-### 搜索功能（CLIP 模型）
+---
 
-语义搜索功能需要 CLIP 模型。**安装后首次搜索时会自动提示下载**，也可手动安装：
+### 方式一：完整包（推荐 ⭐）
+
+从 [v6.1.0 Release](https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0) 下载 **`iPhotron-v6.1.0-complete.zip`**（~1.4GB）。
+
+源码 + CLIP 模型 + 人脸模型 + 地图扩展全部打包好，一次下载，解压即用：
 
 ```bash
-# 自动下载脚本
-python scripts/download_clip_model.py
+# 1. 解压
+unzip iPhotron-v6.1.0-complete.zip
+cd iPhotron-v6.1.0
+
+# 2. 安装
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
+pip install -e .
+
+# 3. （可选）如需人物识别
+pip install insightface onnxruntime
 ```
 
-或手动安装：
-```bash
-# 1. 从 Release 页面下载 clip-vit-base-patch32.zip（约 580MB）
-# https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/clip-vit-base-patch32.zip
+---
 
-# 2. 解压到项目目录
+### 方式二：源码 + 自动下载模型
+
+Clone 源码，模型在首次使用时自动从网络下载：
+
+```bash
+# 1. 克隆
+git clone https://github.com/zhangzhanglaila/LocalPhotoManager.git
+cd LocalPhotoManager
+
+# 2. 安装
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+pip install -e .
+
+# 3. （可选）如需人物识别
+pip install insightface onnxruntime
+```
+
+> 首次启动时：
+> - 地图扩展会弹窗提示下载（~975MB，从 GitHub Release）
+> - 首次使用语义搜索时弹窗提示下载 CLIP 模型（~580MB，从 HuggingFace 镜像）
+> - 人脸模型在首次使用人物识别时自动下载（~300MB，从 InsightFace CDN）
+
+---
+
+### 方式三：源码 + 手动下载模型
+
+Clone 源码，从 [v6.1.0 Release](https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0) 逐个下载模型到指定位置：
+
+```bash
+# 1. 克隆
+git clone https://github.com/zhangzhanglaila/LocalPhotoManager.git
+cd LocalPhotoManager
+
+# 2. 安装
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+pip install insightface onnxruntime
+
+# 3. 下载模型并解压到对应目录
+# CLIP 模型（语义搜索）
+curl -L -o clip-vit-base-patch32.zip https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/clip-vit-base-patch32.zip
 unzip clip-vit-base-patch32.zip -d extension/models/
+
+# 地图扩展（离线地图）
+curl -L -o extension.zip https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/extension.zip
+unzip extension.zip -d src/maps/tiles/
+
+# 人脸模型
+curl -L -o buffalo_l.zip https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/buffalo_l.zip
+unzip buffalo_l.zip -d src/extension/models/
 ```
 
 最终目录结构：
+
 ```
-extension/models/clip-vit-base-patch32/
-├── config.json
-├── pytorch_model.bin      (578MB)
-├── tokenizer.json
-├── tokenizer_config.json
-├── vocab.json
-├── merges.txt
-├── preprocessor_config.json
-└── special_tokens_map.json
+extension/models/clip-vit-base-patch32/   ← CLIP 模型
+src/extension/models/buffalo_l/           ← 人脸模型
+src/maps/tiles/extension/                 ← 地图扩展
 ```
 
 **使用方式：**
