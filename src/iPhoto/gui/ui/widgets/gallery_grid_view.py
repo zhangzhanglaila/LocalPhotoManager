@@ -349,6 +349,31 @@ class GalleryGridView(AssetGrid):
             # Data loaded (or scan completed with no data).
             self._loading_label.hide()
             self._empty_label.setVisible(is_empty)
+            if is_empty:
+                self._empty_label.setText(self._empty_message())
+
+    def _empty_message(self) -> str:
+        """Return a context-aware empty-state message."""
+        model = self.model()
+        filter_mode = None
+        # Walk up to the proxy to read the active filter mode
+        candidate = model
+        while candidate is not None:
+            fm = getattr(candidate, "filter_mode", None)
+            if callable(fm):
+                filter_mode = fm()
+                break
+            if hasattr(candidate, "sourceModel"):
+                candidate = candidate.sourceModel()
+            else:
+                break
+        if filter_mode == "favorites":
+            return "没有收藏"
+        if filter_mode == "videos":
+            return "没有视频"
+        if filter_mode == "live":
+            return "没有实况照片"
+        return "没有照片"
 
     # ------------------------------------------------------------------
     # Selection mode toggling
