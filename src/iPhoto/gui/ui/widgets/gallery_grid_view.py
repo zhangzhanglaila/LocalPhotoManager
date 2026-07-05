@@ -307,9 +307,15 @@ class GalleryGridView(AssetGrid):
 
     def _on_model_reset(self) -> None:
         self._query_loading = True
-        # If an overlay is already showing (set_empty_mode was called),
-        # keep it visible and skip the standard loading label.
-        if self._empty_mode is None:
+        # If an overlay is showing and the model now has rows, dismiss it.
+        if self._empty_mode is not None:
+            model = self.model()
+            if model is not None and model.rowCount() > 0:
+                self._empty_label.hide()
+                self._empty_mode = None
+                self._query_loading = False
+                return
+        else:
             self._update_empty_state()
         # If no rows appear within 2s the query result is likely empty.
         self._loading_timeout_timer.start(2000)
@@ -325,10 +331,17 @@ class GalleryGridView(AssetGrid):
 
     def _on_loading_timeout(self) -> None:
         self._query_loading = False
-        # If overlay was shown via set_empty_mode, it stays visible.
-        # Otherwise fall back to standard logic.
-        if self._empty_mode is None:
-            self._do_update_empty_state()
+        # If overlay was shown via set_empty_mode but the model now has rows,
+        # dismiss the overlay.
+        if self._empty_mode is not None:
+            model = self.model()
+            if model is not None and model.rowCount() > 0:
+                self._empty_label.hide()
+                self._empty_mode = None
+                return
+            # Still empty: overlay stays (text already correct).
+            return
+        self._do_update_empty_state()
 
     def set_scan_completed(self) -> None:
         """Mark that the first scan has finished — allows 'No media found' to show."""
