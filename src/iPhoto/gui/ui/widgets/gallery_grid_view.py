@@ -73,6 +73,8 @@ class GalleryGridView(AssetGrid):
         # Track whether a query is actively loading so we can show the
         # loading label instead of a blank page.
         self._query_loading = False
+        # Context-aware empty message set by coordinator / view-model
+        self._empty_mode: str | None = None
 
         # Debounce empty-state updates so rapid model changes during scanning
         # don't cause constant show/hide repaints.
@@ -352,26 +354,20 @@ class GalleryGridView(AssetGrid):
             if is_empty:
                 self._empty_label.setText(self._empty_message())
 
+    def set_empty_mode(self, mode: str | None) -> None:
+        """Set the context for the empty-state message (e.g. 'favorites', 'videos')."""
+        self._empty_mode = mode
+        if self._scan_completed:
+            self._update_empty_state()
+
     def _empty_message(self) -> str:
         """Return a context-aware empty-state message."""
-        model = self.model()
-        filter_mode = None
-        # Walk up to the proxy to read the active filter mode
-        candidate = model
-        while candidate is not None:
-            fm = getattr(candidate, "filter_mode", None)
-            if callable(fm):
-                filter_mode = fm()
-                break
-            if hasattr(candidate, "sourceModel"):
-                candidate = candidate.sourceModel()
-            else:
-                break
-        if filter_mode == "favorites":
+        mode = self._empty_mode
+        if mode == "favorites":
             return "没有收藏"
-        if filter_mode == "videos":
+        if mode == "videos":
             return "没有视频"
-        if filter_mode == "live":
+        if mode == "live":
             return "没有实况照片"
         return "没有照片"
 

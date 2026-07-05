@@ -157,6 +157,7 @@ class MainCoordinator(QObject):
             context,
             context.facade,  # Legacy Facade Bridge
             pinned_items_service=self._pinned_items_service,
+            grid_view=window.ui.grid_view,
         )
         self._adjustment_committer = MediaAdjustmentCommitter(
             asset_vm=self._asset_list_vm,

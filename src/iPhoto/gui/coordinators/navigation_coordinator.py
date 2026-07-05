@@ -37,6 +37,7 @@ class NavigationCoordinator(QObject):
         context: RuntimeEntryContract,
         facade: AppFacade,
         pinned_items_service: PinnedItemsService | None = None,
+        grid_view: object | None = None,
     ) -> None:
         super().__init__()
         self._sidebar = sidebar
@@ -45,6 +46,7 @@ class NavigationCoordinator(QObject):
         self._context = context
         self._facade = facade
         self._pinned_items_service = pinned_items_service
+        self._grid_view = grid_view
 
         self._playback_coordinator: Optional[PlaybackCoordinator] = None
 
@@ -184,6 +186,7 @@ class NavigationCoordinator(QObject):
     def open_all_photos(self) -> None:
         self._reset_playback()
         self._gallery_vm.open_all_photos()
+        self._set_grid_empty_mode(None)
 
     def open_recently_deleted(self) -> None:
         self._reset_playback()
@@ -227,24 +230,29 @@ class NavigationCoordinator(QObject):
         # sidebar titles (e.g. "相册" for "Albums") are recognised.
         if normalized == "all photos":
             self.open_all_photos()
+            self._set_grid_empty_mode(None)
         elif normalized == "recently deleted":
             self.open_recently_deleted()
+            self._set_grid_empty_mode(None)
         elif normalized == "albums" or name == tr("sidebar.albums"):
             self._reset_playback()
             self._gallery_vm.open_albums_dashboard()
         elif normalized == "favorites":
             self._reset_playback()
             self._gallery_vm.open_filtered_collection(name, is_favorite=True)
+            self._set_grid_empty_mode("favorites")
         elif normalized == "videos":
             from iPhoto.domain.models.core import MediaType
 
             self._reset_playback()
             self._gallery_vm.open_filtered_collection(name, media_types=[MediaType.VIDEO])
+            self._set_grid_empty_mode("videos")
         elif normalized == "live photos":
             from iPhoto.domain.models.core import MediaType
 
             self._reset_playback()
             self._gallery_vm.open_filtered_collection(name, media_types=[MediaType.LIVE_PHOTO])
+            self._set_grid_empty_mode("live")
         elif normalized == "people":
             self.open_people_view()
         elif normalized == "location":
@@ -457,3 +465,9 @@ class NavigationCoordinator(QObject):
 
     def sidebar_model(self):
         return self._sidebar.tree_model()
+
+    def _set_grid_empty_mode(self, mode: str | None) -> None:
+        """Notify the grid view of the current filter context for empty-state messages."""
+        gv = self._grid_view
+        if gv is not None and hasattr(gv, "set_empty_mode"):
+            gv.set_empty_mode(mode)
