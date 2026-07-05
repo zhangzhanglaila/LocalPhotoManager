@@ -1061,6 +1061,9 @@ class PhotoMapView(QWidget):
         self._trail_layer_visible = False
         self._ensure_trail_unregistered()
         self._timeline_slider.hide()
+        # Clean up person-filter trail backup so stale data is not reused
+        if hasattr(self, "_trail_geotagged_all"):
+            del self._trail_geotagged_all
         # Restore all markers (they may have been filtered by timeline range).
         if self._map_widget_built and self._assets_library_root is not None:
             if self._active_person_id and self._person_filter:
@@ -1191,10 +1194,46 @@ class PhotoMapView(QWidget):
         if self._map_widget_built:
             self._marker_controller.set_assets(filtered, self._assets_library_root)
 
+        # Rebuild trail for the filtered person only
+        if self._trail_layer_visible and hasattr(self, "_trail_service"):
+            trail_service = getattr(self, "_trail_service", None)
+            if trail_service is not None:
+                # Filter the full geotagged set to only this person's assets
+                person_geotagged = self._person_filter.filter_by_person(person_id)
+                if not hasattr(self, "_trail_geotagged_all"):
+                    self._trail_geotagged_all = getattr(self, "_trail_geotagged", [])
+                trail = trail_service.build_trail(
+                    person_geotagged,
+                    date_from=getattr(self, "_trail_date_from", None),
+                    date_to=getattr(self, "_trail_date_to", None),
+                    granularity=getattr(
+                        self._timeline_slider, "granularity", "day",
+                    ),
+                )
+                self._trail_layer.set_trail(trail)
+                self._trail_geotagged = person_geotagged
+
     def _on_person_deselected(self) -> None:
         self._active_person_id = None
         if self._map_widget_built and self._assets_library_root:
             self._marker_controller.set_assets(self._assets, self._assets_library_root)
+
+        # Restore full trail
+        if self._trail_layer_visible and hasattr(self, "_trail_geotagged_all"):
+            trail_service = getattr(self, "_trail_service", None)
+            full_geotagged = self._trail_geotagged_all
+            del self._trail_geotagged_all
+            if trail_service is not None and full_geotagged:
+                trail = trail_service.build_trail(
+                    full_geotagged,
+                    date_from=getattr(self, "_trail_date_from", None),
+                    date_to=getattr(self, "_trail_date_to", None),
+                    granularity=getattr(
+                        self._timeline_slider, "granularity", "day",
+                    ),
+                )
+                self._trail_layer.set_trail(trail)
+                self._trail_geotagged = full_geotagged
 
     def _teardown_map_widget(self) -> None:
         if not self._map_widget_built:
