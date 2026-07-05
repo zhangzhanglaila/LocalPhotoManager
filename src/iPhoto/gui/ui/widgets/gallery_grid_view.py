@@ -350,15 +350,31 @@ class GalleryGridView(AssetGrid):
         else:
             # Data loaded (or scan completed with no data).
             self._loading_label.hide()
-            self._empty_label.setVisible(is_empty)
             if is_empty:
                 self._empty_label.setText(self._empty_message())
+                self._empty_label.show()
+                self._empty_label.raise_()
+                self.viewport().update()
+            else:
+                self._empty_label.hide()
 
     def set_empty_mode(self, mode: str | None) -> None:
-        """Set the context for the empty-state message (e.g. 'favorites', 'videos')."""
+        """Set the context for the empty-state message (e.g. 'favorites', 'videos').
+
+        Apply the label text immediately and schedule a deferred visibility
+        check so the model has time to load its rows.
+        """
         self._empty_mode = mode
-        if self._scan_completed:
-            self._update_empty_state()
+        self._empty_label.setText(self._empty_message())
+        # Materialise the empty label immediately if the current model
+        # already looks empty; otherwise defer.
+        model = self.model()
+        if model is None or model.rowCount() == 0:
+            self._empty_label.show()
+            self._loading_label.hide()
+        else:
+            self._empty_state_timer.stop()
+            QTimer.singleShot(1500, self._do_update_empty_state)
 
     def _empty_message(self) -> str:
         """Return a context-aware empty-state message."""
