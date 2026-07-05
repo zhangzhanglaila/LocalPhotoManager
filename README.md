@@ -34,6 +34,22 @@
 
 ## 安装
 
+### 一键下载（推荐）
+
+从 [v6.1.0 Release](https://github.com/zhangzhanglaila/LocalPhotoManager/releases/tag/v6.1.0) 下载 `iPhotron-v6.1.0-complete.zip`（~1.4GB），源码、CLIP 模型、人脸模型、地图扩展全部打包好，解压即用：
+
+```bash
+# 解压后进入目录，安装依赖即可启动
+cd iPhotron-v6.1.0
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+pip install -e .
+```
+
+### 手动安装（从源码）
+
+适合需要最新代码或只想下载特定组件的用户。
+
 ### 前置条件
 
 - **Python 3.12+**
