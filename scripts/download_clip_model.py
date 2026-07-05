@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 
 # GitHub release URL
-MODEL_URL = "https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v1.0.0/clip-vit-base-patch32.zip"
+MODEL_URL = "https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/clip-vit-base-patch32.zip"
 MODEL_DIR = Path(__file__).resolve().parent.parent / "extension" / "models"
 MODEL_NAME = "clip-vit-base-patch32"
 

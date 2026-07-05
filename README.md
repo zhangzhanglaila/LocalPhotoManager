@@ -92,7 +92,7 @@ python scripts/download_clip_model.py
 或手动安装：
 ```bash
 # 1. 下载模型（约 580MB）
-# GitHub: https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v1.0.0/clip-vit-base-patch32.zip
+# GitHub: https://github.com/zhangzhanglaila/LocalPhotoManager/releases/download/v6.1.0/clip-vit-base-patch32.zip
 
 # 2. 解压到项目目录
 unzip clip-vit-base-patch32.zip -d extension/models/

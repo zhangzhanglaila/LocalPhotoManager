@@ -19,11 +19,11 @@ DEFAULT_OSMAND_SEARCH_RELATIVE_PATH = DEFAULT_OSMAND_EXTENSION_RELATIVE_ROOT / "
 DEFAULT_OSMAND_PENDING_EXTENSION_SUFFIX = ".pending"
 LINUX_MAP_EXTENSION_DOWNLOAD_URL = (
     "https://github.com/zhangzhanglaila/LocalPhotoManager/"
-    "releases/download/v1.0.0/extension.tar.xz"
+    "releases/download/v6.1.0/extension.tar.xz"
 )
 WINDOWS_MAP_EXTENSION_DOWNLOAD_URL = (
     "https://github.com/zhangzhanglaila/LocalPhotoManager/"
-    "releases/download/v1.0.0/extension.zip"
+    "releases/download/v6.1.0/extension.zip"
 )
 ENV_OSMAND_HELPER = "IPHOTO_OSMAND_RENDER_HELPER"
 ENV_OSMAND_NATIVE_WIDGET_LIBRARY = "IPHOTO_OSMAND_NATIVE_WIDGET_LIBRARY"
