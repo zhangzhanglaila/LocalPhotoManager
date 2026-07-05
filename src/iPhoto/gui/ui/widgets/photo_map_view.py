@@ -1075,22 +1075,26 @@ class PhotoMapView(QWidget):
                 self._overlay._buffer_dirty = True
 
     def _rebuild_trail(self) -> None:
-        """Rebuild trail from current data source, respecting active filters."""
+        """Rebuild trail from current data source, respecting active filters.
+
+        Uses the geotagged set stored by the coordinator (``_trail_geotagged``)
+        as the canonical base.  When a person filter is active the trail is
+        rebuilt from only that person's geotagged assets — without touching
+        the ``_person_filter._all_geotagged`` reference used by markers.
+        """
         if not self._trail_layer_visible:
             return
         trail_service = getattr(self, "_trail_service", None)
         if trail_service is None:
             return
 
-        # Base data: always the full geotagged set (never person-filtered).
-        # Person filter, if active, is applied on top.
         base = getattr(self, "_trail_geotagged", [])
         if not base:
             return
 
-        if self._active_person_id and self._person_filter:
-            self._person_filter.set_all_geotagged(base)
-            data = self._person_filter.filter_by_person(self._active_person_id)
+        if self._active_person_id and self._person_filter is not None:
+            person_ids = self._person_filter.get_person_asset_ids(self._active_person_id)
+            data = [a for a in base if getattr(a, "asset_id", None) in person_ids]
         else:
             data = list(base)
 

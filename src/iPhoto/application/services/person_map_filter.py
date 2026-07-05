@@ -146,6 +146,10 @@ class PersonMapFilter:
             _LOGGER.warning("Failed to get asset IDs for person %s: %s", person_id, e)
             return set()
 
+    def get_person_asset_ids(self, person_id: str) -> Set[str]:
+        """Return cached asset IDs for a person (public accessor)."""
+        return self._get_person_asset_ids(person_id)
+
     def invalidate_cache(self) -> None:
         """Clear the person-asset cache."""
         self._person_asset_cache.clear()
