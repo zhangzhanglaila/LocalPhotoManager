@@ -307,18 +307,28 @@ class GalleryGridView(AssetGrid):
 
     def _on_model_reset(self) -> None:
         self._query_loading = True
-        self._update_empty_state()
+        # If an overlay is already showing (set_empty_mode was called),
+        # keep it visible and skip the standard loading label.
+        if self._empty_mode is None:
+            self._update_empty_state()
         # If no rows appear within 2s the query result is likely empty.
         self._loading_timeout_timer.start(2000)
 
     def _on_rows_inserted(self) -> None:
         self._query_loading = False
         self._loading_timeout_timer.stop()
+        # If a filtered mode was active and rows now exist, hide the overlay.
+        if self._empty_mode is not None:
+            self._empty_label.hide()
+            self._empty_mode = None
         self._update_empty_state()
 
     def _on_loading_timeout(self) -> None:
         self._query_loading = False
-        self._do_update_empty_state()
+        # If overlay was shown via set_empty_mode, it stays visible.
+        # Otherwise fall back to standard logic.
+        if self._empty_mode is None:
+            self._do_update_empty_state()
 
     def set_scan_completed(self) -> None:
         """Mark that the first scan has finished — allows 'No media found' to show."""
@@ -332,7 +342,9 @@ class GalleryGridView(AssetGrid):
         self._empty_state_timer.start()
 
     def _do_update_empty_state(self) -> None:
-        """Actually update the empty state."""
+        """Actually update the empty state (standard path without overlay)."""
+        if self._empty_mode is not None:
+            return  # overlay managed by set_empty_mode / _on_rows_inserted
         model = self.model()
         is_empty = model is None or model.rowCount() == 0
         if self._empty_label is None:
@@ -340,41 +352,33 @@ class GalleryGridView(AssetGrid):
         self._empty_label.setGeometry(self.viewport().rect())
         self._loading_label.setGeometry(self.viewport().rect())
         if is_empty and self._query_loading:
-            # Data is being loaded — show loading indicator, hide empty message.
             self._empty_label.hide()
             self._loading_label.show()
         elif is_empty and not self._scan_completed:
-            # Scan hasn't finished yet — keep the page clean.
             self._empty_label.hide()
             self._loading_label.hide()
         else:
-            # Data loaded (or scan completed with no data).
             self._loading_label.hide()
-            if is_empty:
-                self._empty_label.setText(self._empty_message())
-                self._empty_label.show()
-                self._empty_label.raise_()
-                self.viewport().update()
-            else:
-                self._empty_label.hide()
+            self._empty_label.setVisible(is_empty)
 
     def set_empty_mode(self, mode: str | None) -> None:
         """Set the context for the empty-state message (e.g. 'favorites', 'videos').
 
-        Apply the label text immediately and schedule a deferred visibility
-        check so the model has time to load its rows.
+        When *mode* is not ``None`` the empty label goes up immediately
+        with the appropriate text.  It is hidden again as soon as the
+        first row arrives.  Passing ``None`` clears the override so the
+        standard empty-state logic resumes.
         """
         self._empty_mode = mode
-        self._empty_label.setText(self._empty_message())
-        # Materialise the empty label immediately if the current model
-        # already looks empty; otherwise defer.
-        model = self.model()
-        if model is None or model.rowCount() == 0:
-            self._empty_label.show()
+        if mode is not None:
+            self._empty_label.setText(self._empty_message())
             self._loading_label.hide()
+            self._empty_label.setGeometry(self.viewport().rect())
+            self._empty_label.show()
+            self._empty_label.raise_()
+            self.viewport().update()
         else:
-            self._empty_state_timer.stop()
-            QTimer.singleShot(1500, self._do_update_empty_state)
+            self._update_empty_state()
 
     def _empty_message(self) -> str:
         """Return a context-aware empty-state message."""
