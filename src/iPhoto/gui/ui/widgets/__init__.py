@@ -23,6 +23,7 @@ from .photo_map_view import PhotoMapView
 from .live_badge import LiveBadge
 from .notification_toast import NotificationToast
 from .people_dashboard import PeopleDashboardWidget
+from .welcome_wizard import WelcomeWizard
 
 __all__ = [
     "AlbumSidebar",
@@ -48,4 +49,5 @@ __all__ = [
     "PhotoMapView",
     "NotificationToast",
     "PeopleDashboardWidget",
+    "WelcomeWizard",
 ]

@@ -25,10 +25,20 @@ from PySide6.QtGui import QImage
 from ....errors import ExternalToolError
 from ....utils.ffmpeg import probe_media, probe_video_rotation
 from ....utils.logging import get_logger
+from ....utils.pathutils import get_custom_workspace_base
 from .video_frame_grabber import grab_video_frame
 from .video_trim_native import split_strip_bgra, split_strip_bgra_to_rgb
 
-_CACHE_DIR = Path.home() / ".iPhoto" / "cache" / "video_trim"
+
+def _get_cache_dir() -> Path:
+    """获取视频修剪缓存目录，优先使用自定义工作目录。"""
+    custom_base = get_custom_workspace_base()
+    if custom_base is not None:
+        return custom_base / "cache" / "video_trim"
+    return Path.home() / ".iPhoto" / "cache" / "video_trim"
+
+
+_CACHE_DIR = _get_cache_dir()
 _FFMPEG_BELOW_NORMAL = 0x00004000
 _LOGGER = get_logger().getChild("video_trim.worker")
 

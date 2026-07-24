@@ -463,7 +463,7 @@ def _probe_video_rotation_cache_key(source: Path) -> tuple[str, int, int] | None
     return (str(resolved), int(mtime_ns), int(stat.st_size))
 
 
-@lru_cache(maxsize=512)
+@lru_cache(maxsize=2048)
 def _probe_video_rotation_info_cached(
     resolved_path: str,
     mtime_ns: int,
@@ -596,7 +596,7 @@ def get_linux_180_prerotate_hint(source: Path) -> bool:
     return _LINUX_180_HINT_CACHE.get(str(source.resolve()), False)
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=1024)
 def _probe_media_cached(
     resolved_path: str,
     mtime_ns: int,

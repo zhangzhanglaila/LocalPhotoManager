@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, Qt, Slot
 from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from ....i18n import tr
@@ -33,6 +33,15 @@ class StartupOverlay(QWidget):
         )
         layout.addWidget(self._label)
 
+        # 添加扫描状态提示（用于首次扫描时显示）
+        self._scan_label = QLabel("", self)
+        self._scan_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._scan_label.setStyleSheet(
+            "color: #666; font-size: 13px; background: transparent;"
+        )
+        self._scan_label.hide()  # 默认隐藏
+        layout.addWidget(self._scan_label)
+
         self._progress = QProgressBar(self)
         self._progress.setRange(0, 0)  # indeterminate mode
         self._progress.setFixedWidth(260)
@@ -48,6 +57,25 @@ class StartupOverlay(QWidget):
     def set_message(self, text: str) -> None:
         """Update the loading message."""
         self._label.setText(text)
+
+    def show_scan_progress(self, current: int, total: int) -> None:
+        """显示扫描进度。
+
+        Args:
+            current: 当前已处理的文件数
+            total: 总文件数（-1 表示未知）
+        """
+        self._scan_label.show()
+        if total > 0 and total != -1:
+            # 显示具体进度
+            percentage = int((current / total) * 100) if total > 0 else 0
+            self._scan_label.setText(f"正在扫描照片... {current}/{total} ({percentage}%)")
+            self._progress.setRange(0, total)
+            self._progress.setValue(current)
+        else:
+            # 显示不确定进度
+            self._scan_label.setText(f"正在扫描照片... 已处理 {current} 个文件")
+            self._progress.setRange(0, 0)  # 不确定模式
 
     def show_overlay(self) -> None:
         """Show the overlay and resize to match parent."""

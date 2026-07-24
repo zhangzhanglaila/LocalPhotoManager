@@ -665,6 +665,8 @@ class MainCoordinator(QObject):
         self._facade.loadFinished.connect(self._status_bar.handle_load_finished)
 
         # After the first scan completes, allow "No media found" to show.
+        self._facade.scanProgress.connect(lambda *_: ui.grid_view.set_scan_started())
+        self._context.library.scanProgress.connect(lambda *_: ui.grid_view.set_scan_started())
         self._facade.scanFinished.connect(lambda *_: ui.grid_view.set_scan_completed())
         self._context.library.scanFinished.connect(lambda *_: ui.grid_view.set_scan_completed())
 
@@ -858,6 +860,12 @@ class MainCoordinator(QObject):
         QTimer.singleShot(0, lambda: self._try_focus_map(lat, lon, 0))
 
     def _handle_map_show_all_requested(self) -> None:
+        # Clear return path so we don't jump back to the previous photo
+        self._return_from_map_path = None
+        # Hide the header back button if it exists
+        btn = getattr(self, "_header_back_btn", None)
+        if btn is not None:
+            btn.hide()
         self._gallery_vm.show_all_location_assets()
         if hasattr(self._window.ui, "map_view"):
             self._window.ui.map_view.set_focused_asset_mode(False)

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from ....application.contracts.runtime_entry_contract import RuntimeEntryContract
 from ....errors import LibraryError
 from ....config import DEFAULT_EXCLUDE, DEFAULT_INCLUDE
-from ....utils.pathutils import resolve_work_dir
+from ....utils.pathutils import resolve_work_dir, get_custom_workspace_dir
 from ..widgets import dialogs
 from ....i18n import tr
 
@@ -75,7 +75,7 @@ class DialogController:
                 self._status.showMessage(tr("dialog.scanning_new_folder", name=root.name))
                 return current_root
 
-            # Already a bound root — nothing to do.
+            # Already a bound root — check if database exists before deciding what to do.
             existing_roots = self._context.library.roots()
             _logger.info(
                 "bind_library_dialog: checking %s against existing roots %s",
@@ -87,9 +87,15 @@ class DialogController:
                         "bind_library_dialog: %s matches existing root %s",
                         root, existing,
                     )
-                    self._status.showMessage(
-                        tr("dialog.already_library_folder", root=root)
-                    )
+                    # ⭐ 修复：检查数据库是否存在，如果不存在则触发扫描
+                    if self._should_rescan_library(existing):
+                        _logger.info("bind_library_dialog: database missing, triggering rescan for %s", existing)
+                        self._start_scan_if_needed(existing)
+                        self._status.showMessage(tr("dialog.rescanning_library_folder", name=root.name))
+                    else:
+                        self._status.showMessage(
+                            tr("dialog.already_library_folder", root=root)
+                        )
                     return root
 
             # Add as an additional root (coexist with existing libraries).
@@ -140,6 +146,52 @@ class DialogController:
             return a.resolve() == b.resolve()
         except OSError:
             return a == b
+
+    def _should_rescan_library(self, root: Path) -> bool:
+        """检查是否需要对库进行重新扫描。
+
+        Returns:
+            True 如果数据库不存在或为空，需要扫描
+        """
+        from ...utils.pathutils import resolve_work_dir, get_custom_workspace_dir
+
+        # 先检查自定义工作目录中的数据库
+        custom_dir = get_custom_workspace_dir(root)
+        if custom_dir is not None:
+            custom_db = custom_dir / "global_index.db"
+            if custom_db.exists():
+                try:
+                    # 检查数据库是否为空
+                    import sqlite3
+                    conn = sqlite3.connect(custom_db)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM assets")
+                    count = cursor.fetchone()[0]
+                    conn.close()
+                    if count > 0:
+                        return False  # 有数据，不需要扫描
+                except Exception:
+                    pass  # 数据库损坏，需要重新扫描
+
+        # 回退到传统工作目录检测
+        work_dir = resolve_work_dir(root)
+        if work_dir is not None:
+            db_path = work_dir / "global_index.db"
+            if db_path.exists():
+                try:
+                    # 检查数据库是否为空
+                    import sqlite3
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM assets")
+                    count = cursor.fetchone()[0]
+                    conn.close()
+                    if count > 0:
+                        return False  # 有数据，不需要扫描
+                except Exception:
+                    pass  # 数据库损坏，需要重新扫描
+
+        return True  # 数据库不存在或为空，需要扫描
 
     def _persist_library_paths(self) -> None:
         """Save all bound library roots to settings."""

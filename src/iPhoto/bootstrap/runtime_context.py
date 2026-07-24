@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
+
+from PySide6.QtCore import Qt
 
 from ..events.bus import EventBus
 
@@ -77,6 +79,7 @@ class RuntimeContext:
     asset_runtime: "LibraryAssetRuntime" = field(default_factory=_create_asset_runtime)
     recent_albums: list[Path] = field(default_factory=list)
     defer_startup_tasks: bool = False
+    show_welcome_if_needed: bool = True  # 是否在需要时显示欢迎向导
     theme: "ThemeManager" = field(init=False)
     language: "LanguageStore" = field(init=False)
     library_session: "LibrarySession | None" = field(init=False, default=None)
@@ -92,6 +95,15 @@ class RuntimeContext:
         self.theme = _create_theme_manager(self.settings)
         self.language = _create_language_store(self.settings)
         self.facade.bind_library(self.library)
+
+        # 设置自定义工作目录基础路径
+        workspace_base = self.settings.get("workspace_base")
+        if workspace_base:
+            from ..utils.pathutils import set_custom_workspace_base
+            try:
+                set_custom_workspace_base(Path(workspace_base).expanduser())
+            except Exception as exc:
+                _logger.warning("Failed to set custom workspace base: %s", exc)
 
         # Migrate: if basic_library_paths is empty but basic_library_path exists,
         # populate the list from the single path.
@@ -119,6 +131,76 @@ class RuntimeContext:
 
         if not self.defer_startup_tasks:
             self.resume_startup_tasks()
+
+    def is_first_launch(self) -> bool:
+        """检测是否首次启动或需要配置工作目录。
+
+        首次启动的判断条件：
+        1. 设置文件中没有任何工作目录配置
+        2. 没有最近打开的相册记录
+        """
+        # 检查是否有工作目录配置
+        has_workspace_config = self.settings.get("workspace_base") is not None
+
+        # 检查是否有最近打开的相册
+        has_recent_albums = bool(self.settings.get("last_open_albums", []))
+
+        # 检查是否有配置的照片库路径
+        has_library_paths = bool(self.settings.get("basic_library_paths", []))
+
+        # 如果都没有配置，认为是首次启动
+        return not (has_workspace_config or has_recent_albums or has_library_paths)
+
+    def needs_workspace_config(self) -> bool:
+        """检测是否需要配置工作目录。
+
+        即使不是首次启动，如果没有配置 workspace_base，
+        也应该询问用户选择工作目录位置。
+        """
+        has_workspace_config = self.settings.get("workspace_base") is not None
+        return not has_workspace_config
+
+    def show_welcome_wizard(self) -> Optional[Path]:
+        """显示欢迎向导，返回用户选择的工作目录基础路径。
+
+        Returns:
+            用户选择的工作目录基础路径，如果选择传统模式则返回 None
+        """
+        try:
+            from ..gui.ui.widgets import WelcomeWizard
+            from PySide6.QtWidgets import QApplication
+
+            _logger.info("show_welcome_wizard: Creating WelcomeWizard")
+
+            # 获取主窗口作为父窗口
+            app = QApplication.instance()
+            parent = app.activeWindow() if app else None
+
+            _logger.info("show_welcome_wizard: parent window = %s", parent)
+
+            wizard = WelcomeWizard(parent)
+
+            _logger.info("show_welcome_wizard: Showing wizard dialog")
+
+            # 模态显示并等待用户选择
+            workspace_base = wizard.show_and_wait()
+
+            _logger.info("show_welcome_wizard: User selected workspace_base = %s", workspace_base)
+
+            # 保存到设置
+            if workspace_base is not None:
+                self.settings.set("workspace_base", str(workspace_base))
+            else:
+                # 如果选择传统模式，确保 workspace_base 为 None
+                self.settings.set("workspace_base", None)
+
+            return workspace_base
+
+        except Exception as exc:
+            _logger.error("Failed to show welcome wizard: %s", exc)
+            import traceback
+            traceback.print_exc()
+            return None
 
     @classmethod
     def create(cls, *, defer_startup: bool = False) -> "RuntimeContext":
@@ -160,24 +242,17 @@ class RuntimeContext:
                     "resume_startup_tasks: bind_path succeeded, root=%s",
                     self.library.root(),
                 )
+                # 检查是否需要启动扫描
+                # 增量扫描机制已经优化，即使数据库存在也会高效处理新文件
+                # 所以每次启动都触发扫描以确保不遗漏任何新文件
                 if not self.library.is_scanning_path(candidate):
-                    # Only scan on first launch (no existing DB).  On
-                    # subsequent launches the gallery loads directly from
-                    # the persistent SQLite index — a full filesystem walk
-                    # would compete for I/O and block the UI.
-                    from ..utils.pathutils import resolve_work_dir
-                    work_dir = resolve_work_dir(candidate)
-                    db_path = (work_dir / "global_index.db") if work_dir is not None else None
-                    if db_path is None or not db_path.exists():
-                        self.facade.scan_root_async(
-                            candidate,
-                            include=DEFAULT_INCLUDE,
-                            exclude=DEFAULT_EXCLUDE,
-                        )
-                    else:
-                        _logger.debug(
-                            "resume_startup_tasks: index DB exists, skipping scan"
-                        )
+                    from ..config import DEFAULT_EXCLUDE, DEFAULT_INCLUDE
+                    _logger.info("resume_startup_tasks: starting scan to detect new files")
+                    self.facade.scan_root_async(
+                        candidate,
+                        include=DEFAULT_INCLUDE,
+                        exclude=DEFAULT_EXCLUDE,
+                    )
             except LibraryError as exc:
                 _logger.error("resume_startup_tasks: bind_path failed: %s", exc)
                 self.library.errorRaised.emit(str(exc))

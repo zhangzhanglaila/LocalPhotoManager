@@ -658,9 +658,18 @@ class PlaybackCoordinator(QObject):
             self._preload_adjacent_images(presentation.row)
 
     def _preload_adjacent_images(self, current_row: int) -> None:
-        """Pre-decode the next and previous images on background threads."""
+        """Pre-decode nearby images on background threads for smoother navigation.
 
-        for offset in (-1, 1):
+        Preloads up to 4 images in each direction to ensure instant display when
+        navigating with arrow keys or filmstrip clicks.
+        """
+
+        # Preload up to 4 images in each direction (total 8 images max)
+        # This matches the preload cache size of 8 in player_view_controller.py
+        preload_radius = 4
+        for offset in range(-preload_radius, preload_radius + 1):
+            if offset == 0:
+                continue
             row = current_row + offset
             if row < 0:
                 continue

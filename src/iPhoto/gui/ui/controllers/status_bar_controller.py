@@ -52,6 +52,7 @@ class StatusBarController(QObject):
     def begin_scan(self) -> None:
         """Prepare the UI for a long-running scan operation."""
 
+        # ⭐ 修复：无论当前状态如何，都应该允许开始扫描
         self._progress_context = "scan"
         self._status_bar.setVisible(True)
         self._progress_bar.setRange(0, 0)
@@ -66,14 +67,17 @@ class StatusBarController(QObject):
     def handle_scan_progress(self, root: Path, current: int, total: int) -> None:
         """Update the progress bar while the library is being scanned."""
 
-        if self._progress_context not in {"scan", None}:
-            if self._progress_context != "load":
-                return
-            self._progress_context = "scan"
+        # ⭐ 修复：允许在任何上下文中显示扫描进度
+        # 即使当前处于 "load" 或其他上下文，扫描进度也应该显示
+        # 因为扫描是后台操作，不应该被 UI 状态阻塞
         if self._progress_context is None:
             # A scan triggered from outside the controller started without
             # calling :meth:`begin_scan`; bootstrap the UI lazily.
             self.begin_scan()
+        elif self._progress_context not in {"scan", None}:
+            # ⭐ 修复：强制切换到扫描上下文以显示进度
+            # 其他操作（如加载）应该让位于扫描进度显示
+            self._progress_context = "scan"
 
         if total <= 0:
             # total < 0  → discovery thread hasn't started counting yet

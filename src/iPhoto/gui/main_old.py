@@ -380,56 +380,6 @@ def main(argv: list[str] | None = None) -> int:
     coordinator_ref: list = []
     _scan_finished = False  # 跟踪扫描是否完成
 
-    # ⭐ 关键修改：先连接信号，再启动扫描，避免信号丢失
-    def _connect_scan_signals() -> None:
-        """在启动任何扫描之前连接信号。"""
-        nonlocal _scan_finished
-
-        def _on_scan_progress(root: Path, current: int, total: int) -> None:
-            nonlocal _scan_finished
-            if not _scan_finished:
-                overlay.show_scan_progress(current, total)
-                app.processEvents()
-
-        def _on_scan_finished(root: Path, success: bool) -> None:
-            nonlocal _scan_finished
-            _scan_finished = True
-            _logger.info("startup: scan finished, success=%s", success)
-            # 扫描完成后继续下一步
-            QTimer.singleShot(0, _step4_select_photos)
-
-        # 连接信号
-        context.facade.scanProgress.connect(_on_scan_progress)
-        context.library.scanProgress.connect(_on_scan_progress)
-        context.facade.scanFinished.connect(_on_scan_finished)
-        context.library.scanFinished.connect(_on_scan_finished)
-
-    def _check_existing_db() -> bool:
-        """检查是否已有数据库。"""
-        from iPhoto.utils.pathutils import resolve_work_dir, get_custom_workspace_dir
-
-        lib_root = context.library.root()
-        if not lib_root:
-            return False
-
-        # 先尝试自定义工作目录
-        custom_dir = get_custom_workspace_dir(lib_root)
-        if custom_dir is not None:
-            custom_db = custom_dir / "global_index.db"
-            if custom_db.exists():
-                _logger.info("startup: found DB in custom workspace: %s", custom_db)
-                return True
-
-        # 回退到传统工作目录检测
-        work_dir = resolve_work_dir(lib_root)
-        if work_dir is not None:
-            db_path = work_dir / "global_index.db"
-            if db_path.exists():
-                _logger.info("startup: found DB in traditional workspace: %s", db_path)
-                return True
-
-        return False
-
     def _step1_create_coordinator() -> None:
         try:
             overlay.set_message(tr("startup.init_components"))
@@ -438,87 +388,94 @@ def main(argv: list[str] | None = None) -> int:
             coordinator = MainCoordinator(window, context)
             window.set_coordinator(coordinator)
             coordinator_ref.append(coordinator)
-            QTimer.singleShot(0, _step2_connect_signals_first)
+            QTimer.singleShot(0, _step2_start_coordinator)
         except Exception:
             _logger.exception("startup step 1: unhandled error")
             raise
 
-    def _step2_connect_signals_first() -> None:
-        """⚠️ 重要：在 resume_startup_tasks 之前连接扫描信号。"""
+    def _step2_start_coordinator() -> None:
         try:
-            overlay.set_message("初始化信号...")
+            overlay.set_message(tr("startup.starting_services"))
             app.processEvents()
-            _logger.info("startup step 2: connecting scan signals BEFORE opening library")
-
-            # 先连接 overlay 的扫描信号
-            _connect_scan_signals()
-
-            # ⭐ 同时连接状态栏的扫描信号
-            if coordinator_ref:
-                coordinator = coordinator_ref[0]
-
-                def _on_status_bar_scan_progress(root: Path, current: int, total: int) -> None:
-                    nonlocal _scan_finished
-                    if not _scan_finished:
-                        # 确保状态栏显示扫描进度
-                        coordinator._status_bar.handle_scan_progress(root, current, total)
-
-                def _on_status_bar_scan_finished(root: Path, success: bool) -> None:
-                    coordinator._status_bar.handle_scan_finished(root, success)
-
-                # 连接 facade 的扫描信号到状态栏
-                context.facade.scanProgress.connect(_on_status_bar_scan_progress)
-                context.facade.scanFinished.connect(_on_status_bar_scan_finished)
-                context.library.scanProgress.connect(_on_status_bar_scan_progress)
-                context.library.scanFinished.connect(_on_status_bar_scan_finished)
-
-            QTimer.singleShot(0, _step3_check_first_launch)
+            _logger.info("startup step 2: starting coordinator")
+            coordinator_ref[0].start()
+            QTimer.singleShot(0, _step2b_check_first_launch)
         except Exception:
             _logger.exception("startup step 2: unhandled error")
             raise
 
-    def _step3_check_first_launch() -> None:
-        """检查是否首次启动。"""
+    def _step2b_check_first_launch() -> None:
+        """检查是否首次启动，如果是则显示欢迎向导。"""
         try:
-            overlay.set_message("检查配置...")
-            app.processEvents()
-            _logger.info("startup step 3: checking first launch")
             if context.needs_workspace_config():
                 overlay.set_message("配置工作目录...")
                 app.processEvents()
-                _logger.info("startup step 3: workspace configuration needed")
+                _logger.info("startup step 2b: workspace configuration needed, showing welcome wizard")
+                # 显示欢迎向导（会阻塞直到用户完成）
                 context.show_welcome_wizard()
-            QTimer.singleShot(0, _step4_open_library)
+            QTimer.singleShot(0, _step3a_open_library)
         except Exception:
-            _logger.exception("startup step 3: unhandled error")
+            _logger.exception("startup step 2b: unhandled error")
             raise
 
-    def _step4_open_library() -> None:
-        """打开库并决定是否等待扫描。"""
+    def _step3a_open_library() -> None:
         try:
-            nonlocal _scan_finished
-
             overlay.set_message(tr("startup.opening_library"))
             app.processEvents()
-            _logger.info("startup step 4: opening library")
-
-            # 检查是否已有数据库
-            has_existing_db = _check_existing_db()
-
-            # 打开库（可能启动扫描）
+            _logger.info("startup step 3a: opening library")
             context.resume_startup_tasks()
-
-            if has_existing_db:
-                # 数据库已存在，不需要等待扫描
-                _scan_finished = True
-                _logger.info("startup: existing DB found, will not wait for scan")
-                QTimer.singleShot(0, _step5_select_photos)
-            else:
-                # 需要等待扫描完成，设置超时
-                _logger.info("startup: no DB found, waiting for scan")
-                QTimer.singleShot(5000, _check_scan_timeout)
+            QTimer.singleShot(0, _step3b_connect_scan_signals)
         except Exception:
-            _logger.exception("startup step 4: unhandled error")
+            _logger.exception("startup step 3a: unhandled error")
+            raise
+
+    def _step3b_connect_scan_signals() -> None:
+        """连接扫描进度信号到 overlay。"""
+        try:
+            overlay.set_message("准备扫描...")
+            app.processEvents()
+            _logger.info("startup step 3b: connecting scan signals")
+
+            # 连接扫描进度信号
+            def _on_scan_progress(root: Path, current: int, total: int) -> None:
+                nonlocal _scan_finished
+                if not _scan_finished:
+                    overlay.show_scan_progress(current, total)
+                    app.processEvents()
+
+            def _on_scan_finished(root: Path, success: bool) -> None:
+                nonlocal _scan_finished
+                _scan_finished = True
+                _logger.info("startup: scan finished, success=%s", success)
+                # 扫描完成后继续下一步
+                QTimer.singleShot(0, _step4_select_photos)
+
+            # 连接信号
+            context.facade.scanProgress.connect(_on_scan_progress)
+            context.library.scanProgress.connect(_on_scan_progress)
+            context.facade.scanFinished.connect(_on_scan_finished)
+            context.library.scanFinished.connect(_on_scan_finished)
+
+            # 检查是否已有扫描完成（可能扫描非常快）
+            from iPhoto.utils.pathutils import resolve_work_dir
+            lib_root = context.library.root()
+            if lib_root:
+                work_dir = resolve_work_dir(lib_root)
+                db_path = (work_dir / "global_index.db") if work_dir is not None else None
+                if db_path and db_path.exists():
+                    # 数据库已存在，没有扫描
+                    _scan_finished = True
+                    _logger.info("startup: existing DB found, skipping scan wait")
+                    QTimer.singleShot(0, _step4_select_photos)
+                else:
+                    # 等待扫描完成，设置超时
+                    QTimer.singleShot(5000, _check_scan_timeout)
+            else:
+                # 没有库路径，继续
+                _scan_finished = True
+                QTimer.singleShot(0, _step4_select_photos)
+        except Exception:
+            _logger.exception("startup step 3b: unhandled error")
             raise
 
     def _check_scan_timeout() -> None:
@@ -527,91 +484,41 @@ def main(argv: list[str] | None = None) -> int:
         if not _scan_finished:
             _logger.warning("startup: scan timeout, continuing anyway")
             _scan_finished = True
-            QTimer.singleShot(0, _step5_select_photos)
+            QTimer.singleShot(0, _step4_select_photos)
 
-    def _warm_up_thumbnail_cache() -> None:
-        """在后台预热缩略图缓存以改善首次浏览体验。"""
-        try:
-            coordinator = coordinator_ref[0]
-            gallery_store = getattr(coordinator, "_gallery_store", None)
-            if gallery_store is None:
-                return
-
-            preload_count = min(30, gallery_store.rowCount())
-            if preload_count <= 0:
-                return
-
-            _logger.info("thumbnail cache warm-up: triggering preload for %d assets", preload_count)
-
-            # 触发缩略图服务的预加载
-            # 通过访问每项的缩略图来触发缓存生成
-            from PySide6.QtCore import QTimer, QSize
-
-            def _preload_batch(offset: int = 0) -> None:
-                batch_size = 5
-                end = min(offset + batch_size, preload_count)
-                for row in range(offset, end):
-                    asset = gallery_store.asset_at(row)
-                    if asset is not None and asset.abs_path is not None:
-                        try:
-                            # 通过 thumbnail_service 触发缓存预热
-                            coordinator._thumbnail_service.get_thumbnail(
-                                path=asset.abs_path,
-                                size=QSize(256, 256),
-                            )
-                        except Exception:
-                            pass  # 忽略预加载错误
-
-                # 继续下一批
-                if end < preload_count:
-                    QTimer.singleShot(50, lambda: _preload_batch(end))
-
-            # 启动批量预加载
-            _preload_batch()
-            _logger.info("thumbnail cache warm-up initiated")
-
-        except Exception:
-            _logger.exception("thumbnail cache warm-up failed")
-
-    def _step5_select_photos() -> None:
-        """选择照片并完成启动。"""
+    def _step4_select_photos() -> None:
         try:
             # 确保扫描已完成后再继续
             if not _scan_finished:
-                _logger.info("startup step 5: scan still in progress, waiting...")
-                QTimer.singleShot(100, _step5_select_photos)
+                _logger.info("startup step 4: scan still in progress, waiting...")
+                QTimer.singleShot(100, _step4_select_photos)
                 return
 
             overlay.set_message(tr("startup.loading_photos"))
             app.processEvents()
             coordinator = coordinator_ref[0]
-
-            # 检查是否有有效的相册路径参数
+            # 检查是否有有效的相册路径参数（排除 --help 等选项）
             valid_path_arg = None
             if len(arguments) > 1:
                 arg = arguments[1]
+                # 跳过帮助选项和以 - 开头的选项
                 if arg not in ("--help", "-h", "--version") and not arg.startswith("-"):
                     potential_path = Path(arg)
                     if potential_path.exists():
                         valid_path_arg = potential_path
 
             if valid_path_arg:
-                _logger.info("startup step 5: opening album from CLI argument %s", valid_path_arg)
+                _logger.info("startup step 4: opening album from CLI argument %s", valid_path_arg)
                 coordinator.open_album_from_path(valid_path_arg)
             else:
-                _logger.info("startup step 5: selecting All Photos in sidebar")
+                _logger.info("startup step 4: selecting All Photos in sidebar")
                 window.ui.sidebar.select_all_photos(emit_signal=True)
-
             coordinator.finish_startup()
-
-            # ⭐ 启动缓存预热：在后台预加载可见区域的缩略图
-            # 这可以显著改善首次浏览时的流畅度
-            QTimer.singleShot(500, _warm_up_thumbnail_cache)
-
+            # 现在安全地关闭 overlay
             overlay.dismiss()
             _logger.info("startup complete")
         except Exception:
-            _logger.exception("startup step 5: unhandled error")
+            _logger.exception("startup step 4: unhandled error")
             raise
 
     QTimer.singleShot(0, _step1_create_coordinator)

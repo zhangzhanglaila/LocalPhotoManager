@@ -242,8 +242,9 @@ class PlayerViewController(QObject):
 
     def _on_preload_ready(self, source: Path, image: QImage) -> None:
         self._active_preloads.discard(source)
-        # Keep at most 2 preloaded images to limit memory usage.
-        if len(self._image_preload_cache) >= 2:
+        # Keep at most 8 preloaded images to limit memory usage while improving navigation smoothness.
+        # This allows preloading 4 images in each direction for smoother browsing.
+        if len(self._image_preload_cache) >= 8:
             oldest = next(iter(self._image_preload_cache))
             del self._image_preload_cache[oldest]
         self._image_preload_cache[source] = image

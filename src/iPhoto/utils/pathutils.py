@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import functools
+import hashlib
 import logging
 import os
 import re
@@ -14,6 +15,56 @@ from ..config import ALL_WORK_DIR_NAMES, WORK_DIR_NAME
 
 LOGGER = logging.getLogger(__name__)
 _WARNED_WORK_DIR_CONFLICTS: set[Path] = set()
+_CUSTOM_WORKSPACE_BASE: Optional[Path] = None
+
+
+def set_custom_workspace_base(base: Path | None) -> None:
+    """设置自定义工作空间的基础路径。
+
+    Args:
+        base: 自定义工作空间基础路径。如果为 None，则使用照片文件夹内的 .iPhoto 目录。
+    """
+    global _CUSTOM_WORKSPACE_BASE
+    _CUSTOM_WORKSPACE_BASE = base
+
+
+def get_custom_workspace_base() -> Optional[Path]:
+    """获取当前设置的自定义工作空间基础路径。"""
+    return _CUSTOM_WORKSPACE_BASE
+
+
+def _generate_library_name(library_root: Path) -> str:
+    """为照片库生成唯一的文件夹名称。
+
+    优先使用文件夹名称，如果名称包含特殊字符则使用哈希值。
+    """
+    name = library_root.name
+    # 检查是否包含可能引起问题的字符
+    if re.match(r'^[\w一-鿿\-\s]+$', name, re.UNICODE):
+        return name
+    # 使用哈希值作为后备
+    return hashlib.md5(str(library_root).encode()).hexdigest()[:16]
+
+
+def get_custom_workspace_dir(library_root: Path) -> Path | None:
+    """获取照片库的自定义工作目录。
+
+    当设置了自定义工作空间基础路径时，返回该基础路径下的库专属目录。
+    目录结构: <workspace_base>/<library_name>/.iPhoto/
+
+    Args:
+        library_root: 照片库的根目录。
+
+    Returns:
+        自定义工作目录路径，如果未设置自定义基础路径则返回 None。
+    """
+    base = get_custom_workspace_base()
+    if base is None:
+        return None
+
+    library_name = _generate_library_name(library_root)
+    workspace_dir = base / library_name / WORK_DIR_NAME
+    return workspace_dir
 
 
 def _expand(pattern: str) -> Iterator[str]:
@@ -83,10 +134,16 @@ def _exact_work_dir_entries(root: Path) -> dict[str, Path]:
 def resolve_work_dir(root: Path) -> Path | None:
     """Return the existing managed work directory for *root*, if any.
 
+    优先返回自定义工作目录（如果配置），否则查找照片文件夹内的 .iPhoto 目录。
     ``.iPhoto`` is canonical, while lowercase ``.iphoto`` remains readable for
     legacy libraries on case-sensitive filesystems.
     """
+    # 首先检查自定义工作目录
+    custom_dir = get_custom_workspace_dir(root)
+    if custom_dir is not None and custom_dir.exists():
+        return custom_dir
 
+    # 回退到照片文件夹内的传统工作目录
     entries = _exact_work_dir_entries(root)
     for name in ALL_WORK_DIR_NAMES:
         candidate = entries.get(name)
@@ -98,11 +155,19 @@ def resolve_work_dir(root: Path) -> Path | None:
 def ensure_work_dir(root: Path, name: str = WORK_DIR_NAME) -> Path:
     """Ensure that the album work directory exists and return it.
 
+    优先使用自定义工作目录（如果配置），否则在照片文件夹内创建。
     New libraries use canonical ``.iPhoto``. If a legacy lowercase work
     directory already exists, continue using it instead of creating a case-only
     sibling that would split state on Linux.
     """
 
+    # 首先检查是否应该使用自定义工作目录
+    custom_dir = get_custom_workspace_dir(root)
+    if custom_dir is not None:
+        custom_dir.mkdir(parents=True, exist_ok=True)
+        return custom_dir
+
+    # 回退到照片文件夹内的传统工作目录
     if name == WORK_DIR_NAME:
         entries = _exact_work_dir_entries(root)
         canonical = entries.get(WORK_DIR_NAME) or (root / WORK_DIR_NAME)

@@ -9,7 +9,7 @@ from typing import MutableMapping
 
 from ..config import WORK_DIR_NAME
 from ..settings.manager import default_settings_path
-from ..utils.pathutils import ensure_work_dir
+from ..utils.pathutils import ensure_work_dir, get_custom_workspace_base
 
 
 def load_saved_basic_library_path(settings_path: Path | None = None) -> Path | None:
@@ -38,7 +38,14 @@ def resolve_managed_work_root(
 
     library_root = load_saved_basic_library_path(settings_path)
     if library_root is not None:
-        return ensure_work_dir(library_root)
+        work_dir = ensure_work_dir(library_root)
+        if work_dir.exists():
+            return work_dir
+
+    # 检查是否设置了自定义工作目录基础路径
+    custom_base = get_custom_workspace_base()
+    if custom_base is not None:
+        return custom_base
 
     user_home = home_root or Path.home()
     work_root = user_home / WORK_DIR_NAME

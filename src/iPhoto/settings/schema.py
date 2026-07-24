@@ -19,6 +19,7 @@ SETTINGS_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string"},
         },
+        "workspace_base": {"type": ["string", "null"]},
         "pinned_items_by_library": {
             "type": "object",
             "additionalProperties": {
@@ -96,6 +97,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "schema": "iPhoto/settings@1",
     "basic_library_path": None,
     "basic_library_paths": [],
+    "workspace_base": None,  # 自定义工作目录基础路径，为 None 时使用照片文件夹内的 .iPhoto
     "pinned_items_by_library": {},
     "ui": {
         "theme": "system",

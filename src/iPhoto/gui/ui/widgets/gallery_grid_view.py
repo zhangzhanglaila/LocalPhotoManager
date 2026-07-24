@@ -67,9 +67,16 @@ class GalleryGridView(AssetGrid):
         self._loading_label.setStyleSheet("color: #86868b; font-size: 15px;")
         self._loading_label.hide()
 
+        # 扫描状态标签 - 显示扫描中状态
+        self._scanning_label = QLabel("正在扫描照片，请稍候...", vp)
+        self._scanning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._scanning_label.setStyleSheet("color: #86868b; font-size: 15px;")
+        self._scanning_label.hide()
+
         # Suppress "No media found" until the first scan completes so it
         # never flashes during startup.
         self._scan_completed = False
+        self._is_scanning = False  # 跟踪是否正在扫描
         # Track whether a query is actively loading so we can show the
         # loading label instead of a blank page.
         self._query_loading = False
@@ -215,6 +222,8 @@ class GalleryGridView(AssetGrid):
             self._empty_label.setGeometry(self.viewport().rect())
         if self._loading_label is not None:
             self._loading_label.setGeometry(self.viewport().rect())
+        if self._scanning_label is not None:
+            self._scanning_label.setGeometry(self.viewport().rect())
 
 
         # Determine how many columns can fit with the minimum size constraint.
@@ -346,7 +355,14 @@ class GalleryGridView(AssetGrid):
     def set_scan_completed(self) -> None:
         """Mark that the first scan has finished — allows 'No media found' to show."""
         self._scan_completed = True
+        self._is_scanning = False  # 扫描完成
         self._query_loading = False
+        self._empty_state_timer.stop()
+        self._do_update_empty_state()
+
+    def set_scan_started(self) -> None:
+        """标记扫描开始 - 显示扫描中状态。"""
+        self._is_scanning = True
         self._empty_state_timer.stop()
         self._do_update_empty_state()
 
@@ -364,14 +380,29 @@ class GalleryGridView(AssetGrid):
             return
         self._empty_label.setGeometry(self.viewport().rect())
         self._loading_label.setGeometry(self.viewport().rect())
-        if is_empty and self._query_loading:
+        self._scanning_label.setGeometry(self.viewport().rect())
+
+        # 优先级：正在扫描 > 正在加载查询 > 空状态
+        if is_empty and self._is_scanning:
+            # 正在扫描 - 显示扫描中提示
+            self._empty_label.hide()
+            self._loading_label.hide()
+            self._scanning_label.show()
+        elif is_empty and self._query_loading:
+            # 正在加载查询
             self._empty_label.hide()
             self._loading_label.show()
+            self._scanning_label.hide()
         elif is_empty and not self._scan_completed:
+            # 扫描未完成，但不在扫描中 - 显示提示
             self._empty_label.hide()
             self._loading_label.hide()
+            self._scanning_label.setText("准备中...")
+            self._scanning_label.show()
         else:
+            # 正常状态或扫描完成
             self._loading_label.hide()
+            self._scanning_label.hide()
             self._empty_label.setVisible(is_empty)
 
     def set_empty_mode(self, mode: str | None) -> None:

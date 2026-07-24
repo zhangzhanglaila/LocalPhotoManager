@@ -12,7 +12,7 @@ from ..config import (
 from ..errors import (
     AlbumOperationError,
 )
-from ..utils.pathutils import resolve_work_dir
+from ..utils.pathutils import ensure_work_dir
 
 if TYPE_CHECKING:
     pass
@@ -22,10 +22,15 @@ class TrashManagerMixin:
     """Mixin providing trash/deleted items management for LibraryRuntimeController."""
 
     def ensure_deleted_directory(self) -> Path:
-        """Create the dedicated trash directory when missing and return it."""
+        """Create the dedicated trash directory when missing and return it.
+
+        使用自定义工作目录（如果配置），将 .Trash 创建在工作目录中而不是照片文件夹中。
+        """
 
         root = self._require_root()
-        target = root / RECENTLY_DELETED_DIR_NAME
+        # 使用自定义工作目录（如果配置），优先在工作目录中创建 .Trash
+        work_dir = ensure_work_dir(root)
+        target = work_dir / RECENTLY_DELETED_DIR_NAME
         self._migrate_legacy_deleted_dir(root, target)
         if target.exists() and not target.is_dir():
             raise AlbumOperationError(
@@ -104,10 +109,15 @@ class TrashManagerMixin:
         filename collisions.
         """
 
-        work_dir = resolve_work_dir(root)
-        if work_dir is None:
-            return
-        legacy = work_dir / "deleted"
+        # 查找传统工作目录中的 legacy deleted 文件夹
+        work_dir = ensure_work_dir(root)
+        # 检查是否在照片文件夹内有传统的 .iPhoto/deleted
+        traditional_work_dir = root / ".iPhoto"
+        if traditional_work_dir.exists():
+            legacy = traditional_work_dir / "deleted"
+        else:
+            # 使用当前工作目录
+            legacy = work_dir / "deleted"
         if not legacy.exists() or not legacy.is_dir():
             return
 

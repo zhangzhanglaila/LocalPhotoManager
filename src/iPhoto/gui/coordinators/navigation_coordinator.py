@@ -336,6 +336,9 @@ class NavigationCoordinator(QObject):
             if not confirmed:
                 return
 
+            # 记录当前查看的根目录
+            current_root = self._gallery_vm.active_root.value
+
             self._context.library.remove_root(matching_root)
             remaining = self._context.library.roots()
             self._context.settings.set("basic_library_paths", [str(r) for r in remaining])
@@ -345,6 +348,17 @@ class NavigationCoordinator(QObject):
                 self._context.settings.set("basic_library_path", "")
                 self._context.library.shutdown()
             self._sidebar.refresh_tree_model()
+
+            # ⭐ 修复：删除相册后刷新画廊视图
+            if not remaining:
+                # 如果没有剩余的根目录，导航到绑定库界面
+                self.bindLibraryRequested.emit()
+            elif current_root == matching_root:
+                # 如果当前正在查看被删除的根目录，导航到"All Photos"
+                self.open_all_photos()
+            else:
+                # 其他情况，刷新当前视图
+                self._gallery_vm.reload_current_selection()
             return
 
         # Find the root that contains this path.

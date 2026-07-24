@@ -11,7 +11,7 @@ from PySide6.QtGui import QImage
 from ....config import THUMBNAIL_SEEK_GUARD_SEC
 from ....errors import ExternalToolError
 from ....utils import image_loader
-from ....utils.ffmpeg import extract_frame_with_pyav, extract_video_frame
+from ....utils.ffmpeg import extract_frame_with_pyav, extract_video_frame, probe_video_rotation_info
 
 
 def grab_video_frame(
@@ -23,7 +23,19 @@ def grab_video_frame(
     trim_in_sec: Optional[float] = None,
     trim_out_sec: Optional[float] = None,
 ) -> Optional[QImage]:
-    """Return a decoded frame for *path* scaled to *size*."""
+    """Return a decoded frame for *path* scaled to *size*.
+
+    This function also warms up the video metadata cache by calling
+    probe_video_rotation_info, which caches rotation and dimension info
+    for later use during playback. This reduces the initial playback delay.
+    """
+
+    # Warm up video metadata cache during thumbnail generation
+    # This reduces the first-time playback delay by caching ffprobe results
+    try:
+        probe_video_rotation_info(path)
+    except Exception:
+        pass  # Ignore probing failures; thumbnail generation will continue
 
     target_size = (max(size.width(), 1), max(size.height(), 1))
 
